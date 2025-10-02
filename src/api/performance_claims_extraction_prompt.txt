@@ -1,0 +1,13 @@
+You are an expert at analyzing machine learning documentation. Your task is to extract specific information from README files.
+
+From the README text below, extract and list:
+
+1. PERFORMANCE METRICS: Any quantitative performance numbers mentioned (accuracy, F1-score, BLEU score, WER, mAP, precision, recall, AUC, etc.). Include the actual numbers if provided.
+
+2. BENCHMARKS: Any standard evaluation datasets or benchmarks mentioned (GLUE, ImageNet, COCO, SQuAD, LibriSpeech, CommonVoice, WMT, etc.).
+
+Format your response as:
+METRICS FOUND: [list metrics and values, or "none" if none found]
+BENCHMARKS FOUND: [list benchmark names, or "none" if none found]
+
+README content:

@@ -1,0 +1,12 @@
+You are a JSON converter. Convert the extracted information below into a JSON object.
+
+IMPORTANT: You must respond with ONLY valid JSON. No explanations, no markdown, no other text.
+
+Required fields:
+- has_metrics: 1 if any performance metrics were found, 0 otherwise
+- mentions_benchmarks: 1 if any benchmarks were found, 0 otherwise
+
+Example output:
+{"has_metrics": 1, "mentions_benchmarks": 1}
+
+Extracted information:
