@@ -1,11 +1,16 @@
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from src.api.git_client import GitClient
-from src.metric_inputs.dataset_code_input import DatasetCodeInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class DatasetCodeInput:
+    repo_url: str
 
 
 class DatasetCodeMetric(Metric):

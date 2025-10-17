@@ -1,44 +1,15 @@
-name: CI
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
+name: ci
+on: [push, pull_request]
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      # Step 1: Checkout code
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # Step 2: Set up Python
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      # Step 3: Install dependencies
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # Step 4: Run Linter
-      - name: Run flake8
-        run: flake8 src tests
-
-      # Step 5: Run isort (check mode)
-      - name: Run isort
-        run: isort --check-only src tests
-
-      # Step 6: Run mypy
-      - name: Run mypy
-        run: mypy src --check-untyped-defs
-
-      # Step 7: Run tests with coverage
-      - name: Run pytest
-        run: python3 -m pytest --cov=src --cov-report=term-missing
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - run: pip install ruff mypy black pytest pytest-cov
+      - run: ruff check .
+      - run: black --check .
+      - run: mypy src
+      - run: pytest

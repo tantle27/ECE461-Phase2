@@ -2,8 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.metric_inputs.license_input import LicenseInput
-from src.metrics.license_metric import LicenseMetric
+from src.metrics.license_metric import LicenseInput, LicenseMetric
 
 
 class TestLicenseMetric:

@@ -17,9 +17,13 @@ case "$1" in
     install)
         echo "Installing dependencies..."
         python3 -m pip install --upgrade pip
-        pip3 install --user -r "$PROJECT_ROOT/requirements.txt"
+        if [ -n "$VIRTUAL_ENV" ]; then
+            python3 -m pip install -r "$PROJECT_ROOT/requirements.txt"
+        else
+            python3 -m pip install --user -r "$PROJECT_ROOT/requirements.txt"
+        fi
         echo "Installation complete."
-exit 0
+        exit 0
         ;;
     test)
         echo "Running tests..."

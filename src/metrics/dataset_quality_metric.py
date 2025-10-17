@@ -1,8 +1,13 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from src.api.hugging_face_client import HuggingFaceClient
-from src.metric_inputs.dataset_quality_input import DatasetQualityInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class DatasetQualityInput:
+    repo_id: str
 
 
 class DatasetQualityMetric(Metric):

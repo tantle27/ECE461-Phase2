@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import quote, urlparse, urlunparse
 
 from git import Repo
+from git.exc import GitCommandError
 
 
 @dataclass
@@ -36,7 +38,8 @@ class GitClient:
     def __init__(self, github_token: Optional[str] = None):
         """Initialize Git client."""
         self.temp_dirs: List[str] = []  # Track temp dirs for cleanup
-        self.github_token = github_token
+        token = github_token or os.environ.get("GITHUB_TOKEN") or None
+        self.github_token = token.strip() if token else None
 
     def _normalize_git_url(self, url: str) -> str:
         """
@@ -65,6 +68,27 @@ class GitClient:
 
         return normalized_url
 
+    def _inject_token(self, url: str) -> str:
+        """Inject the GitHub token into an HTTPS clone URL when available."""
+        if not self.github_token:
+            return url
+
+        if url.startswith("git@github.com:"):
+            path = url.split(":", 1)[1]
+            url = f"https://github.com/{path}"
+
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            return url
+
+        if parsed.username:
+            return url  # Respect existing credentials
+
+        token = quote(self.github_token, safe="")
+        safe_netloc = f"{token}:x-oauth-basic@{parsed.netloc}"
+        injected = urlunparse(parsed._replace(netloc=safe_netloc))
+        return injected
+
     def clone_repository(self, url: str) -> Optional[str]:
         """
         Clone a repository to a temporary directory.
@@ -74,6 +98,7 @@ class GitClient:
         try:
             # Normalize URL for git cloning by removing web interface paths
             normalized_url = self._normalize_git_url(url)
+            clone_url = self._inject_token(normalized_url)
 
             # Create temporary directory
             temp_dir = tempfile.mkdtemp(prefix="model_analysis_")
@@ -82,11 +107,29 @@ class GitClient:
             logging.info(f"Cloning repository: {normalized_url}")
 
             # Clone the repository
-            Repo.clone_from(normalized_url, temp_dir)
+            Repo.clone_from(
+                clone_url,
+                temp_dir,
+                env={"GIT_TERMINAL_PROMPT": "0"}
+            )
             logging.info(f"Successfully cloned to: {temp_dir}")
 
             return temp_dir
 
+        except GitCommandError as e:
+            message = e.stderr or str(e)
+            if "Authentication failed" in message or "fatal: Invalid" in message:
+                logging.error(
+                    "Failed to clone repository %s due to invalid GitHub token.",
+                    url
+                )
+            else:
+                logging.error(
+                    "Failed to clone repository %s: %s",
+                    url,
+                    message.strip()
+                )
+            return None
         except Exception as e:
             logging.error(f"Failed to clone repository {url}: {str(e)}")
             return None
@@ -107,8 +150,9 @@ class GitClient:
             # Count commits by author
             contributors: Dict[str, int] = {}
             for commit in commits:
-                author = commit.author.name
-                if author:  # Skip commits with no author name
+                author = getattr(commit.author, "email", None) or \
+                    getattr(commit.author, "name", None)
+                if author:  # Skip commits with no author identifier
                     contributors[author] = contributors.get(author, 0) + 1
 
             # Calculate bus factor using Herfindahl-Hirschman Index
@@ -118,22 +162,20 @@ class GitClient:
                     total_commits=0, contributors={}, bus_factor=0.0
                 )
 
-            # Get top 10 contributors
-            top_contributors: List[tuple[str, int]] = sorted(
-                contributors.items(), key=lambda x: x[1], reverse=True
-            )[:10]
-
-            # Calculate concentration index
+            # Calculate concentration index using all contributors
             concentration = sum(
                 (count / total_commits) ** 2
-                for _, count in top_contributors
+                for count in contributors.values()
             )
             # Higher is better (more distributed)
             bus_factor = 1.0 - concentration
 
             return CommitStats(
                 total_commits=total_commits,
-                contributors=dict(top_contributors),
+                contributors=dict(sorted(
+                    contributors.items(), key=lambda item: item[1],
+                    reverse=True
+                )),
                 bus_factor=max(0.0, min(1.0, bus_factor))
             )
 
@@ -269,6 +311,8 @@ class GitClient:
             # Calculate total size of repository
             total_size = 0
             for file_path in repo_path_obj.rglob('*'):
+                if any(part == '.git' for part in file_path.parts):
+                    continue
                 if file_path.is_file():
                     total_size += file_path.stat().st_size
 

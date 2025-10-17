@@ -3,8 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.api.git_client import CommitStats
-from src.metric_inputs.bus_factor_input import BusFactorInput
-from src.metrics.bus_factor_metric import BusFactorMetric
+from src.metrics.bus_factor_metric import BusFactorInput, BusFactorMetric
 
 
 class TestBusFactorMetric:
@@ -19,7 +18,7 @@ class TestBusFactorMetric:
             contributors={"author1": 20, "author2": 20,
                           "author3": 20, "author4": 20,
                           "author5": 20},
-            bus_factor=0.0
+            bus_factor=0.8
         )
 
         metric = BusFactorMetric(mock_git_client)
@@ -55,7 +54,7 @@ class TestBusFactorMetric:
         mock_git_client.analyze_commits.return_value = CommitStats(
             total_commits=100,
             contributors={"author1": 50, "author2": 30, "author3": 20},
-            bus_factor=0.0
+            bus_factor=0.62
         )
 
         metric = BusFactorMetric(mock_git_client)
@@ -107,7 +106,7 @@ class TestBusFactorMetric:
             mock_git_client.analyze_commits.return_value = CommitStats(
                 total_commits=50,
                 contributors={"author1": 25, "author2": 15, "author3": 10},
-                bus_factor=0.0
+                bus_factor=0.62
             )
             mock_git_client_class.return_value = mock_git_client
 

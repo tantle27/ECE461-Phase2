@@ -3,8 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.api.git_client import CodeQualityStats
-from src.metric_inputs.code_quality_input import CodeQualityInput
-from src.metrics.code_quality_metric import CodeQualityMetric
+from src.metrics.code_quality_metric import CodeQualityInput, CodeQualityMetric
 
 
 class TestCodeQualityMetric:

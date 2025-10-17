@@ -1,8 +1,13 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from src.api.gen_ai_client import GenAIClient
-from src.metric_inputs.performance_input import PerformanceInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class PerformanceInput:
+    readme_text: str
 
 
 class PerformanceClaimsMetric(Metric):

@@ -4,8 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.metric_inputs.dataset_code_input import DatasetCodeInput
-from src.metrics.dataset_code_metric import DatasetCodeMetric
+from src.metrics.dataset_code_metric import DatasetCodeInput, DatasetCodeMetric
 
 
 class TestDatasetCodeMetric:

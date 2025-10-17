@@ -1,8 +1,13 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from src.api.git_client import GitClient
-from src.metric_inputs.code_quality_input import CodeQualityInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class CodeQualityInput:
+    repo_url: str
 
 
 class CodeQualityMetric(Metric):

@@ -2,8 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.metric_inputs.ramp_up_time_input import RampUpTimeInput
-from src.metrics.ramp_up_time_metric import RampUpTimeMetric
+from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
 
 
 class TestRampUpTimeMetric:

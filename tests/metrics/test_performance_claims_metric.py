@@ -2,8 +2,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.metric_inputs.performance_input import PerformanceInput
-from src.metrics.performance_claims_metric import PerformanceClaimsMetric
+from src.metrics.performance_claims_metric import (
+    PerformanceClaimsMetric,
+    PerformanceInput,
+)
 
 
 class TestPerformanceClaimsMetric:

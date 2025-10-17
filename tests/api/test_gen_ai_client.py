@@ -53,6 +53,25 @@ class TestGenAIClient:
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
     @pytest.mark.asyncio
+    async def test_chat_authentication_failure_returns_default(
+        self, mock_post
+    ):
+        mock_response = AsyncMock()
+        mock_response.status = 401
+        mock_response.text = AsyncMock(return_value="Unauthorized")
+        mock_post.return_value.__aenter__.return_value = mock_response
+
+        client = GenAIClient()
+        result = await client.chat("Hi")
+
+        assert result == (
+            "No performance claims found in the documentation."
+        )
+        assert client.has_api_key is False
+
+    @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
+    @patch("aiohttp.ClientSession.post")
+    @pytest.mark.asyncio
     async def test_chat_custom_model(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 200
@@ -257,10 +276,14 @@ class TestGenAIClient:
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
-        with pytest.raises(Exception) as exc:
-            await client.get_performance_claims("README content")
+        result = await client.get_performance_claims("README content")
 
-        assert "Failed to parse extracted JSON" in str(exc.value)
+        assert result == {
+            "mentions_benchmarks": 0.0,
+            "has_metrics": 0.0,
+            "claims": [],
+            "score": 0.0,
+        }
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
@@ -286,10 +309,14 @@ class TestGenAIClient:
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
-        with pytest.raises(Exception) as exc:
-            await client.get_performance_claims("README content")
+        result = await client.get_performance_claims("README content")
 
-        assert "Failed to parse GenAI response as JSON" in str(exc.value)
+        assert result == {
+            "mentions_benchmarks": 0.0,
+            "has_metrics": 0.0,
+            "claims": [],
+            "score": 0.0,
+        }
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
@@ -541,11 +568,9 @@ class TestGenAIClient:
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
-        with pytest.raises(Exception) as exc:
-            await client.get_readme_clarity("README content")
+        result = await client.get_readme_clarity("README content")
 
-        assert "Failed to extract a valid float from GenAI response" in \
-            str(exc.value)
+        assert result == 0.5
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")

@@ -2,8 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.metric_inputs.size_input import SizeInput
-from src.metrics.size_metric import SizeMetric
+from src.metrics.size_metric import SizeInput, SizeMetric
 
 
 class TestSizeMetric:

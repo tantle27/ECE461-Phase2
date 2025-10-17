@@ -1,7 +1,12 @@
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from src.api.git_client import GitClient
-from src.metric_inputs.size_input import SizeInput
+
+
+@dataclass
+class SizeInput:
+    repo_url: str
 
 
 class SizeMetric:

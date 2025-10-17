@@ -1,9 +1,15 @@
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from src.api.gen_ai_client import GenAIClient
 from src.api.git_client import GitClient
-from src.metric_inputs.ramp_up_time_input import RampUpTimeInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class RampUpTimeInput:
+    readme_text: str
+    repo_path: str
 
 
 class RampUpTimeMetric(Metric):

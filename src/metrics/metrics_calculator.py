@@ -9,20 +9,19 @@ from urllib.parse import urlparse
 from src.api.gen_ai_client import GenAIClient
 from src.api.git_client import GitClient
 from src.api.hugging_face_client import HuggingFaceClient
-from src.metric_inputs.bus_factor_input import BusFactorInput
-from src.metric_inputs.code_quality_input import CodeQualityInput
-from src.metric_inputs.dataset_quality_input import DatasetQualityInput
-from src.metric_inputs.license_input import LicenseInput
-from src.metric_inputs.performance_input import PerformanceInput
-from src.metric_inputs.ramp_up_time_input import RampUpTimeInput
-from src.metric_inputs.size_input import SizeInput
-from src.metrics.bus_factor_metric import BusFactorMetric
-from src.metrics.code_quality_metric import CodeQualityMetric
-from src.metrics.dataset_quality_metric import DatasetQualityMetric
-from src.metrics.license_metric import LicenseMetric
-from src.metrics.performance_claims_metric import PerformanceClaimsMetric
-from src.metrics.ramp_up_time_metric import RampUpTimeMetric
-from src.metrics.size_metric import SizeMetric
+from src.metrics.bus_factor_metric import BusFactorInput, BusFactorMetric
+from src.metrics.code_quality_metric import CodeQualityInput, CodeQualityMetric
+from src.metrics.dataset_quality_metric import (
+    DatasetQualityInput,
+    DatasetQualityMetric,
+)
+from src.metrics.license_metric import LicenseInput, LicenseMetric
+from src.metrics.performance_claims_metric import (
+    PerformanceClaimsMetric,
+    PerformanceInput,
+)
+from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
+from src.metrics.size_metric import SizeInput, SizeMetric
 
 
 def extract_hf_repo_id(url: str) -> str:

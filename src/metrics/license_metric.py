@@ -1,10 +1,15 @@
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from src.api.git_client import GitClient
-from src.metric_inputs.license_input import LicenseInput
 from src.metrics.metric import Metric
+
+
+@dataclass
+class LicenseInput:
+    repo_url: str
 
 
 class LicenseMetric(Metric):
