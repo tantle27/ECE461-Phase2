@@ -106,10 +106,12 @@ class GitClient:
 
             logging.info(f"Cloning repository: {normalized_url}")
 
-            # Clone the repository
+            # Clone the repository with shallow clone for speed
             Repo.clone_from(
                 clone_url,
                 temp_dir,
+                depth=1,  # Shallow clone - only latest commit
+                single_branch=True,  # Only clone the default branch
                 env={"GIT_TERMINAL_PROMPT": "0"}
             )
             logging.info(f"Successfully cloned to: {temp_dir}")
@@ -143,9 +145,23 @@ class GitClient:
         try:
             repo = Repo(repo_path)
 
-            # Get commits from the last 365 days
+            # For shallow clones, we need to fetch more history
+            # Fetch last 100 commits from the last 365 days for performance
+            try:
+                # Try to unshallow if this is a shallow clone
+                if repo.git.rev_parse("--is-shallow-repository") == "true":
+                    since_date = datetime.now() - timedelta(days=365)
+                    repo.git.fetch(
+                        "--depth=100",
+                        f"--shallow-since={since_date.strftime('%Y-%m-%d')}"
+                    )
+            except Exception:
+                # If fetch fails, continue with whatever we have
+                pass
+
+            # Get commits from the last 365 days, limit to 100 for performance
             since_date = datetime.now() - timedelta(days=365)
-            commits = list(repo.iter_commits(since=since_date))
+            commits = list(repo.iter_commits(since=since_date, max_count=100))
 
             # Count commits by author
             contributors: Dict[str, int] = {}
@@ -213,22 +229,32 @@ class GitClient:
             try:
                 python_files = list(repo_path_obj.rglob("*.py"))
                 if python_files:
-                    # Run flake8 and count errors
-                    result = subprocess.run(
-                        ['flake8', '--count', '--quiet'] +
-                        [str(f) for f in python_files],
-                        capture_output=True,
-                        text=True,
-                        cwd=repo_path
-                    )
-                    # flake8 returns the count as the last line of stderr
-                    if result.stderr:
-                        try:
-                            lint_errors = int(
-                                result.stderr.strip().split('\n')[-1]
-                            )
-                        except (ValueError, IndexError):
-                            lint_errors = 0
+                    # Limit to first 50 files for performance
+                    # Prioritize non-test files
+                    main_files = [f for f in python_files if '/test' not in str(f) and '/tests/' not in str(f)]
+                    files_to_check = (main_files[:30] + python_files[:20])[:50]
+                    
+                    if files_to_check:
+                        # Run flake8 with timeout and count errors
+                        result = subprocess.run(
+                            ['flake8', '--count', '--quiet'] +
+                            [str(f) for f in files_to_check],
+                            capture_output=True,
+                            text=True,
+                            cwd=repo_path,
+                            timeout=5  # 5 second timeout
+                        )
+                        # flake8 returns the count as the last line of stderr
+                        if result.stderr:
+                            try:
+                                lint_errors = int(
+                                    result.stderr.strip().split('\n')[-1]
+                                )
+                            except (ValueError, IndexError):
+                                lint_errors = 0
+            except subprocess.TimeoutExpired:
+                logging.warning("Flake8 timed out, using 0 lint errors")
+                lint_errors = 0
             except Exception:
                 # logging.warning(f"Failed to run flake8: {str(e)}")
                 lint_errors = 0

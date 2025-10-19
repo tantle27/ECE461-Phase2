@@ -187,6 +187,13 @@ class MetricsCalculator:
             Dictionary containing all computed metrics and their latencies
         """
         logging.info(f"Starting async analysis for: {url}")
+        
+        # Early exit for Hugging Face model URLs without code repository
+        # These will have all zero scores anyway, no need to clone
+        if is_model_url(url) and not is_code_repository(url):
+            logging.info(f"Skipping full analysis for HF model URL (no separate code repo): {url}")
+            return self._get_default_metrics()
+        
         loop = asyncio.get_running_loop()
 
         repo_path = await loop.run_in_executor(
