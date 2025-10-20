@@ -177,7 +177,7 @@ class GenAIClient:
     @staticmethod
     def _read_prompt(path: str) -> str:
         try:
-            with open(path, encoding="utf-8") as handle:
+            with open(path, "r", encoding="utf-8") as handle:
                 return handle.read()
         except FileNotFoundError:
             logging.error("Prompt file not found: %s", path)
