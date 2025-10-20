@@ -32,6 +32,37 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v1
 
 
+      - name: Build, tag, and push image to ECR
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }} # e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }} # repository name
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Build Docker image
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+          # Tag for ECR with the commit SHA
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Also tag as :latest so ECS task definitions that reference :latest will pick up changes
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          # Push both tags
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+
+      - name: Update ECS service to use new image
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+          CLUSTER_NAME: ${{ secrets.ECS_CLUSTER }}
+          SERVICE_NAME: ${{ secrets.ECS_SERVICE }}
+          CONTAINER_NAME: ${{ secrets.ECS_CONTAINER_NAME }} # container name in task definition
+        run: |
+
+          # Force a new deployment which will cause tasks to pull the image referenced by the task definition.
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
+
+
       - name: Wait for service stable
         uses: aws-actions/ecs-wait-for-service-stability@v1
         with:
