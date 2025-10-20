@@ -10,10 +10,10 @@
 This repository contains a comprehensive test suite covering both **Phase 1** (CLI-based model evaluation) and **Phase 2** (REST API model registry) functionality.
 
 ```
-├── Phase 1 Tests: 137 tests (Original CLI system)
+├── Phase 1 Tests: 137 tests (Original CLI system - metrics only)
 │   ├── API Layer: 46 tests (External integrations)
 │   ├── Metrics Layer: 91 tests (Algorithm precision)
-│   └── Application Layer: 0 tests (CLI removed)
+│   └── Application Layer: 0 tests (CLI removed - Flask app replaces this)
 └── Phase 2 Tests: 53 tests (New REST API scaffolding)
     ├── Backend Services: 16 tests
     ├── New Metrics: 15 tests
@@ -39,8 +39,8 @@ python -m pytest -m "backend"       # Backend tests only
 python -m pytest -m "slow"          # Performance tests only
 
 # Run Phase 1 vs Phase 2 tests
-python -m pytest tests/api/ tests/metrics/ tests/test_main.py  # Phase 1
-python -m pytest tests/test_*.py --ignore=tests/test_main.py   # Phase 2
+python -m pytest tests/api/ tests/metrics/  # Phase 1 (metrics and API clients)
+python -m pytest tests/test_*.py           # Phase 2 (backend scaffolding)
 ```
 
 ---
@@ -232,30 +232,12 @@ python -m pytest tests/test_*.py --ignore=tests/test_main.py   # Phase 2
   - End-to-end metric calculation pipeline
   - Success and failure path integration testing
 
-### 🖥️ **Application Layer Tests (7 tests)**
+### 🖥️ **Application Layer Tests (0 tests)**
 
-#### `test_main.py` - **6 tests** 🎯
-**Purpose**: Command-line interface and orchestration
+#### CLI Interface Removed ❌
+**Status**: Legacy CLI interface (`main.py`) removed in favor of Flask REST API
 
-- **URL File Processing (2 tests)**
-  - 📄 Parse URL files with new format (GitHub, HuggingFace, datasets)
-  - ❌ File not found error handling
-
-- **Async Processing (2 tests)**
-  - ⚡ Async entry processing with NDJSON output
-  - 🔗 Integration with metrics calculator
-
-- **CLI Interface (2 tests)**
-  - 🎛️ Command-line argument validation
-  - 🔧 Main function orchestration with file input
-
-#### `test_parallelism.py` - **1 test** 🚀
-**Purpose**: Performance validation
-
-- **Concurrency Requirements**
-  - ⚡ Ensures concurrent processing is 1.5x faster than sequential
-  - 📊 Real performance measurement with timing
-  - 🎯 Validates Phase 1 performance goals
+The original command-line interface has been replaced by the Flask web application. The CLI tests have been removed as part of the transition to Phase 2's web-based architecture.
 
 ---
 
@@ -461,10 +443,10 @@ The test suite is designed for CI/CD with:
 ## 🎯 **Next Steps for Phase 2**
 
 ### Immediate Priorities
-1. **Flask App Structure** - Implement the missing `app/` directory
-2. **Database Schema** - Design models for registry, users, metrics
-3. **API Implementation** - Build REST endpoints matching test scaffolding
-4. **New Metrics** - Implement Reproducibility, Reviewedness, Treescore
+1. **Database Schema** - Design models for registry, users, metrics  
+2. **New Metrics Implementation** - Implement Reproducibility, Reviewedness, Treescore
+3. **Flask App Testing** - Connect scaffolding tests to actual Flask endpoints
+4. **API Documentation** - Create OpenAPI/Swagger specifications
 
 ### Test Integration Goals
 - **Increase Coverage**: Target 60%+ overall coverage
