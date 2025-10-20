@@ -45,7 +45,9 @@ async def test_analyze_repository_success(mock_clients):
 
     mock_git.clone_repository.return_value = "/tmp/fake/repo"
     mock_git.analyze_commits.return_value = MagicMock(
-        total_commits=100, contributors={'author1': 50, 'author2': 50}
+        total_commits=100,
+        contributors={'author1': 50, 'author2': 50},
+        bus_factor=0.5
     )
     mock_git.analyze_code_quality.return_value = MagicMock(
         lint_errors=0, has_tests=True
