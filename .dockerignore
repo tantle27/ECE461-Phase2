@@ -1,0 +1,29 @@
+# VCS
+.git
+.gitignore
+
+# Byte-compiled / cached / virtual envs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+
+# Test files
+/tests/
+
+# Local data
+uploads/
+
+# Editors/OS
+.vscode/
+.DS_Store
