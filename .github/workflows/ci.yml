@@ -11,5 +11,6 @@ jobs:
       - run: pip install flake8 mypy black pytest pytest-cov
       - run: flake8 .
       - run: black --check .
-      - run: mypy app
+      - name: Type check with mypy
+        run: mypy --explicit-package-bases --namespace-packages app src
       - run: pytest
