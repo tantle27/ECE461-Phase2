@@ -23,9 +23,9 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY . .
 
 # Expose Flask port
-EXPOSE 5000
+EXPOSE 80
 
 # Default command: gunicorn serving the Flask app instance from registry.py
 # GUNICORN_CMD_ARGS lets you tune workers via env (e.g., GUNICORN_CMD_ARGS="-w 2 -k gthread")
 ENV GUNICORN_CMD_ARGS="-w 2 --threads 2 --timeout 120"
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "registry:app"]
+CMD ["gunicorn", "--factory", "-b", "0.0.0.0:80", "app.core:create_app"]
