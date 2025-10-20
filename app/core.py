@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from flask import Blueprint, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
@@ -184,7 +184,9 @@ def _json_body() -> dict[str, Any]:
     payload = request.get_json(silent=True)
     if payload is None:
         raise_error(HTTPStatus.BAD_REQUEST, "Invalid JSON payload")
-    return payload
+    if not isinstance(payload, dict):
+        raise_error(HTTPStatus.BAD_REQUEST, "Expected JSON object")
+    return cast(dict[str, Any], payload)
 
 
 def _safe_int(value: Any, default: int) -> int:
@@ -298,7 +300,9 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
                 HTTPStatus.BAD_REQUEST,
                 "Model artifacts must include a non-empty 'model_link' field",
             )
-        normalized["model_link"] = model_link_raw.strip()
+        # Type narrowing: model_link_raw is guaranteed to be str here
+        model_link_str = cast(str, model_link_raw)
+        normalized["model_link"] = model_link_str.strip()
         for key in ("code_link", "code", "dataset_link", "dataset"):
             if key in normalized:
                 value = normalized[key]
@@ -371,7 +375,7 @@ blueprint = Blueprint("registry", __name__)
 
 
 @blueprint.route("/login", methods=["POST"])
-def login_route() -> Response:
+def login_route() -> tuple[Response, int] | Response:
     body = _json_body()
     u, p = body.get("username"), body.get("password")
     if u == _DEFAULT_USER["username"] and p == _DEFAULT_USER["password"]:
@@ -382,7 +386,7 @@ def login_route() -> Response:
 
 
 @blueprint.route("/health", methods=["GET"])
-def health_route() -> Response:
+def health_route() -> tuple[Response, int] | Response:
     _require_auth()
     last = list(_REQUEST_TIMES)[-1000:]
     return (
@@ -421,8 +425,8 @@ _OPENAPI = {
 }
 
 
-@blueprint.route("/openapi.json", methods=["GET"])
-def openapi_route() -> Response:
+@blueprint.route("/openapi", methods=["GET"])
+def openapi_route() -> tuple[Response, int] | Response:
     return jsonify(_OPENAPI), 200
 
 
@@ -431,7 +435,7 @@ def openapi_route() -> Response:
 
 @blueprint.route("/artifact/<string:artifact_type>", methods=["POST"])
 @_record_timing
-def create_artifact(artifact_type: str) -> Response:
+def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     """Ingest artifact from ArtifactData (with url fields); stores metadata; returns Artifact.
 
     Lambda spec: stores to S3, but currently using in-memory store (no DB requirement).
@@ -452,7 +456,7 @@ def create_artifact(artifact_type: str) -> Response:
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
-def get_artifact_route(artifact_type: str, artifact_id: str) -> Response:
+def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     artifact = fetch_artifact(artifact_type, artifact_id)
     if artifact is None:
@@ -462,7 +466,7 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> Response:
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
 @_record_timing
-def update_artifact_route(artifact_type: str, artifact_id: str) -> Response:
+def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     payload = _json_body()
     metadata_dict = payload.get("metadata") or {}
@@ -479,7 +483,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> Response:
 
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
-def enumerate_artifacts_route() -> Response:
+def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     """Enumerate artifacts matching ArtifactQuery; returns list w/ offset header for pagination."""
     _require_auth()
     payload = _json_body()
@@ -501,7 +505,7 @@ def enumerate_artifacts_route() -> Response:
 
 @blueprint.route("/directory", methods=["GET"])
 @_record_timing
-def directory_route() -> Response:
+def directory_route() -> tuple[Response, int] | Response:
     _require_auth()
     query = _parse_query_args(request.args)
     result = list_artifacts(query)
@@ -510,7 +514,7 @@ def directory_route() -> Response:
 
 @blueprint.route("/search", methods=["GET"])
 @_record_timing
-def search_route() -> Response:
+def search_route() -> tuple[Response, int] | Response:
     _require_auth()
     raw_query = request.args.get("q", "")
     if not raw_query.strip():
@@ -548,7 +552,7 @@ def search_route() -> Response:
 
 @blueprint.route("/upload", methods=["GET"])
 @_record_timing
-def upload_list_route() -> Response:
+def upload_list_route() -> tuple[Response, int] | Response:
     _require_auth()
     files = []
     for p in sorted(_UPLOAD_DIR.glob("**/*")):
@@ -565,7 +569,7 @@ def upload_list_route() -> Response:
 
 @blueprint.route("/upload", methods=["POST"])
 @_record_timing
-def upload_create_route() -> Response:
+def upload_create_route() -> tuple[Response, int] | Response:
     _require_auth()
     if "file" not in request.files:
         return jsonify({"message": "Missing file part"}), 400
@@ -613,7 +617,7 @@ def upload_create_route() -> Response:
 
 @blueprint.route("/artifact/model/<string:artifact_id>/rate", methods=["GET"])
 @_record_timing
-def rate_model_route(artifact_id: str) -> Response:
+def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
@@ -663,7 +667,7 @@ def rate_model_route(artifact_id: str) -> Response:
 
 @blueprint.route("/artifact/model/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
-def download_model_route(artifact_id: str) -> Response:
+def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     part = request.args.get("part", "all")  # all|weights|dataset
     art = fetch_artifact("model", artifact_id)
@@ -711,7 +715,7 @@ def download_model_route(artifact_id: str) -> Response:
 
 # -------------------- HF ingest gate --------------------
 @blueprint.route("/ingest", methods=["POST"])
-def ingest_route() -> Response:
+def ingest_route() -> tuple[Response, int] | Response:
     """Ingest a model artifact into the registry."""
     _require_auth()
     payload = _json_body()
@@ -737,7 +741,7 @@ def ingest_route() -> Response:
 
 @blueprint.route("/ingest/hf", methods=["POST"])
 @_record_timing
-def ingest_hf_route() -> Response:
+def ingest_hf_route() -> tuple[Response, int] | Response:
     _require_auth()
     payload = _json_body()
     hf_id = str(payload.get("hf_model_id", "")).strip()
@@ -795,7 +799,7 @@ def ingest_hf_route() -> Response:
 
 @blueprint.route("/artifact/model/<string:artifact_id>/lineage", methods=["GET"])
 @_record_timing
-def lineage_route(artifact_id: str) -> Response:
+def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     art = fetch_artifact("model", artifact_id)
     if not art:
@@ -834,7 +838,7 @@ def lineage_route(artifact_id: str) -> Response:
 
 @blueprint.route("/license/check", methods=["POST"])
 @_record_timing
-def license_check_route() -> Response:
+def license_check_route() -> tuple[Response, int] | Response:
     _require_auth()
     body = _json_body()
     gh_url = str(body.get("github_url", "")).strip()
@@ -856,7 +860,7 @@ def license_check_route() -> Response:
 
 
 @blueprint.route("/reset", methods=["DELETE"])
-def reset_route() -> Response:
+def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
     reset_storage()
     return jsonify({"message": "Registry reset successful"}), 200

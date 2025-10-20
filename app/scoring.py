@@ -5,7 +5,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from src.metrics.metrics_calculator import MetricsCalculator
 
@@ -111,12 +111,15 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         raise ValueError("Artifact data must be a JSON object with repository links")
 
     payload = artifact.data
-    code_link = payload.get("code_link") or payload.get("code")
-    dataset_link = payload.get("dataset_link") or payload.get("dataset")
+    code_link: str | None = payload.get("code_link") or payload.get("code") or None
+    dataset_link: str | None = payload.get("dataset_link") or payload.get("dataset") or None
     model_link = payload.get("model_link") or payload.get("model_url") or payload.get("model")
 
     if not model_link:
         raise ValueError("Artifact data must include 'model_link'")
+
+    # Type narrowing: model_link is now guaranteed to be str (not None)
+    model_link_str = cast(str, model_link)
 
     start_time = time.time()
 
@@ -124,12 +127,13 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         return await _METRICS_CALCULATOR.analyze_entry(
             code_link,
             dataset_link,
-            model_link,
+            model_link_str,
             set(),
         )
 
     metrics = _run_async(_collect())
     total_latency_ms = int((time.time() - start_time) * 1000)
+    return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
     return _build_model_rating(artifact, model_link, metrics, total_latency_ms)
 
 
