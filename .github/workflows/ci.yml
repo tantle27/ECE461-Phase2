@@ -8,8 +8,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
-      - run: pip install ruff mypy black pytest pytest-cov
-      - run: ruff check .
+      - run: pip install flake8 mypy black pytest pytest-cov
+      - run: flake8 .
       - run: black --check .
       - run: mypy src
       - run: pytest
