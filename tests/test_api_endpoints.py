@@ -12,6 +12,7 @@ from typing import Dict, Any
 
 # ==================== MODEL REGISTRY API TESTS ====================
 
+
 @pytest.mark.api
 class TestModelRegistryAPI:
     """Test model registry REST API endpoints."""
@@ -29,14 +30,14 @@ class TestModelRegistryAPI:
             "model_name": "test-transformer",
             "version": "1.0.0",
             "description": "A test transformer model",
-            "tags": ["nlp", "transformer", "test"]
+            "tags": ["nlp", "transformer", "test"],
         }
 
         expected_response = {
             "status": "success",
             "model_id": "model-123",
             "upload_url": "https://s3.example.com/upload/model-123",
-            "message": "Model uploaded successfully"
+            "message": "Model uploaded successfully",
         }
 
         self.api_client.post.return_value = expected_response
@@ -51,14 +52,12 @@ class TestModelRegistryAPI:
     async def test_upload_model_invalid_data(self):
         """Test model upload with invalid data."""
         # Missing required fields
-        invalid_data = {
-            "description": "A model without name or version"
-        }
+        invalid_data = {"description": "A model without name or version"}
 
         expected_response = {
             "status": "error",
             "message": "Missing required fields: model_name, version",
-            "code": 400
+            "code": 400,
         }
 
         self.api_client.post.return_value = expected_response
@@ -85,9 +84,9 @@ class TestModelRegistryAPI:
                 "license": 1.0,
                 "reproducibility": 0.9,
                 "reviewedness": 0.7,
-                "treescore": 0.75
+                "treescore": 0.75,
             },
-            "tags": ["nlp", "transformer", "test"]
+            "tags": ["nlp", "transformer", "test"],
         }
 
         self.api_client.get.return_value = expected_model
@@ -101,12 +100,7 @@ class TestModelRegistryAPI:
     @pytest.mark.asyncio
     async def test_search_models_by_query(self):
         """Test searching models with query parameters."""
-        search_params = {
-            "query": "transformer nlp",
-            "min_score": 0.7,
-            "tags": ["nlp"],
-            "limit": 10
-        }
+        search_params = {"query": "transformer nlp", "min_score": 0.7, "tags": ["nlp"], "limit": 10}
 
         expected_results = {
             "total": 25,
@@ -115,17 +109,12 @@ class TestModelRegistryAPI:
                     "id": "model-123",
                     "name": "transformer-base",
                     "score": 0.85,
-                    "tags": ["nlp", "transformer"]
+                    "tags": ["nlp", "transformer"],
                 },
-                {
-                    "id": "model-456",
-                    "name": "bert-model",
-                    "score": 0.78,
-                    "tags": ["nlp", "bert"]
-                }
+                {"id": "model-456", "name": "bert-model", "score": 0.78, "tags": ["nlp", "bert"]},
             ],
             "page": 1,
-            "limit": 10
+            "limit": 10,
         }
 
         self.api_client.get.return_value = expected_results
@@ -146,14 +135,14 @@ class TestModelRegistryAPI:
             "tags": ["nlp", "transformer", "updated"],
             "additional_info": {
                 "paper_url": "https://arxiv.org/abs/1234.5678",
-                "license_url": "https://opensource.org/licenses/MIT"
-            }
+                "license_url": "https://opensource.org/licenses/MIT",
+            },
         }
 
         expected_response = {
             "status": "success",
             "message": "Model metadata updated successfully",
-            "updated_fields": ["description", "tags", "additional_info"]
+            "updated_fields": ["description", "tags", "additional_info"],
         }
 
         self.api_client.put.return_value = expected_response
@@ -173,8 +162,8 @@ class TestModelRegistryAPI:
             "message": "Model deleted successfully",
             "deleted_files": [
                 "s3://bucket/models/model-123/model.pkl",
-                "s3://bucket/models/model-123/config.json"
-            ]
+                "s3://bucket/models/model-123/config.json",
+            ],
         }
 
         self.api_client.delete.return_value = expected_response
@@ -196,9 +185,7 @@ class TestModelRegistryAPI:
         """Search models via API."""
         return self.api_client.get("/api/models/search", params=params)
 
-    async def _update_model(
-        self, model_id: str, data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def _update_model(self, model_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update model via API."""
         return self.api_client.put(f"/api/models/{model_id}", data=data)
 
@@ -208,6 +195,7 @@ class TestModelRegistryAPI:
 
 
 # ==================== PACKAGE REGISTRY API TESTS ====================
+
 
 @pytest.mark.api
 class TestPackageRegistryAPI:
@@ -225,14 +213,14 @@ class TestPackageRegistryAPI:
             "name": "test-package",
             "version": "1.2.0",
             "description": "A test package",
-            "repository_url": "https://github.com/user/test-package"
+            "repository_url": "https://github.com/user/test-package",
         }
 
         expected_response = {
             "status": "success",
             "package_id": "pkg-456",
             "upload_url": "https://s3.example.com/upload/pkg-456",
-            "message": "Package uploaded successfully"
+            "message": "Package uploaded successfully",
         }
 
         self.api_client.post.return_value = expected_response
@@ -256,9 +244,9 @@ class TestPackageRegistryAPI:
                 "code_quality": 0.82,
                 "license": 1.0,
                 "ramp_up_time": 0.73,
-                "net_score": 0.76
+                "net_score": 0.76,
             },
-            "calculated_at": "2024-01-15T11:00:00Z"
+            "calculated_at": "2024-01-15T11:00:00Z",
         }
 
         self.api_client.get.return_value = expected_metrics
@@ -272,30 +260,16 @@ class TestPackageRegistryAPI:
     @pytest.mark.asyncio
     async def test_search_packages_by_regex(self):
         """Test searching packages with regex patterns."""
-        search_params = {
-            "name_regex": "test-.*",
-            "min_score": 0.5,
-            "limit": 20
-        }
+        search_params = {"name_regex": "test-.*", "min_score": 0.5, "limit": 20}
 
         expected_results = {
             "total": 15,
             "results": [
-                {
-                    "id": "pkg-456",
-                    "name": "test-package",
-                    "version": "1.2.0",
-                    "score": 0.76
-                },
-                {
-                    "id": "pkg-789",
-                    "name": "test-utils",
-                    "version": "2.1.0",
-                    "score": 0.68
-                }
+                {"id": "pkg-456", "name": "test-package", "version": "1.2.0", "score": 0.76},
+                {"id": "pkg-789", "name": "test-utils", "version": "2.1.0", "score": 0.68},
             ],
             "page": 1,
-            "limit": 20
+            "limit": 20,
         }
 
         self.api_client.get.return_value = expected_results
@@ -320,6 +294,7 @@ class TestPackageRegistryAPI:
 
 # ==================== AUTHENTICATION API TESTS ====================
 
+
 @pytest.mark.api
 @pytest.mark.security
 class TestAuthenticationAPI:
@@ -336,14 +311,14 @@ class TestAuthenticationAPI:
             "username": "testuser",
             "email": "test@example.com",
             "password": "secure_password_123",
-            "full_name": "Test User"
+            "full_name": "Test User",
         }
 
         expected_response = {
             "status": "success",
             "user_id": "user-123",
             "message": "User registered successfully",
-            "activation_required": True
+            "activation_required": True,
         }
 
         self.api_client.post.return_value = expected_response
@@ -357,21 +332,14 @@ class TestAuthenticationAPI:
     @pytest.mark.asyncio
     async def test_login_success(self):
         """Test successful user login."""
-        login_data = {
-            "username": "testuser",
-            "password": "secure_password_123"
-        }
+        login_data = {"username": "testuser", "password": "secure_password_123"}
 
         expected_response = {
             "status": "success",
             "access_token": "jwt_token_here",
             "refresh_token": "refresh_token_here",
             "expires_in": 3600,
-            "user_info": {
-                "id": "user-123",
-                "username": "testuser",
-                "email": "test@example.com"
-            }
+            "user_info": {"id": "user-123", "username": "testuser", "email": "test@example.com"},
         }
 
         self.api_client.post.return_value = expected_response
@@ -385,15 +353,12 @@ class TestAuthenticationAPI:
     @pytest.mark.asyncio
     async def test_login_invalid_credentials(self):
         """Test login with invalid credentials."""
-        invalid_login = {
-            "username": "testuser",
-            "password": "wrong_password"
-        }
+        invalid_login = {"username": "testuser", "password": "wrong_password"}
 
         expected_response = {
             "status": "error",
             "message": "Invalid username or password",
-            "code": 401
+            "code": 401,
         }
 
         self.api_client.post.return_value = expected_response
@@ -406,14 +371,12 @@ class TestAuthenticationAPI:
     @pytest.mark.asyncio
     async def test_refresh_token(self):
         """Test token refresh functionality."""
-        refresh_data = {
-            "refresh_token": "refresh_token_here"
-        }
+        refresh_data = {"refresh_token": "refresh_token_here"}
 
         expected_response = {
             "status": "success",
             "access_token": "new_jwt_token_here",
-            "expires_in": 3600
+            "expires_in": 3600,
         }
 
         self.api_client.post.return_value = expected_response
@@ -428,10 +391,7 @@ class TestAuthenticationAPI:
         """Test user logout."""
         auth_headers = {"Authorization": "Bearer jwt_token_here"}
 
-        expected_response = {
-            "status": "success",
-            "message": "Logged out successfully"
-        }
+        expected_response = {"status": "success", "message": "Logged out successfully"}
 
         self.api_client.post.return_value = expected_response
 
@@ -446,7 +406,7 @@ class TestAuthenticationAPI:
         expected_response = {
             "status": "error",
             "message": "Authorization header required",
-            "code": 401
+            "code": 401,
         }
 
         self.api_client.get.return_value = expected_response
@@ -479,6 +439,7 @@ class TestAuthenticationAPI:
 
 # ==================== ERROR HANDLING TESTS ====================
 
+
 @pytest.mark.api
 class TestAPIErrorHandling:
     """Test API error handling and edge cases."""
@@ -495,7 +456,7 @@ class TestAPIErrorHandling:
             "status": "error",
             "message": "Rate limit exceeded",
             "code": 429,
-            "retry_after": 300  # seconds
+            "retry_after": 300,  # seconds
         }
 
         self.api_client.get.return_value = expected_response
@@ -513,7 +474,7 @@ class TestAPIErrorHandling:
             "status": "error",
             "message": "Internal server error",
             "code": 500,
-            "request_id": "req-123-456"
+            "request_id": "req-123-456",
         }
 
         self.api_client.get.return_value = expected_response
@@ -534,8 +495,8 @@ class TestAPIErrorHandling:
             "errors": {
                 "name": ["This field is required"],
                 "version": ["Invalid version format"],
-                "email": ["Invalid email address"]
-            }
+                "email": ["Invalid email address"],
+            },
         }
 
         self.api_client.post.return_value = expected_response
@@ -555,7 +516,7 @@ class TestAPIErrorHandling:
             "message": "Model not found",
             "code": 404,
             "resource_type": "model",
-            "resource_id": "model-999"
+            "resource_id": "model-999",
         }
 
         self.api_client.get.return_value = expected_response
@@ -580,6 +541,7 @@ class TestAPIErrorHandling:
 
 # ==================== PERFORMANCE TESTS ====================
 
+
 @pytest.mark.api
 @pytest.mark.slow
 class TestAPIPerformance:
@@ -593,10 +555,7 @@ class TestAPIPerformance:
     async def test_concurrent_uploads(self):
         """Test handling of concurrent model uploads."""
         # Simulate concurrent upload responses
-        upload_responses = [
-            {"status": "success", "model_id": f"model-{i}"}
-            for i in range(10)
-        ]
+        upload_responses = [{"status": "success", "model_id": f"model-{i}"} for i in range(10)]
 
         self.api_client.post.side_effect = upload_responses
 
@@ -623,7 +582,7 @@ class TestAPIPerformance:
             ],
             "page": 1,
             "limit": 100,
-            "total_pages": 100
+            "total_pages": 100,
         }
 
         self.api_client.get.return_value = large_results
@@ -642,7 +601,7 @@ class TestAPIPerformance:
             "status": "accepted",
             "message": "Metrics calculation started",
             "job_id": "job-123",
-            "estimated_completion": "2024-01-15T12:00:00Z"
+            "estimated_completion": "2024-01-15T12:00:00Z",
         }
 
         self.api_client.post.return_value = timeout_response

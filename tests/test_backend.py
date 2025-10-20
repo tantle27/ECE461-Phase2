@@ -26,14 +26,10 @@ class TestModelRegistry:
     def test_model_upload_structure(self, sample_api_request):
         """Test model upload request structure validation."""
         # Validate required fields
-        required_fields = [
-            "model_name", "version", "description", "license"
-        ]
+        required_fields = ["model_name", "version", "description", "license"]
 
         for field in required_fields:
-            assert field in sample_api_request, (
-                f"Missing required field: {field}"
-            )
+            assert field in sample_api_request, f"Missing required field: {field}"
 
         # Validate field types
         assert isinstance(sample_api_request["model_name"], str)
@@ -49,7 +45,7 @@ class TestModelRegistry:
             "description": "A test model",
             "license": "MIT",
             "size_bytes": 1024000,
-            "tags": ["test", "demo"]
+            "tags": ["test", "demo"],
         }
 
         # Test valid metadata
@@ -100,7 +96,7 @@ class TestModelRegistry:
             "license": 1.0,
             "ramp_up_time": 0.7,
             "dataset_quality": 0.65,
-            "performance_claims": 0.9
+            "performance_claims": 0.9,
         }
 
 
@@ -129,7 +125,7 @@ class TestDatabaseOperations:
             "description": "Test model",
             "license": "MIT",
             "upload_date": "2025-10-20",
-            "size_bytes": 1024000
+            "size_bytes": 1024000,
         }
 
         # Mock successful insert
@@ -138,9 +134,7 @@ class TestDatabaseOperations:
         assert result["status"] == "created"
 
         # Test READ
-        mock_database.fetch_one.return_value = {
-            "id": 1, **model_data
-        }
+        mock_database.fetch_one.return_value = {"id": 1, **model_data}
         model = self._get_model(mock_database, "test-model", "1.0.0")
         assert model["name"] == "test-model"
         assert model["version"] == "1.0.0"
@@ -162,13 +156,9 @@ class TestDatabaseOperations:
 
     def _get_model(self, db, name: str, version: str) -> Dict[str, Any]:
         """Mock model retrieval."""
-        return db.fetch_one(
-            f"SELECT * FROM models WHERE name='{name}' AND version='{version}'"
-        )
+        return db.fetch_one(f"SELECT * FROM models WHERE name='{name}' AND version='{version}'")
 
-    def _update_model(
-        self, db, model_id: int, data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _update_model(self, db, model_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Mock model update."""
         return db.execute(f"UPDATE models SET {data} WHERE id={model_id}")
 
@@ -183,7 +173,7 @@ class TestDatabaseOperations:
             "username": "testuser",
             "email": "test@example.com",
             "password_hash": "hashed_password",
-            "permissions": ["upload", "download"]
+            "permissions": ["upload", "download"],
         }
 
         mock_database.execute.return_value = {"id": 1, "status": "created"}
@@ -191,9 +181,7 @@ class TestDatabaseOperations:
         assert result["status"] == "created"
 
         # Test user authentication
-        mock_database.fetch_one.return_value = {
-            "id": 1, **user_data
-        }
+        mock_database.fetch_one.return_value = {"id": 1, **user_data}
         user = self._authenticate_user(mock_database, "testuser")
         assert user["username"] == "testuser"
         assert "upload" in user["permissions"]
@@ -232,7 +220,7 @@ class TestFileOperations:
             return False
 
         # Check file extension
-        if not file_path.endswith(('.zip', '.tar.gz', '.bin')):
+        if not file_path.endswith((".zip", ".tar.gz", ".bin")):
             return False
 
         # Check file size (max 100MB for testing)
@@ -250,9 +238,7 @@ class TestFileOperations:
 
         # Mock S3 upload
         mock_s3_client.upload_file.return_value = {"ETag": "test-etag"}
-        result = self._upload_to_s3(
-            mock_s3_client, test_bucket, test_key, "/tmp/test_file.zip"
-        )
+        result = self._upload_to_s3(mock_s3_client, test_bucket, test_key, "/tmp/test_file.zip")
         assert result["ETag"] == "test-etag"
 
         # Test file download from S3
@@ -266,7 +252,7 @@ class TestFileOperations:
         mock_s3_client.list_objects.return_value = {
             "Contents": [
                 {"Key": "models/test-model/1.0.0/model.zip", "Size": 1024},
-                {"Key": "models/test-model/1.0.0/metadata.json", "Size": 256}
+                {"Key": "models/test-model/1.0.0/metadata.json", "Size": 256},
             ]
         }
         objects = self._list_s3_objects(mock_s3_client, test_bucket, "models/")
@@ -276,9 +262,7 @@ class TestFileOperations:
         """Mock S3 file upload."""
         return s3_client.upload_file(file_path, bucket, key)
 
-    def _download_from_s3(
-        self, s3_client, bucket: str, key: str, file_path: str
-    ):
+    def _download_from_s3(self, s3_client, bucket: str, key: str, file_path: str):
         """Mock S3 file download."""
         return s3_client.download_file(bucket, key, file_path)
 
@@ -364,7 +348,7 @@ class TestAuthenticationAuthorization:
         """Mock rate limiting check."""
         # In real implementation, this would check Redis/database
         # For testing, simulate rate limiting after max_requests
-        if not hasattr(self, '_request_counts'):
+        if not hasattr(self, "_request_counts"):
             self._request_counts = {}
 
         current_count = self._request_counts.get(user_id, 0)
@@ -404,8 +388,8 @@ class TestAPIEndpoints:
                 "database": "healthy",
                 "s3": "healthy",
                 "auth": "healthy",
-                "metrics": "healthy"
-            }
+                "metrics": "healthy",
+            },
         }
 
     def test_model_search_endpoint(self):
@@ -416,15 +400,11 @@ class TestAPIEndpoints:
         assert "total_count" in search_results
 
         # Test search with filters
-        filtered_results = self._search_models(
-            "test", filters={"license": "MIT", "min_score": 0.7}
-        )
+        filtered_results = self._search_models("test", filters={"license": "MIT", "min_score": 0.7})
         assert "models" in filtered_results
 
         # Test pagination
-        paginated_results = self._search_models(
-            "test", page=1, page_size=10
-        )
+        paginated_results = self._search_models("test", page=1, page_size=10)
         assert "models" in paginated_results
         assert "page" in paginated_results
         assert "page_size" in paginated_results
@@ -440,30 +420,27 @@ class TestAPIEndpoints:
                 "version": "1.0.0",
                 "description": "First test model",
                 "license": "MIT",
-                "net_score": 0.8
+                "net_score": 0.8,
             },
             {
                 "name": "test-model-2",
                 "version": "2.0.0",
                 "description": "Second test model",
                 "license": "Apache-2.0",
-                "net_score": 0.75
-            }
+                "net_score": 0.75,
+            },
         ]
 
         # Apply filters if provided
         if filters:
             if "min_score" in filters:
-                mock_models = [
-                    m for m in mock_models
-                    if m["net_score"] >= filters["min_score"]
-                ]
+                mock_models = [m for m in mock_models if m["net_score"] >= filters["min_score"]]
 
         return {
             "models": mock_models,
             "total_count": len(mock_models),
             "page": page,
-            "page_size": page_size
+            "page_size": page_size,
         }
 
     def test_model_ingest_endpoint(self, sample_api_request):
@@ -487,17 +464,13 @@ class TestAPIEndpoints:
         return {
             "status": "success",
             "model_id": "model_123",
-            "scores": {
-                "net_score": 0.75,
-                "bus_factor": 0.6,
-                "code_quality": 0.8,
-                "license": 1.0
-            },
-            "message": "Model successfully ingested"
+            "scores": {"net_score": 0.75, "bus_factor": 0.6, "code_quality": 0.8, "license": 1.0},
+            "message": "Model successfully ingested",
         }
 
 
 # ==================== PERFORMANCE TESTS ====================
+
 
 @pytest.mark.slow
 @pytest.mark.backend
@@ -513,10 +486,7 @@ class TestBackendPerformance:
 
         # Simulate 10 concurrent uploads
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [
-                executor.submit(self._mock_upload, f"model_{i}")
-                for i in range(10)
-            ]
+            futures = [executor.submit(self._mock_upload, f"model_{i}") for i in range(10)]
 
             results = [f.result() for f in futures]
 
@@ -537,11 +507,7 @@ class TestBackendPerformance:
         # Simulate upload time (1-3 seconds)
         time.sleep(random.uniform(1.0, 3.0))
 
-        return {
-            "status": "success",
-            "model_name": model_name,
-            "upload_time": time.time()
-        }
+        return {"status": "success", "model_name": model_name, "upload_time": time.time()}
 
     def test_database_query_performance(self, mock_database):
         """Test database query performance."""
@@ -549,8 +515,7 @@ class TestBackendPerformance:
 
         # Mock large dataset query
         mock_database.fetch_all.return_value = [
-            {"id": i, "name": f"model_{i}", "score": 0.8}
-            for i in range(1000)
+            {"id": i, "name": f"model_{i}", "score": 0.8} for i in range(1000)
         ]
 
         start_time = time.time()

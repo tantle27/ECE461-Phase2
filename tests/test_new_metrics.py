@@ -14,6 +14,7 @@ from typing import Dict, Any
 
 # ==================== REPRODUCIBILITY METRIC TESTS ====================
 
+
 @pytest.mark.unit
 class TestReproducibilityMetric:
     """Test the reproducibility metric calculation."""
@@ -28,12 +29,14 @@ class TestReproducibilityMetric:
         """Test reproducibility when demo code runs successfully."""
         # Mock repository with working demo code
         self.mock_git_client.find_demo_files.return_value = [
-            "demo.py", "example.ipynb", "tutorial.py"
+            "demo.py",
+            "example.ipynb",
+            "tutorial.py",
         ]
         self.mock_git_client.test_code_execution.return_value = {
             "demo.py": {"runs": True, "errors": []},
             "example.ipynb": {"runs": True, "errors": []},
-            "tutorial.py": {"runs": True, "errors": []}
+            "tutorial.py": {"runs": True, "errors": []},
         }
 
         score = await self._calculate_reproducibility()
@@ -45,12 +48,10 @@ class TestReproducibilityMetric:
     async def test_reproducibility_with_partial_working_code(self):
         """Test reproducibility when some demo code needs debugging."""
         # Mock repository with partially working code
-        self.mock_git_client.find_demo_files.return_value = [
-            "demo.py", "broken_example.py"
-        ]
+        self.mock_git_client.find_demo_files.return_value = ["demo.py", "broken_example.py"]
         self.mock_git_client.test_code_execution.return_value = {
             "demo.py": {"runs": True, "errors": []},
-            "broken_example.py": {"runs": False, "errors": ["ImportError"]}
+            "broken_example.py": {"runs": False, "errors": ["ImportError"]},
         }
 
         score = await self._calculate_reproducibility()
@@ -88,14 +89,14 @@ class TestReproducibilityMetric:
         # Mock AI extraction of code from model card
         self.mock_gen_ai_client.extract_code_from_text.return_value = [
             {
-                "code": ("from transformers import AutoModel\n"
-                         "model = AutoModel.from_pretrained('model-name')"),
-                "language": "python"
+                "code": (
+                    "from transformers import AutoModel\n"
+                    "model = AutoModel.from_pretrained('model-name')"
+                ),
+                "language": "python",
             }
         ]
-        self.mock_git_client.test_extracted_code.return_value = {
-            "runs": True, "errors": []
-        }
+        self.mock_git_client.test_extracted_code.return_value = {"runs": True, "errors": []}
 
         score = await self._calculate_reproducibility()
 
@@ -111,11 +112,7 @@ class TestReproducibilityMetric:
             # Try to extract code from model card
             model_card = self.mock_git_client.read_model_card()
             if model_card:
-                extracted_code = (
-                    self.mock_gen_ai_client.extract_code_from_text(
-                        model_card
-                    )
-                )
+                extracted_code = self.mock_gen_ai_client.extract_code_from_text(model_card)
                 if extracted_code:
                     result = self.mock_git_client.test_extracted_code()
                     return 1.0 if result["runs"] else 0.5
@@ -125,10 +122,7 @@ class TestReproducibilityMetric:
         execution_results = self.mock_git_client.test_code_execution()
 
         total_files = len(demo_files)
-        working_files = sum(
-            1 for result in execution_results.values()
-            if result["runs"]
-        )
+        working_files = sum(1 for result in execution_results.values() if result["runs"])
 
         if working_files == total_files:
             return 1.0  # All code runs without debugging
@@ -139,6 +133,7 @@ class TestReproducibilityMetric:
 
 
 # ==================== REVIEWEDNESS METRIC TESTS ====================
+
 
 @pytest.mark.unit
 class TestReviewednessMetric:
@@ -159,8 +154,8 @@ class TestReviewednessMetric:
                 {"id": 1, "reviewed": True, "lines_added": 200},
                 {"id": 2, "reviewed": True, "lines_added": 300},
                 {"id": 3, "reviewed": True, "lines_added": 350},
-                {"id": 4, "reviewed": False, "lines_added": 150}  # Not rev.
-            ]
+                {"id": 4, "reviewed": False, "lines_added": 150},  # Not rev.
+            ],
         }
 
         score = await self._calculate_reviewedness()
@@ -175,7 +170,7 @@ class TestReviewednessMetric:
         self.mock_git_client.analyze_pull_requests.return_value = {
             "total_code_lines": 500,
             "reviewed_code_lines": 0,
-            "pull_requests": []
+            "pull_requests": [],
         }
 
         score = await self._calculate_reviewedness()
@@ -203,8 +198,8 @@ class TestReviewednessMetric:
             "reviewed_code_lines": 800,  # 100% reviewed
             "pull_requests": [
                 {"id": 1, "reviewed": True, "lines_added": 300},
-                {"id": 2, "reviewed": True, "lines_added": 500}
-            ]
+                {"id": 2, "reviewed": True, "lines_added": 500},
+            ],
         }
 
         score = await self._calculate_reviewedness()
@@ -215,7 +210,7 @@ class TestReviewednessMetric:
     async def _calculate_reviewedness(self) -> float:
         """Calculate reviewedness score."""
         # Check if GitHub repository exists
-        if hasattr(self.mock_git_client, 'has_github_repository'):
+        if hasattr(self.mock_git_client, "has_github_repository"):
             if not self.mock_git_client.has_github_repository():
                 return -1.0
 
@@ -234,6 +229,7 @@ class TestReviewednessMetric:
 
 # ==================== TREESCORE METRIC TESTS ====================
 
+
 @pytest.mark.unit
 class TestTreescoreMetric:
     """Test the treescore metric calculation."""
@@ -249,13 +245,14 @@ class TestTreescoreMetric:
         # Mock model with parent dependencies
         model_id = "test-model-v2"
         self.mock_lineage_analyzer.get_parent_models.return_value = [
-            "parent-model-v1", "base-model-v3"
+            "parent-model-v1",
+            "base-model-v3",
         ]
 
         # Mock parent model scores
         self.mock_model_registry.get_model_score.side_effect = [
             0.85,  # parent-model-v1 score
-            0.75   # base-model-v3 score
+            0.75,  # base-model-v3 score
         ]
 
         score = await self._calculate_treescore(model_id)
@@ -281,9 +278,7 @@ class TestTreescoreMetric:
         """Test treescore with single parent model."""
         # Mock model with one parent
         model_id = "derived-model"
-        self.mock_lineage_analyzer.get_parent_models.return_value = [
-            "parent-model"
-        ]
+        self.mock_lineage_analyzer.get_parent_models.return_value = ["parent-model"]
 
         # Mock parent model score
         self.mock_model_registry.get_model_score.return_value = 0.92
@@ -299,14 +294,16 @@ class TestTreescoreMetric:
         # Mock model with parents, but some scores missing
         model_id = "test-model"
         self.mock_lineage_analyzer.get_parent_models.return_value = [
-            "parent-1", "parent-2", "parent-3"
+            "parent-1",
+            "parent-2",
+            "parent-3",
         ]
 
         # Mock mixed parent scores (some None/missing)
         self.mock_model_registry.get_model_score.side_effect = [
-            0.80,   # parent-1 score available
-            None,   # parent-2 score missing
-            0.70    # parent-3 score available
+            0.80,  # parent-1 score available
+            None,  # parent-2 score missing
+            0.70,  # parent-3 score available
         ]
 
         score = await self._calculate_treescore(model_id)
@@ -322,17 +319,17 @@ class TestTreescoreMetric:
         config_data = {
             "_name_or_path": "base-model",
             "base_model": "parent-transformer",
-            "parent_model": "foundation-model"
+            "parent_model": "foundation-model",
         }
 
         self.mock_lineage_analyzer.extract_lineage_from_config.return_value = [
-            "base-model", "parent-transformer", "foundation-model"
+            "base-model",
+            "parent-transformer",
+            "foundation-model",
         ]
 
         # Mock parent scores
-        self.mock_model_registry.get_model_score.side_effect = [
-            0.85, 0.78, 0.90
-        ]
+        self.mock_model_registry.get_model_score.side_effect = [0.85, 0.78, 0.90]
 
         model_id = "test-model"
         score = await self._calculate_treescore_from_config(model_id, config_data)
@@ -367,9 +364,7 @@ class TestTreescoreMetric:
     ) -> float:
         """Calculate treescore from model config.json."""
         # Extract lineage from config
-        parent_models = self.mock_lineage_analyzer.extract_lineage_from_config(
-            config
-        )
+        parent_models = self.mock_lineage_analyzer.extract_lineage_from_config(config)
 
         if not parent_models:
             return 0.0
@@ -388,6 +383,7 @@ class TestTreescoreMetric:
 
 
 # ==================== INTEGRATION TESTS ====================
+
 
 @pytest.mark.integration
 class TestNewMetricsIntegration:
@@ -408,15 +404,11 @@ class TestNewMetricsIntegration:
             "ramp_up_time": 0.7,
             "dataset_quality": 0.75,
             "performance_claims": 0.85,
-            "size_score": 0.9
+            "size_score": 0.9,
         }
 
         # Mock new metrics
-        new_metrics = {
-            "reproducibility": 1.0,
-            "reviewedness": 0.8,
-            "treescore": 0.75
-        }
+        new_metrics = {"reproducibility": 1.0, "reviewedness": 0.8, "treescore": 0.75}
 
         # Combined metrics
         all_metrics = {**existing_metrics, **new_metrics}
@@ -438,14 +430,11 @@ class TestNewMetricsIntegration:
             "dataset_quality": 0.10,
             "performance_claims": 0.10,
             "reproducibility": 0.10,  # New metric
-            "reviewedness": 0.05,     # New metric
-            "treescore": 0.05         # New metric
+            "reviewedness": 0.05,  # New metric
+            "treescore": 0.05,  # New metric
         }
 
-        weighted_sum = sum(
-            metrics.get(metric, 0.0) * weight
-            for metric, weight in weights.items()
-        )
+        weighted_sum = sum(metrics.get(metric, 0.0) * weight for metric, weight in weights.items())
 
         return min(weighted_sum, 1.0)  # Cap at 1.0
 
@@ -459,7 +448,7 @@ class TestNewMetricsIntegration:
             "reviewedness": 0.75,
             "reviewedness_latency": 1800,  # ms
             "treescore": 0.65,
-            "treescore_latency": 500  # ms
+            "treescore_latency": 500,  # ms
         }
 
         # Validate latency tracking

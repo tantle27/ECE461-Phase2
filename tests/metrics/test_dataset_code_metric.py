@@ -31,8 +31,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "utils.py").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 1.0
 
@@ -57,8 +56,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "utils.py").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.5
 
@@ -82,8 +80,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "data_loader.py").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.5
 
@@ -109,8 +106,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "requirements.txt").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.0
 
@@ -138,12 +134,8 @@ class TestDatasetCodeMetric:
 
             metric = DatasetCodeMetric(mock_git_client)
 
-            with patch.object(metric,
-                              '_read_config_file',
-                              return_value=config_content
-                              ):
-                result = await metric.calculate(
-                    DatasetCodeInput(repo_url=temp_dir))
+            with patch.object(metric, "_read_config_file", return_value=config_content):
+                result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.5
 
@@ -159,14 +151,14 @@ class TestDatasetCodeMetric:
         """
 
         test_cases = [
-            ('train.py', 1.0),
-            ('finetune.py', 1.0),
-            ('training.py', 1.0),
-            ('train_model.py', 1.0),
-            ('fine_tune.py', 1.0),
-            ('run_training.py', 1.0),
-            ('model.py', 0.0),
-            ('inference.py', 0.0)
+            ("train.py", 1.0),
+            ("finetune.py", 1.0),
+            ("training.py", 1.0),
+            ("train_model.py", 1.0),
+            ("fine_tune.py", 1.0),
+            ("run_training.py", 1.0),
+            ("model.py", 0.0),
+            ("inference.py", 0.0),
         ]
 
         for filename, expected_score in test_cases:
@@ -174,8 +166,7 @@ class TestDatasetCodeMetric:
                 (Path(temp_dir) / filename).touch()
 
                 metric = DatasetCodeMetric(mock_git_client)
-                result = await metric.calculate(
-                    DatasetCodeInput(repo_url=temp_dir))
+                result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
                 expected = 0.5 if expected_score == 1.0 else 0.0
                 assert result == expected, f"Failed for filename: {filename}"
@@ -193,18 +184,16 @@ class TestDatasetCodeMetric:
                 ("Data source: zenodo.org/record/12345", 0.5),
                 ("Download from: figshare.com/articles/dataset", 0.5),
                 ("No dataset information here", 0.0),
-                ("This is just regular text", 0.0)
+                ("This is just regular text", 0.0),
             ]
 
             for readme_content, expected_score in test_cases:
                 mock_git_client.read_readme.return_value = readme_content
 
                 metric = DatasetCodeMetric(mock_git_client)
-                result = await metric.calculate(
-                    DatasetCodeInput(repo_url=temp_dir))
+                result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-                assert result == expected_score, \
-                    f"Failed for content: {readme_content}"
+                assert result == expected_score, f"Failed for content: {readme_content}"
 
     @pytest.mark.asyncio
     async def test_calculate_empty_readme_and_no_files(self):
@@ -214,8 +203,7 @@ class TestDatasetCodeMetric:
             mock_git_client.read_readme.return_value = ""
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.0
 
@@ -229,8 +217,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "model.py").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.0
 
@@ -253,7 +240,7 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             repo_type = metric._determine_repository_type(temp_dir)
 
-            assert repo_type == 'model'
+            assert repo_type == "model"
 
     @pytest.mark.asyncio
     async def test_determine_repository_type_dataset(self):
@@ -274,7 +261,7 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             repo_type = metric._determine_repository_type(temp_dir)
 
-            assert repo_type == 'dataset'
+            assert repo_type == "dataset"
 
     @pytest.mark.asyncio
     async def test_determine_repository_type_training(self):
@@ -294,7 +281,7 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             repo_type = metric._determine_repository_type(temp_dir)
 
-            assert repo_type == 'training'
+            assert repo_type == "training"
 
     @pytest.mark.asyncio
     async def test_find_dataset_files(self):
@@ -314,7 +301,8 @@ class TestDatasetCodeMetric:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create a file with training content
             training_file = Path(temp_dir) / "custom_training.py"
-            training_file.write_text("""
+            training_file.write_text(
+                """
             import torch
             from torch.optim import Adam
 
@@ -328,7 +316,8 @@ class TestDatasetCodeMetric:
                         loss = model(batch)
                         loss.backward()
                         optimizer.step()
-            """)
+            """
+            )
 
             metric = DatasetCodeMetric()
             is_training = metric._is_training_file_by_content(training_file)
@@ -348,8 +337,7 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "train_model.ipynb").touch()
             (Path(temp_dir) / "finetune_bert.ipynb").touch()
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.5
 
@@ -362,7 +350,7 @@ class TestDatasetCodeMetric:
             ("Training data: https://paperswithcode.com/datasets/imdb", 0.5),
             ("Download from: https://mlcommons.org/datasets/", 0.5),
             ("OpenML dataset: https://openml.org/d/12345", 0.5),
-            ("No dataset information", 0.0)
+            ("No dataset information", 0.0),
         ]
 
         for readme_content, expected_score in test_cases:
@@ -372,11 +360,9 @@ class TestDatasetCodeMetric:
                 (Path(temp_dir) / "model.py").touch()
 
                 metric = DatasetCodeMetric(mock_git_client)
-                result = await metric.calculate(
-                    DatasetCodeInput(repo_url=temp_dir))
+                result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-                assert result == expected_score, \
-                    f"Failed for content: {readme_content}"
+                assert result == expected_score, f"Failed for content: {readme_content}"
 
     @pytest.mark.asyncio
     async def test_calculate_with_data_directories(self):
@@ -392,7 +378,6 @@ class TestDatasetCodeMetric:
             (Path(temp_dir) / "model.py").touch()
 
             metric = DatasetCodeMetric(mock_git_client)
-            result = await metric.calculate(
-                DatasetCodeInput(repo_url=temp_dir))
+            result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
             assert result == 0.5
