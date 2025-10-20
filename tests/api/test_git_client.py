@@ -27,6 +27,7 @@ class TestGitClient(unittest.TestCase):
 
     def _force_remove_directory(self, path):
         """remove directory with retries for Windows file locking."""
+
         def handle_remove_readonly(func, path, exc):
             """Handle readonly files on Windows."""
             if os.path.exists(path):
@@ -66,16 +67,19 @@ class TestGitClient(unittest.TestCase):
         repo = Repo.init(self.temp_repo_path)
 
         # Create Python files
-        (Path(self.temp_repo_path) / "main.py").write_text("""
+        (Path(self.temp_repo_path) / "main.py").write_text(
+            """
 def main():
     print("Hello, World!")
 
 if __name__ == "__main__":
     main()
-""")
+"""
+        )
 
         # Create a README
-        (Path(self.temp_repo_path) / "README.md").write_text("""
+        (Path(self.temp_repo_path) / "README.md").write_text(
+            """
 # Test Repository
 
 ## Description
@@ -99,11 +103,11 @@ See the examples/ directory for usage examples.
 1. Clone this repository
 2. Install dependencies
 3. Run the examples
-""")
+"""
+        )
 
         # Create requirements.txt
-        (Path(self.temp_repo_path) / "requirements.txt"). \
-            write_text("requests\nnumpy\npandas")
+        (Path(self.temp_repo_path) / "requirements.txt").write_text("requests\nnumpy\npandas")
 
         # Create examples directory
         examples_dir = Path(self.temp_repo_path) / "examples"
@@ -113,7 +117,8 @@ See the examples/ directory for usage examples.
         # Create tests directory
         tests_dir = Path(self.temp_repo_path) / "tests"
         tests_dir.mkdir()
-        (tests_dir / "test_main.py").write_text("""
+        (tests_dir / "test_main.py").write_text(
+            """
 import unittest
 from main import main
 
@@ -124,15 +129,14 @@ class TestMain(unittest.TestCase):
             main()
         except Exception as e:
             self.fail(f"main() raised {type(e).__name__} unexpectedly!")
-""")
+"""
+        )
 
         # Make initial commit
         default_author = Actor("DefaultAuthor", "default@test.com")
-        repo.index.add(["main.py",
-                        "README.md",
-                        "requirements.txt",
-                        "examples/demo.py",
-                        "tests/test_main.py"])
+        repo.index.add(
+            ["main.py", "README.md", "requirements.txt", "examples/demo.py", "tests/test_main.py"]
+        )
         repo.index.commit("Initial commit", author=default_author)
 
         return self.temp_repo_path
@@ -208,7 +212,7 @@ class TestMain(unittest.TestCase):
         authors = [
             Actor("Author1", "author1@test.com"),
             Actor("Author2", "author2@test.com"),
-            Actor("Author3", "author3@test.com")
+            Actor("Author3", "author3@test.com"),
         ]
 
         for i, author in enumerate(authors):
@@ -245,9 +249,7 @@ class TestMain(unittest.TestCase):
 
     def test_clone_repository_invalid_url(self):
         """Test cloning with invalid URL."""
-        result = \
-            self.git_client. \
-            clone_repository("https://github.com/nonexistent/repo")
+        result = self.git_client.clone_repository("https://github.com/nonexistent/repo")
         self.assertIsNone(result)
 
     def test_analyze_commits_invalid_path(self):
@@ -278,8 +280,7 @@ class TestMain(unittest.TestCase):
             Repo.init(no_python_path)
             (Path(no_python_path) / "README.txt").write_text("No Python here")
 
-            quality_stats = \
-                self.git_client.analyze_code_quality(no_python_path)
+            quality_stats = self.git_client.analyze_code_quality(no_python_path)
 
             self.assertFalse(quality_stats.has_tests)
             self.assertEqual(quality_stats.lint_errors, 0)
@@ -289,8 +290,7 @@ class TestMain(unittest.TestCase):
 
     def test_analyze_code_quality_invalid_path(self):
         """Test code quality analysis with invalid path."""
-        quality_stats = \
-            self.git_client.analyze_code_quality("/nonexistent/path")
+        quality_stats = self.git_client.analyze_code_quality("/nonexistent/path")
 
         self.assertIsInstance(quality_stats, CodeQualityStats)
         self.assertFalse(quality_stats.has_tests)
@@ -301,14 +301,13 @@ class TestMain(unittest.TestCase):
         """Test repository size calculation."""
         repo_path = self.create_comprehensive_test_repo()
 
-        size_scores = \
-            self.git_client.get_repository_size(repo_path)
+        size_scores = self.git_client.get_repository_size(repo_path)
 
         self.assertIsInstance(size_scores, dict)
-        self.assertIn('raspberry_pi', size_scores)
-        self.assertIn('jetson_nano', size_scores)
-        self.assertIn('desktop_pc', size_scores)
-        self.assertIn('aws_server', size_scores)
+        self.assertIn("raspberry_pi", size_scores)
+        self.assertIn("jetson_nano", size_scores)
+        self.assertIn("desktop_pc", size_scores)
+        self.assertIn("aws_server", size_scores)
 
         # All scores should be 0.0 or 1.0
         for score in size_scores.values():
@@ -316,15 +315,14 @@ class TestMain(unittest.TestCase):
 
     def test_get_repository_size_invalid_path(self):
         """Test repository size calculation with invalid path."""
-        size_scores = \
-            self.git_client.get_repository_size("/nonexistent/path")
+        size_scores = self.git_client.get_repository_size("/nonexistent/path")
 
         self.assertIsInstance(size_scores, dict)
-        self.assertEqual(size_scores['raspberry_pi'], 0.0)
-        self.assertEqual(size_scores['jetson_nano'], 0.0)
-        self.assertEqual(size_scores['desktop_pc'], 0.0)
-        self.assertEqual(size_scores['aws_server'], 0.0)
+        self.assertEqual(size_scores["raspberry_pi"], 0.0)
+        self.assertEqual(size_scores["jetson_nano"], 0.0)
+        self.assertEqual(size_scores["desktop_pc"], 0.0)
+        self.assertEqual(size_scores["aws_server"], 0.0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

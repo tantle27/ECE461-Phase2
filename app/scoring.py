@@ -2,11 +2,11 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, cast
 
-from concurrent.futures import ProcessPoolExecutor
 from src.metrics.metrics_calculator import MetricsCalculator
 
 logger = logging.getLogger(__name__)
@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 class ModelRating:
     id: str
     generated_at: datetime
-    scores: Dict[str, Any]
-    latencies: Dict[str, int]
-    summary: Dict[str, Any]
+    scores: dict[str, Any]
+    latencies: dict[str, int]
+    summary: dict[str, Any]
 
 
 def _run_async(coro):
@@ -34,7 +34,7 @@ def _run_async(coro):
             loop.close()
 
 
-def _calculate_net_score(metrics: Dict[str, Any]) -> float:
+def _calculate_net_score(metrics: dict[str, Any]) -> float:
     weights = {
         "license": 0.30,
         "ramp_up_time": 0.20,
@@ -51,7 +51,7 @@ def _calculate_net_score(metrics: Dict[str, Any]) -> float:
 def _build_model_rating(
     artifact,
     model_link: str,
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     total_latency_ms: int,
 ) -> ModelRating:
     net_score = round(_calculate_net_score(metrics), 2)
@@ -75,23 +75,21 @@ def _build_model_rating(
         "size_score_latency": "size_score",
     }
 
-    scores: Dict[str, Any] = {
-        key: metrics.get(key)
-        for key in metric_keys
-        if metrics.get(key) is not None
+    scores: dict[str, Any] = {
+        key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None
     }
     scores["net_score"] = net_score
     if "size_score" in metrics:
         scores["size_score"] = metrics["size_score"]
 
-    latencies: Dict[str, int] = {
+    latencies: dict[str, int] = {
         metric_name: int(metrics.get(latency_key, 0) or 0)
         for latency_key, metric_name in latency_key_map.items()
         if latency_key in metrics
     }
     latencies["net_score"] = total_latency_ms
 
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "category": artifact.metadata.type.upper(),
         "name": artifact.metadata.name,
         "model_link": model_link,
@@ -113,29 +111,29 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         raise ValueError("Artifact data must be a JSON object with repository links")
 
     payload = artifact.data
-    code_link = payload.get("code_link") or payload.get("code")
-    dataset_link = payload.get("dataset_link") or payload.get("dataset")
-    model_link = (
-        payload.get("model_link")
-        or payload.get("model_url")
-        or payload.get("model")
-    )
+    code_link: str | None = payload.get("code_link") or payload.get("code") or None
+    dataset_link: str | None = payload.get("dataset_link") or payload.get("dataset") or None
+    model_link = payload.get("model_link") or payload.get("model_url") or payload.get("model")
 
     if not model_link:
         raise ValueError("Artifact data must include 'model_link'")
 
+    # Type narrowing: model_link is now guaranteed to be str (not None)
+    model_link_str = cast(str, model_link)
+
     start_time = time.time()
 
-    async def _collect() -> Dict[str, Any]:
+    async def _collect() -> dict[str, Any]:
         return await _METRICS_CALCULATOR.analyze_entry(
             code_link,
             dataset_link,
-            model_link,
+            model_link_str,
             set(),
         )
 
     metrics = _run_async(_collect())
     total_latency_ms = int((time.time() - start_time) * 1000)
+    return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
     return _build_model_rating(artifact, model_link, metrics, total_latency_ms)
 
 

@@ -1,11 +1,11 @@
-from pydantic import BaseSettings, Field
+from pydantic import BaseSettings, Field  # type: ignore
 
 
-class Settings(BaseSettings):
+class Settings(BaseSettings):  # type: ignore
     env: str = "dev"
 
     # Tokens (optional but recommended for GitHub rate limits)
-    github_token: str | None = Field(default=None, env="GITHUB_TOKEN")
+    github_token: str | None = Field(default=None, env="GITHUB_TOKEN")  # type: ignore
 
     # HTTP behavior
     request_timeout_s: float = 15.0

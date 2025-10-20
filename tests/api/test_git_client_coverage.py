@@ -12,10 +12,7 @@ from git import Repo
 
 from src.api.git_client import CodeQualityStats, CommitStats, GitClient
 
-sys.path.insert(0,
-                os.path.dirname(
-                    os.path.dirname(
-                        os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestGitClientCoverage(unittest.TestCase):
@@ -34,6 +31,7 @@ class TestGitClientCoverage(unittest.TestCase):
 
     def _force_remove_directory(self, path):
         """Force remove directory with retries"""
+
         def handle_remove_readonly(func, path, exc):
             if os.path.exists(path):
                 os.chmod(path, stat.S_IWRITE)
@@ -60,8 +58,7 @@ class TestGitClientCoverage(unittest.TestCase):
         python_file.write_text("print('Hello, World!')")
 
         # Mock subprocess.run to raise an exception
-        with patch('subprocess.run',
-                   side_effect=Exception("Flake8 not found")):
+        with patch("subprocess.run", side_effect=Exception("Flake8 not found")):
             quality_stats = self.git_client.analyze_code_quality(repo_path)
 
             self.assertIsInstance(quality_stats, CodeQualityStats)
@@ -80,7 +77,7 @@ class TestGitClientCoverage(unittest.TestCase):
         # Mock subprocess.run to return invalid stderr
         mock_result = MagicMock()
         mock_result.stderr = "Invalid output\nNot a number"
-        with patch('subprocess.run', return_value=mock_result):
+        with patch("subprocess.run", return_value=mock_result):
             quality_stats = self.git_client.analyze_code_quality(repo_path)
 
             self.assertIsInstance(quality_stats, CodeQualityStats)
@@ -96,12 +93,11 @@ class TestGitClientCoverage(unittest.TestCase):
         test_file.write_text("test content")
 
         # Mock file.stat() to raise an exception
-        with patch.object(Path,
-                          'stat', side_effect=OSError("Permission denied")):
+        with patch.object(Path, "stat", side_effect=OSError("Permission denied")):
             size_scores = self.git_client.get_repository_size(repo_path)
 
             self.assertIsInstance(size_scores, dict)
-            self.assertEqual(size_scores['raspberry_pi'], 0.0)
+            self.assertEqual(size_scores["raspberry_pi"], 0.0)
 
     def test_analyze_commits_no_commits_in_period(self):
         """Test commit analysis when no commits exist in the time period."""
@@ -120,7 +116,7 @@ class TestGitClientCoverage(unittest.TestCase):
     def test_analyze_commits_git_error(self):
         """Test commit analysis when Git operations fail."""
         # Mock Repo to raise an exception
-        with patch('git.Repo', side_effect=Exception("Git error")):
+        with patch("git.Repo", side_effect=Exception("Git error")):
             commit_stats = self.git_client.analyze_commits("/some/path")
 
             self.assertIsInstance(commit_stats, CommitStats)
@@ -147,7 +143,7 @@ class TestGitClientCoverage(unittest.TestCase):
             else:  # Second call succeeds
                 original_rmtree(path, onerror=onerror)
 
-        with patch('shutil.rmtree', side_effect=mock_rmtree):
+        with patch("shutil.rmtree", side_effect=mock_rmtree):
             self.git_client.cleanup()
 
         # Should have attempted to clean up both directories
@@ -164,24 +160,21 @@ class TestGitClientCoverage(unittest.TestCase):
 
         # Test different lint error counts
         test_cases = [
-            (0, 1.0),    # No errors = perfect score
-            (5, 0.75),   # 5 errors = 1.0 - (5 * 0.05) = 0.75
-            (20, 0.0),   # 20 errors = 1.0 - (20 * 0.05) = 0.0 (minimum)
-            (25, 0.0),   # 25 errors = 1.0 - (25 * 0.05) = -0.25, clamped to 0
+            (0, 1.0),  # No errors = perfect score
+            (5, 0.75),  # 5 errors = 1.0 - (5 * 0.05) = 0.75
+            (20, 0.0),  # 20 errors = 1.0 - (20 * 0.05) = 0.0 (minimum)
+            (25, 0.0),  # 25 errors = 1.0 - (25 * 0.05) = -0.25, clamped to 0
         ]
 
         for lint_errors, expected_score in test_cases:
-            with patch('subprocess.run') as mock_run:
+            with patch("subprocess.run") as mock_run:
                 mock_result = MagicMock()
                 mock_result.stderr = f"Some output\n{lint_errors}"
                 mock_run.return_value = mock_result
 
                 quality_stats = self.git_client.analyze_code_quality(repo_path)
-                self.assertAlmostEqual(quality_stats.
-                                       code_quality_score,
-                                       expected_score,
-                                       places=2)
+                self.assertAlmostEqual(quality_stats.code_quality_score, expected_score, places=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

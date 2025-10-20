@@ -13,9 +13,7 @@ class TestGenAIClient:
         client = GenAIClient()
         assert client.headers["Authorization"] == "Bearer test_key"
         assert client.headers["Content-Type"] == "application/json"
-        assert client.url == (
-            "https://genai.rcac.purdue.edu/api/chat/completions"
-        )
+        assert client.url == ("https://genai.rcac.purdue.edu/api/chat/completions")
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
@@ -23,11 +21,9 @@ class TestGenAIClient:
     async def test_chat_success(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [
-                {"message": {"content": "Hello, world!"}}
-            ]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": "Hello, world!"}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -53,9 +49,7 @@ class TestGenAIClient:
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
     @pytest.mark.asyncio
-    async def test_chat_authentication_failure_returns_default(
-        self, mock_post
-    ):
+    async def test_chat_authentication_failure_returns_default(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 401
         mock_response.text = AsyncMock(return_value="Unauthorized")
@@ -64,9 +58,7 @@ class TestGenAIClient:
         client = GenAIClient()
         result = await client.chat("Hi")
 
-        assert result == (
-            "No performance claims found in the documentation."
-        )
+        assert result == ("No performance claims found in the documentation.")
         assert client.has_api_key is False
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
@@ -75,11 +67,9 @@ class TestGenAIClient:
     async def test_chat_custom_model(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [
-                {"message": {"content": "Model response"}}
-            ]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": "Model response"}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -102,30 +92,22 @@ class TestGenAIClient:
         mock_open.return_value.__enter__.return_value = mock_file
 
         # Mock HTTP responses - two calls for two-stage approach
-        expected_dict = {
-            "mentions_benchmarks": 0.8,
-            "has_metrics": 0.6
-        }
+        expected_dict = {"mentions_benchmarks": 0.8, "has_metrics": 0.6}
 
         # First response (extraction)
-        extraction_response = "METRICS FOUND: accuracy 92%\n" \
-                              "BENCHMARKS FOUND: SQuAD"
+        extraction_response = "METRICS FOUND: accuracy 92%\n" "BENCHMARKS FOUND: SQuAD"
         mock_response1 = AsyncMock()
         mock_response1.status = 200
-        mock_response1.json = AsyncMock(return_value={
-            "choices": [
-                {"message": {"content": extraction_response}}
-            ]
-        })
+        mock_response1.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": extraction_response}}]}
+        )
 
         # Second response (conversion to JSON)
         mock_response2 = AsyncMock()
         mock_response2.status = 200
-        mock_response2.json = AsyncMock(return_value={
-            "choices": [
-                {"message": {"content": json.dumps(expected_dict)}}
-            ]
-        })
+        mock_response2.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]}
+        )
 
         mock_post.return_value.__aenter__.side_effect = [
             mock_response1,
@@ -142,14 +124,10 @@ class TestGenAIClient:
         # Verify both files were opened
         assert mock_open.call_count == 2
         mock_open.assert_any_call(
-            "src/api/performance_claims_extraction_prompt.txt",
-            "r",
-            encoding="utf-8"
+            "src/api/performance_claims_extraction_prompt.txt", "r", encoding="utf-8"
         )
         mock_open.assert_any_call(
-            "src/api/performance_claims_conversion_prompt.txt",
-            "r",
-            encoding="utf-8"
+            "src/api/performance_claims_conversion_prompt.txt", "r", encoding="utf-8"
         )
 
         # Verify HTTP calls were made twice
@@ -159,9 +137,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_performance_claims_with_markdown_code_block(
-        self, mock_open, mock_post
-    ):
+    async def test_get_performance_claims_with_markdown_code_block(self, mock_open, mock_post):
         """Test get_performance_claims with JSON wrapped in
         markdown code blocks."""
         # Mock file reading
@@ -172,17 +148,13 @@ class TestGenAIClient:
         # Mock HTTP response with JSON in markdown code block
         expected_dict = {"mentions_benchmarks": 1, "has_metrics": 0}
         response_content = (
-            "Here is the analysis:\n"
-            "```json\n"
-            f"{json.dumps(expected_dict)}\n"
-            "```\n"
-            "Done."
+            "Here is the analysis:\n" "```json\n" f"{json.dumps(expected_dict)}\n" "```\n" "Done."
         )
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": response_content}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": response_content}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -195,9 +167,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_performance_claims_with_nested_braces(
-        self, mock_open, mock_post
-    ):
+    async def test_get_performance_claims_with_nested_braces(self, mock_open, mock_post):
         """Test get_performance_claims with nested JSON objects."""
         # Mock file reading
         mock_file = MagicMock()
@@ -208,14 +178,14 @@ class TestGenAIClient:
         # the regex should extract only the first level
         expected_dict = {"mentions_benchmarks": 1, "has_metrics": 1}
         response_content = (
-            f'Analysis: {json.dumps(expected_dict)} and some nested object '
+            f"Analysis: {json.dumps(expected_dict)} and some nested object "
             f'{{"inner": {{"deep": "value"}}}}'
         )
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": response_content}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": response_content}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -228,9 +198,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_performance_claims_fallback_to_full_response(
-        self, mock_open, mock_post
-    ):
+    async def test_get_performance_claims_fallback_to_full_response(self, mock_open, mock_post):
         """Test get_performance_claims falls back to
         parsing full response when no braces found."""
         # Mock file reading
@@ -243,9 +211,9 @@ class TestGenAIClient:
         expected_dict = {"mentions_benchmarks": 0, "has_metrics": 1}
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": json.dumps(expected_dict)}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -258,9 +226,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_performance_claims_invalid_extracted_json(
-        self, mock_open, mock_post
-    ):
+    async def test_get_performance_claims_invalid_extracted_json(self, mock_open, mock_post):
         """Test get_performance_claims
         with invalid JSON in extracted braces."""
         # Mock file reading
@@ -269,14 +235,12 @@ class TestGenAIClient:
         mock_open.return_value.__enter__.return_value = mock_file
 
         # Mock HTTP response with invalid JSON in braces
-        response_content = (
-            "Analysis result: {invalid_json_content} - not valid"
-        )
+        response_content = "Analysis result: {invalid_json_content} - not valid"
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": response_content}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": response_content}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -293,9 +257,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_performance_claims_invalid_full_response_json(
-        self, mock_open, mock_post
-    ):
+    async def test_get_performance_claims_invalid_full_response_json(self, mock_open, mock_post):
         """Test get_performance_claims with invalid JSON
         in full response fallback."""
         # Mock file reading
@@ -307,9 +269,9 @@ class TestGenAIClient:
         response_content = "This is not JSON at all"
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": response_content}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": response_content}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -326,9 +288,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_direct_float_parsing(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_direct_float_parsing(self, mock_open, mock_post):
         """Test get_readme_clarity with direct float response."""
         # Mock file reading
         mock_file = MagicMock()
@@ -338,9 +298,7 @@ class TestGenAIClient:
         # Mock HTTP response with direct float
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": "0.85"}}]
-        })
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "0.85"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -358,9 +316,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_with_whitespace(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_with_whitespace(self, mock_open, mock_post):
         """Test get_readme_clarity strips whitespace from
         direct float response."""
         # Mock file reading
@@ -371,9 +327,9 @@ class TestGenAIClient:
         # Mock HTTP response with whitespace around float
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": "  0.92  \n"}}]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": "  0.92  \n"}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -386,9 +342,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_regex_extraction(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_regex_extraction(self, mock_open, mock_post):
         """Test get_readme_clarity with regex pattern matching."""
         # Mock file reading
         mock_file = MagicMock()
@@ -398,15 +352,9 @@ class TestGenAIClient:
         # Mock HTTP response with text containing float pattern
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [
-                {
-                    "message": {
-                        "content": "The clarity score is 0.73."
-                    }
-                }
-            ]
-        })
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": "The clarity score is 0.73."}}]}
+        )
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -419,9 +367,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_perfect_score(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_perfect_score(self, mock_open, mock_post):
         """Test get_readme_clarity with perfect score (1.0)."""
         # Mock file reading
         mock_file = MagicMock()
@@ -430,9 +376,7 @@ class TestGenAIClient:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": "1.0"}}]
-        })
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "1.0"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -454,9 +398,7 @@ class TestGenAIClient:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={
-            "choices": [{"message": {"content": "0.0"}}]
-        })
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "0.0"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -469,18 +411,16 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_realistic_responses(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_realistic_responses(self, mock_open, mock_post):
         """Test get_readme_clarity with realistic
         LLM responses following the prompt."""
         test_cases = [
             ("0.85", 0.85),  # Direct number as instructed
-            ("0.0", 0.0),    # Minimum score
-            ("1.0", 1.0),    # Maximum score
+            ("0.0", 0.0),  # Minimum score
+            ("1.0", 1.0),  # Maximum score
             ("0.67", 0.67),  # Mid-range score
             ("The clarity score is 0.73", 0.73),  # LLM adds some text
-            ("Based on analysis: 0.91", 0.91),    # LLM prefixes
+            ("Based on analysis: 0.91", 0.91),  # LLM prefixes
         ]
 
         for i, (content, expected) in enumerate(test_cases):
@@ -491,34 +431,30 @@ class TestGenAIClient:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "choices": [{"message": {"content": content}}]
-            })
+            mock_response.json = AsyncMock(
+                return_value={"choices": [{"message": {"content": content}}]}
+            )
             mock_post.return_value.__aenter__.return_value = mock_response
 
             client = GenAIClient()
             result = await client.get_readme_clarity("README content")
 
-            assert result == expected, (
-                f"Case {i}: '{content}' -> {expected}, got {result}'"
-            )
+            assert result == expected, f"Case {i}: '{content}' -> {expected}, got {result}'"
             assert isinstance(result, float)
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_decimal_formats(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_decimal_formats(self, mock_open, mock_post):
         """Test get_readme_clarity with various
         decimal formats that LLM might output."""
         test_cases = [
             ("0.0", 0.0),
-            (".5", 0.5),         # Leading decimal point
+            (".5", 0.5),  # Leading decimal point
             ("0.123456789", 0.123456789),  # High precision
             ("Quality: .99", 0.99),
-            ("1", 1.0),          # Integer format for perfect score
+            ("1", 1.0),  # Integer format for perfect score
         ]
 
         for i, (content, expected) in enumerate(test_cases):
@@ -529,26 +465,22 @@ class TestGenAIClient:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "choices": [{"message": {"content": content}}]
-            })
+            mock_response.json = AsyncMock(
+                return_value={"choices": [{"message": {"content": content}}]}
+            )
             mock_post.return_value.__aenter__.return_value = mock_response
 
             client = GenAIClient()
             result = await client.get_readme_clarity("README content")
 
-            assert result == expected, (
-                f"Case {i}: '{content}' -> {expected}, got {result}'"
-            )
+            assert result == expected, f"Case {i}: '{content}' -> {expected}, got {result}'"
             assert isinstance(result, float)
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_no_numbers_raises_exception(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_no_numbers_raises_exception(self, mock_open, mock_post):
         """Test get_readme_clarity raises exception when no numbers found."""
         # Mock file reading
         mock_file = MagicMock()
@@ -560,13 +492,7 @@ class TestGenAIClient:
         mock_response.status = 200
         mock_response.json = AsyncMock(
             return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": "The documentation quality is very poor"
-                        }
-                    }
-                ]
+                "choices": [{"message": {"content": "The documentation quality is very poor"}}]
             }
         )
         mock_post.return_value.__aenter__.return_value = mock_response
@@ -580,9 +506,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_llm_disobedience_fallback(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_llm_disobedience_fallback(self, mock_open, mock_post):
         """Test get_readme_clarity handles case where
         LLM doesn't follow instructions perfectly."""
         # Mock file reading
@@ -596,15 +520,7 @@ class TestGenAIClient:
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": "Score: 0.42 (based on analysis)"
-                        }
-                    }
-                ]
-            }
+            return_value={"choices": [{"message": {"content": "Score: 0.42 (based on analysis)"}}]}
         )
         mock_post.return_value.__aenter__.return_value = mock_response
 
@@ -618,9 +534,7 @@ class TestGenAIClient:
     @patch("aiohttp.ClientSession.post")
     @patch("builtins.open", create=True)
     @pytest.mark.asyncio
-    async def test_get_readme_clarity_first_number_wins(
-        self, mock_open, mock_post
-    ):
+    async def test_get_readme_clarity_first_number_wins(self, mock_open, mock_post):
         """Test get_readme_clarity extracts the first
         valid number when multiple exist."""
         # Mock file reading
@@ -634,15 +548,7 @@ class TestGenAIClient:
         mock_response.status = 200
         mock_response.json = AsyncMock(
             return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": (
-                                "First score: 0.8, second score: 0.6"
-                            )
-                        }
-                    }
-                ]
+                "choices": [{"message": {"content": ("First score: 0.8, second score: 0.6")}}]
             }
         )
         mock_post.return_value.__aenter__.return_value = mock_response

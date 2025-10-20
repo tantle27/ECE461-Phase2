@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 import requests
 
 from src.core.config import settings
@@ -8,25 +10,25 @@ from src.core.config import settings
 _GH = "https://api.github.com"
 
 
-def _headers() -> Dict[str, str]:
+def _headers() -> dict[str, str]:
     h = {"Accept": "application/vnd.github+json"}
     if settings.github_token:
         h["Authorization"] = f"Bearer {settings.github_token}"
     return h
 
 
-def _get(url: str, params: Optional[Dict[str, Any]] = None) -> Any:
+def _get(url: str, params: dict[str, Any] | None = None) -> Any:
     for attempt in range(settings.http_retries):
         r = requests.get(url, headers=_headers(), params=params, timeout=settings.request_timeout_s)
         if r.status_code == 403 and "rate limit" in r.text.lower():
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
             continue
         r.raise_for_status()
         return r.json()
     raise RuntimeError("github: retries exhausted")
 
 
-def fetch_repo_tree(repo: str, ref: str | None) -> List[Dict[str, Any]]:
+def fetch_repo_tree(repo: str, ref: str | None) -> list[dict[str, Any]]:
     """
     Returns [{"path": str, "size": int}, ...]
     Uses the Git Trees API to get a full (recursive) listing with sizes.
@@ -48,12 +50,12 @@ def fetch_repo_tree(repo: str, ref: str | None) -> List[Dict[str, Any]]:
     return out
 
 
-def fetch_commits(repo: str, ref: str | None, window_days: int = 180) -> List[Dict[str, Any]]:
+def fetch_commits(repo: str, ref: str | None, window_days: int = 180) -> list[dict[str, Any]]:
     """
     Returns commits as [{"author_email":..., "author_login":..., "date":...}, ...]
     """
     owner, name = repo.split("/", 1)
-    params: Dict[str, Any] = {"per_page": 100}
+    params: dict[str, Any] = {"per_page": 100}
     if ref:
         params["sha"] = ref
     # Keep it simple: one page
@@ -72,12 +74,12 @@ def fetch_commits(repo: str, ref: str | None, window_days: int = 180) -> List[Di
     return out
 
 
-def fetch_readme(repo: str, ref: str | None) -> Dict[str, Any] | None:
+def fetch_readme(repo: str, ref: str | None) -> dict[str, Any] | None:
     """
     Returns {"path": "README.md", "size": int, "text": str} or None
     """
     owner, name = repo.split("/", 1)
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
     if ref:
         params["ref"] = ref
     try:

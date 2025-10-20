@@ -17,22 +17,17 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True,
-            'has_dependencies': True
+            "has_examples": True,
+            "has_dependencies": True,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Excellent README with clear instructions",
-                repo_path="/path/to/repo"
+                readme_text="Excellent README with clear instructions", repo_path="/path/to/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -41,9 +36,9 @@ class TestRampUpTimeMetric:
 
             # Assert the result
             expected_result = (
-                RampUpTimeMetric.LLM_README_WEIGHT * 1.0 +
-                RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1 +
-                RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
+                RampUpTimeMetric.LLM_README_WEIGHT * 1.0
+                + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
+                + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
             )
             assert result == expected_result
             assert result == 1.0  # Should be exactly 1.0
@@ -52,9 +47,7 @@ class TestRampUpTimeMetric:
             mock_gen_ai_client.get_readme_clarity.assert_called_once_with(
                 "Excellent README with clear instructions"
             )
-            mock_git_client.analyze_ramp_up_time.assert_called_once_with(
-                "/path/to/repo"
-            )
+            mock_git_client.analyze_ramp_up_time.assert_called_once_with("/path/to/repo")
 
     @pytest.mark.asyncio
     async def test_calculate_with_zero_score(self):
@@ -66,23 +59,16 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': False,
-            'has_dependencies': False
+            "has_examples": False,
+            "has_dependencies": False,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="",
-                repo_path="/path/to/empty/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="", repo_path="/path/to/empty/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -102,22 +88,17 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True,
-            'has_dependencies': False
+            "has_examples": True,
+            "has_dependencies": False,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Good README but could be clearer",
-                repo_path="/path/to/partial/repo"
+                readme_text="Good README but could be clearer", repo_path="/path/to/partial/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -126,9 +107,9 @@ class TestRampUpTimeMetric:
 
             # Assert the result
             expected_result = (
-                RampUpTimeMetric.LLM_README_WEIGHT * 0.7 +
-                RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1 +
-                RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
+                RampUpTimeMetric.LLM_README_WEIGHT * 0.7
+                + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
+                + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
             )
             assert result == expected_result
             assert result == pytest.approx(0.67, abs=0.01)
@@ -145,22 +126,18 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': False,
-            'has_dependencies': False
+            "has_examples": False,
+            "has_dependencies": False,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
                 readme_text="Clear README without dependencies or examples",
-                repo_path="/path/to/readme-only/repo"
+                repo_path="/path/to/readme-only/repo",
             )
             metric = RampUpTimeMetric()
 
@@ -183,22 +160,17 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True,
-            'has_dependencies': True
+            "has_examples": True,
+            "has_dependencies": True,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Poor README",
-                repo_path="/path/to/well-structured/repo"
+                readme_text="Poor README", repo_path="/path/to/well-structured/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -207,9 +179,9 @@ class TestRampUpTimeMetric:
 
             # Assert the result
             expected_result = (
-                RampUpTimeMetric.LLM_README_WEIGHT * 0.1 +
-                RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1 +
-                RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
+                RampUpTimeMetric.LLM_README_WEIGHT * 0.1
+                + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
+                + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
             )
             assert result == expected_result
             assert result == pytest.approx(0.46, abs=0.01)
@@ -228,16 +200,11 @@ class TestRampUpTimeMetric:
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="README with missing repo data",
-                repo_path="/path/to/incomplete/repo"
+                readme_text="README with missing repo data", repo_path="/path/to/incomplete/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -259,22 +226,17 @@ class TestRampUpTimeMetric:
         # Mock the GitClient with only one key
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True
+            "has_examples": True
             # 'has_dependencies' is missing
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="README with partial repo data",
-                repo_path="/path/to/partial/repo"
+                readme_text="README with partial repo data", repo_path="/path/to/partial/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -283,9 +245,9 @@ class TestRampUpTimeMetric:
 
             # Assert the result
             expected_result = (
-                RampUpTimeMetric.LLM_README_WEIGHT * 0.6 +
-                RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1 +
-                RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
+                RampUpTimeMetric.LLM_README_WEIGHT * 0.6
+                + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
+                + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
                 # False for missing key
             )
             assert result == expected_result
@@ -297,9 +259,7 @@ class TestRampUpTimeMetric:
         """Test calculate method with invalid input type."""
         metric = RampUpTimeMetric()
         with pytest.raises(AssertionError):
-            await metric.calculate(
-                {"readme_text": "invalid", "repo_path": "/path"}
-            )
+            await metric.calculate({"readme_text": "invalid", "repo_path": "/path"})
 
     @pytest.mark.asyncio
     async def test_calculate_none_input(self):
@@ -319,9 +279,9 @@ class TestRampUpTimeMetric:
     async def test_weight_constants_sum_to_one(self):
         """Test that the weight constants sum to 1.0."""
         total_weight = (
-            RampUpTimeMetric.LLM_README_WEIGHT +
-            RampUpTimeMetric.HAS_EXAMPLES_WEIGHT +
-            RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT
+            RampUpTimeMetric.LLM_README_WEIGHT
+            + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT
+            + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT
         )
         assert total_weight == pytest.approx(1.0, abs=0.001)
 
@@ -337,30 +297,21 @@ class TestRampUpTimeMetric:
         """Test calculate method when GenAIClient raises an exception."""
         # Mock the GenAIClient to raise an exception
         mock_gen_ai_client = AsyncMock()
-        mock_gen_ai_client.get_readme_clarity.side_effect = Exception(
-            "GenAI API error"
-        )
+        mock_gen_ai_client.get_readme_clarity.side_effect = Exception("GenAI API error")
 
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True,
-            'has_dependencies': True
+            "has_examples": True,
+            "has_dependencies": True,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="README text",
-                repo_path="/path/to/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="README text", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method and expect exception
@@ -376,23 +327,14 @@ class TestRampUpTimeMetric:
 
         # Mock the GitClient to raise an exception
         mock_git_client = MagicMock()
-        mock_git_client.analyze_ramp_up_time.side_effect = Exception(
-            "Git analysis error"
-        )
+        mock_git_client.analyze_ramp_up_time.side_effect = Exception("Git analysis error")
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="README text",
-                repo_path="/path/to/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="README text", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method and expect exception
@@ -409,22 +351,17 @@ class TestRampUpTimeMetric:
         # Mock the GitClient
         mock_git_client = MagicMock()
         mock_git_client.analyze_ramp_up_time.return_value = {
-            'has_examples': True,
-            'has_dependencies': False
+            "has_examples": True,
+            "has_dependencies": False,
         }
 
         # Patch both clients
         with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient",
-            return_value=mock_gen_ai_client
-        ), patch(
-            "src.metrics.ramp_up_time_metric.GitClient",
-            return_value=mock_git_client
-        ):
+            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
+        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Very poor README",
-                repo_path="/path/to/repo"
+                readme_text="Very poor README", repo_path="/path/to/repo"
             )
             metric = RampUpTimeMetric()
 
@@ -433,9 +370,9 @@ class TestRampUpTimeMetric:
 
             # Assert the result
             expected_result = (
-                RampUpTimeMetric.LLM_README_WEIGHT * 0.001 +
-                RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1 +
-                RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
+                RampUpTimeMetric.LLM_README_WEIGHT * 0.001
+                + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
+                + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
             )
             assert result == expected_result
             assert result == pytest.approx(0.2506, abs=0.0001)

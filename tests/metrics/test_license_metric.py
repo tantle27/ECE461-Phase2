@@ -232,8 +232,7 @@ Run `pip install package`.
 
     @pytest.mark.asyncio
     async def test_calculate_with_git_client_integration(self):
-        with patch(
-          'src.metrics.license_metric.GitClient') as mock_git_client_class:
+        with patch("src.metrics.license_metric.GitClient") as mock_git_client_class:
             mock_git_client = Mock()
             mock_git_client.read_readme.return_value = """
 # Project Title
@@ -245,8 +244,7 @@ This project is licensed under the MIT License.
             mock_git_client_class.return_value = mock_git_client
 
             metric = LicenseMetric()
-            result = await metric.calculate(
-                LicenseInput(repo_url="/test/repo"))
+            result = await metric.calculate(LicenseInput(repo_url="/test/repo"))
 
             assert result == 1.0
 
@@ -275,8 +273,7 @@ Run `pip install package`.
 
     def test_score_license_lgpl(self):
         assert self.metric._score_license("LGPL v2.1") == 0.5
-        assert self.metric._score_license(
-            "GNU Lesser General Public License") == 0.5
+        assert self.metric._score_license("GNU Lesser General Public License") == 0.5
 
     def test_score_license_copyleft(self):
         assert self.metric._score_license("GPL v3") == 0.1

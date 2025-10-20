@@ -18,10 +18,7 @@ class TestDatasetQualityMetric:
         with patch(
             "src.api.hugging_face_client.HuggingFaceClient.get_dataset_info"
         ) as mock_get_info:
-            mock_get_info.return_value = {
-                "normalized_likes": 0.8,
-                "normalized_downloads": 0.6
-            }
+            mock_get_info.return_value = {"normalized_likes": 0.8, "normalized_downloads": 0.6}
             result = await self.metric.calculate(metric_input)
             expected = 0.5 * 0.8 + 0.5 * 0.6
             assert abs(result - expected) < 1e-6
@@ -32,10 +29,7 @@ class TestDatasetQualityMetric:
         with patch(
             "src.api.hugging_face_client.HuggingFaceClient.get_dataset_info"
         ) as mock_get_info:
-            mock_get_info.return_value = {
-                "normalized_likes": 0.0,
-                "normalized_downloads": 0.0
-            }
+            mock_get_info.return_value = {"normalized_likes": 0.0, "normalized_downloads": 0.0}
             result = await self.metric.calculate(metric_input)
             assert result == 0.0
 
@@ -45,10 +39,7 @@ class TestDatasetQualityMetric:
         with patch(
             "src.api.hugging_face_client.HuggingFaceClient.get_dataset_info"
         ) as mock_get_info:
-            mock_get_info.return_value = {
-                "normalized_likes": 1.0,
-                "normalized_downloads": 1.0
-            }
+            mock_get_info.return_value = {"normalized_likes": 1.0, "normalized_downloads": 1.0}
             result = await self.metric.calculate(metric_input)
             assert result == 1.0
 

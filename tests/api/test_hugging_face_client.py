@@ -17,9 +17,7 @@ class TestHuggingFaceClient:
         value = 100
         max_value = 1000
         expected = math.log1p(value) / math.log1p(max_value)
-        assert abs(
-            self.client.normalize_log(value, max_value) - expected
-            ) < 1e-6
+        assert abs(self.client.normalize_log(value, max_value) - expected) < 1e-6
 
     def test_normalize_log_above_max(self):
         value = 2000
@@ -56,8 +54,6 @@ class TestHuggingFaceClient:
         client = HuggingFaceClient()
         result = client.download_file("repo-id", "file.txt", local_dir="/tmp")
         mock_download.assert_called_once_with(
-            repo_id="repo-id",
-            filename="file.txt",
-            local_dir="/tmp"
-            )
+            repo_id="repo-id", filename="file.txt", local_dir="/tmp"
+        )
         assert result == "/fake/path/file.txt"
