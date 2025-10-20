@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 from src.api.gen_ai_client import GenAIClient
@@ -11,15 +11,9 @@ from src.api.git_client import GitClient
 from src.api.hugging_face_client import HuggingFaceClient
 from src.metrics.bus_factor_metric import BusFactorInput, BusFactorMetric
 from src.metrics.code_quality_metric import CodeQualityInput, CodeQualityMetric
-from src.metrics.dataset_quality_metric import (
-    DatasetQualityInput,
-    DatasetQualityMetric,
-)
+from src.metrics.dataset_quality_metric import DatasetQualityInput, DatasetQualityMetric
 from src.metrics.license_metric import LicenseInput, LicenseMetric
-from src.metrics.performance_claims_metric import (
-    PerformanceClaimsMetric,
-    PerformanceInput,
-)
+from src.metrics.performance_claims_metric import PerformanceClaimsMetric, PerformanceInput
 from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
 from src.metrics.size_metric import SizeInput, SizeMetric
 
@@ -35,22 +29,18 @@ def extract_hf_repo_id(url: str) -> str:
       bookcorpus/bookcorpus
     """
     # Remove trailing slashes and fragments
-    url = url.rstrip('/')
+    url = url.rstrip("/")
 
     # Pattern for datasets: huggingface.co/datasets/{org}/{name} or
     # huggingface.co/datasets/{name}
-    dataset_match = re.search(
-        r"huggingface\.co/datasets/([^/?#]+(?:/[^/?#]+)?)", url
-    )
+    dataset_match = re.search(r"huggingface\.co/datasets/([^/?#]+(?:/[^/?#]+)?)", url)
     if dataset_match:
         return dataset_match.group(1)
 
     # Pattern for regular models: huggingface.co/{org}/{name} or
     # huggingface.co/{name}.
     # But exclude spaces: huggingface.co/spaces/{org}/{name}
-    model_match = re.search(
-        r"huggingface\.co/(?!spaces/)([^/?#]+(?:/[^/?#]+)?)", url
-    )
+    model_match = re.search(r"huggingface\.co/(?!spaces/)([^/?#]+(?:/[^/?#]+)?)", url)
     if model_match:
         return model_match.group(1)
 
@@ -66,9 +56,9 @@ def is_code_repository(url: str) -> bool:
         return False
     parsed = urlparse(url.lower())
     return (
-        'github.com' in parsed.netloc or
-        'gitlab.com' in parsed.netloc or
-        ('huggingface.co' in parsed.netloc and '/spaces/' in parsed.path)
+        "github.com" in parsed.netloc
+        or "gitlab.com" in parsed.netloc
+        or ("huggingface.co" in parsed.netloc and "/spaces/" in parsed.path)
     )
 
 
@@ -80,12 +70,13 @@ def is_dataset_url(url: str) -> bool:
         return False
     parsed = urlparse(url.lower())
     return (
-        ('huggingface.co' in parsed.netloc and '/datasets/' in parsed.path) or
-        'image-net.org' in parsed.netloc or
-        'kaggle.com' in parsed.netloc or
-        'archive.ics.uci.edu' in parsed.netloc or  # UCI ML Repository
+        ("huggingface.co" in parsed.netloc and "/datasets/" in parsed.path)
+        or "image-net.org" in parsed.netloc
+        or "kaggle.com" in parsed.netloc
+        or "archive.ics.uci.edu" in parsed.netloc  # UCI ML Repository
+        or
         # Add other dataset source patterns as needed
-        '/datasets/' in parsed.path
+        "/datasets/" in parsed.path
     )
 
 
@@ -97,9 +88,9 @@ def is_model_url(url: str) -> bool:
         return False
     parsed = urlparse(url.lower())
     return (
-        'huggingface.co' in parsed.netloc and
-        '/datasets/' not in parsed.path and
-        '/spaces/' not in parsed.path
+        "huggingface.co" in parsed.netloc
+        and "/datasets/" not in parsed.path
+        and "/spaces/" not in parsed.path
     )
 
 
@@ -119,11 +110,7 @@ class MetricsCalculator:
     handling cases where code or dataset links may be missing.
     """
 
-    def __init__(
-        self,
-        process_pool: ProcessPoolExecutor,
-        github_token: Optional[str] = None
-    ):
+    def __init__(self, process_pool: ProcessPoolExecutor, github_token: str | None = None):
         """
         Initialize the metrics calculator with necessary API clients and
         metric instances.
@@ -143,13 +130,9 @@ class MetricsCalculator:
         self.code_quality_metric = CodeQualityMetric(self.git_client)
         self.license_metric = LicenseMetric(self.git_client)
         self.size_metric = SizeMetric(self.git_client)
-        self.ramp_up_time_metric = RampUpTimeMetric(
-            self.git_client, self.gen_ai_client
-        )
+        self.ramp_up_time_metric = RampUpTimeMetric(self.git_client, self.gen_ai_client)
         self.dataset_quality_metric = DatasetQualityMetric(self.hf_client)
-        self.performance_claims_metric = PerformanceClaimsMetric(
-            self.gen_ai_client
-        )
+        self.performance_claims_metric = PerformanceClaimsMetric(self.gen_ai_client)
 
     async def _run_cpu_bound(self, func, *args) -> Any:
         """
@@ -174,7 +157,7 @@ class MetricsCalculator:
         latency = int((time.time() - start_time) * 1000)
         return result, latency
 
-    async def analyze_repository(self, url: str) -> Dict[str, Any]:
+    async def analyze_repository(self, url: str) -> dict[str, Any]:
         """
         Clones and analyzes a single repository,
         running all metric calculations
@@ -187,13 +170,13 @@ class MetricsCalculator:
             Dictionary containing all computed metrics and their latencies
         """
         logging.info(f"Starting async analysis for: {url}")
-        
+
         # Early exit for Hugging Face model URLs without code repository
         # These will have all zero scores anyway, no need to clone
         if is_model_url(url) and not is_code_repository(url):
             logging.info(f"Skipping full analysis for HF model URL (no separate code repo): {url}")
             return self._get_default_metrics()
-        
+
         loop = asyncio.get_running_loop()
 
         repo_path = await loop.run_in_executor(
@@ -213,75 +196,78 @@ class MetricsCalculator:
                 except ValueError as e:
                     logging.error(str(e))
             bus_factor_task = self._run_cpu_bound(
-                self.bus_factor_metric.calculate,
-                BusFactorInput(repo_url=repo_path))
+                self.bus_factor_metric.calculate, BusFactorInput(repo_url=repo_path)
+            )
             code_quality_task = self._run_cpu_bound(
-                self.code_quality_metric.calculate,
-                CodeQualityInput(repo_url=repo_path))
+                self.code_quality_metric.calculate, CodeQualityInput(repo_url=repo_path)
+            )
             license_task = self._run_cpu_bound(
-                self.license_metric.calculate,
-                LicenseInput(repo_url=repo_path))
+                self.license_metric.calculate, LicenseInput(repo_url=repo_path)
+            )
             readme_text = self.git_client.read_readme(repo_path) or ""
             ramp_up_task = self._run_cpu_bound(
                 self.ramp_up_time_metric.calculate,
-                RampUpTimeInput(
-                    repo_path=repo_path,
-                    readme_text=readme_text))
+                RampUpTimeInput(repo_path=repo_path, readme_text=readme_text),
+            )
             dataset_quality_task = self._run_cpu_bound(
                 self.dataset_quality_metric.calculate,
-                DatasetQualityInput(repo_id=repo_id)
-                if repo_id else DatasetQualityInput(repo_id="")
+                (
+                    DatasetQualityInput(repo_id=repo_id)
+                    if repo_id
+                    else DatasetQualityInput(repo_id="")
+                ),
             )
             performance_claims_task = self._run_cpu_bound(
-                self.performance_claims_metric.calculate,
-                PerformanceInput(
-                    readme_text=readme_text)
+                self.performance_claims_metric.calculate, PerformanceInput(readme_text=readme_text)
             )
             size_task = self._run_cpu_bound(
-                self.size_metric.calculate,
-                SizeInput(repo_url=repo_path))
+                self.size_metric.calculate, SizeInput(repo_url=repo_path)
+            )
 
-            (bus_factor_score, bus_lat), \
-                (code_quality_score, qual_lat), \
-                (license_score, license_lat), \
-                (ramp_up_score, ramp_lat), \
-                (dataset_quality_score, dataset_lat), \
-                (performance_claims_score, perf_lat), \
-                (size_score, size_lat) = \
-                await asyncio.gather(bus_factor_task,
-                                     code_quality_task,
-                                     license_task,
-                                     ramp_up_task,
-                                     dataset_quality_task,
-                                     performance_claims_task,
-                                     size_task)
+            (
+                (bus_factor_score, bus_lat),
+                (code_quality_score, qual_lat),
+                (license_score, license_lat),
+                (ramp_up_score, ramp_lat),
+                (dataset_quality_score, dataset_lat),
+                (performance_claims_score, perf_lat),
+                (size_score, size_lat),
+            ) = await asyncio.gather(
+                bus_factor_task,
+                code_quality_task,
+                license_task,
+                ramp_up_task,
+                dataset_quality_task,
+                performance_claims_task,
+                size_task,
+            )
 
             return {
-                'bus_factor': bus_factor_score,
-                'bus_factor_latency': bus_lat,
-                'code_quality': code_quality_score,
-                'code_quality_latency': qual_lat,
-                'license': license_score,
-                'license_latency': license_lat,
-                'ramp_up_time': ramp_up_score,
-                'ramp_up_time_latency': ramp_lat,
-                'dataset_quality': dataset_quality_score,
-                'dataset_quality_latency': dataset_lat,
-                'size_score': size_score,
-                'size_score_latency': size_lat,
-                'performance_claims': performance_claims_score,
-                'performance_claims_latency': perf_lat,
+                "bus_factor": bus_factor_score,
+                "bus_factor_latency": bus_lat,
+                "code_quality": code_quality_score,
+                "code_quality_latency": qual_lat,
+                "license": license_score,
+                "license_latency": license_lat,
+                "ramp_up_time": ramp_up_score,
+                "ramp_up_time_latency": ramp_lat,
+                "dataset_quality": dataset_quality_score,
+                "dataset_quality_latency": dataset_lat,
+                "size_score": size_score,
+                "size_score_latency": size_lat,
+                "performance_claims": performance_claims_score,
+                "performance_claims_latency": perf_lat,
             }
         finally:
             self.git_client.cleanup()
 
     async def analyze_entry(
         self,
-        code_link: Optional[str],
-        dataset_link: Optional[str],
+        code_link: str | None,
+        dataset_link: str | None,
         model_link: str,
-        encountered_datasets: set
-    ) -> Dict[str, Any]:
+        encountered_datasets: set,
+    ) -> dict[str, Any]:
         """
         Analyzes a complete entry with code, dataset, and model links.
 
@@ -300,7 +286,9 @@ class MetricsCalculator:
         """
         logging.info(
             "Analyzing entry - Code: %s, Dataset: %s, Model: %s",
-            code_link, dataset_link, model_link
+            code_link,
+            dataset_link,
+            model_link,
         )
 
         # Determine the primary repository to analyze
@@ -320,28 +308,27 @@ class MetricsCalculator:
             encountered_datasets.add(dataset_link)
 
         # Analyze the primary repository
-        repo_metrics = (await self.analyze_repository(primary_repo_url)
-                        if primary_repo_url else self._get_default_metrics())
+        repo_metrics = (
+            await self.analyze_repository(primary_repo_url)
+            if primary_repo_url
+            else self._get_default_metrics()
+        )
 
         # Add dataset quality analysis if we have a dataset
         if dataset_link and is_dataset_url(dataset_link):
-            dataset_quality_metrics = await self._analyze_dataset_quality(
-                dataset_link
-            )
+            dataset_quality_metrics = await self._analyze_dataset_quality(dataset_link)
             repo_metrics.update(dataset_quality_metrics)
 
         # Calculate dataset and code score
         dataset_and_code_score = self._calculate_dataset_and_code_score(
             code_link, dataset_link, repo_metrics
         )
-        repo_metrics['dataset_and_code_score'] = dataset_and_code_score
-        repo_metrics['dataset_and_code_score_latency'] = 0  # Placeholder
+        repo_metrics["dataset_and_code_score"] = dataset_and_code_score
+        repo_metrics["dataset_and_code_score_latency"] = 0  # Placeholder
 
         return repo_metrics
 
-    async def _analyze_dataset_quality(
-        self, dataset_link: str
-    ) -> Dict[str, Any]:
+    async def _analyze_dataset_quality(self, dataset_link: str) -> dict[str, Any]:
         """
         Analyzes dataset quality for the given dataset link.
 
@@ -361,46 +348,33 @@ class MetricsCalculator:
             if "huggingface.co/datasets/" in dataset_link:
                 repo_id = extract_hf_repo_id(dataset_link)
                 dataset_quality_score, dataset_lat = await self._run_cpu_bound(
-                    self.dataset_quality_metric.calculate,
-                    DatasetQualityInput(repo_id=repo_id)
+                    self.dataset_quality_metric.calculate, DatasetQualityInput(repo_id=repo_id)
                 )
                 return {
-                    'dataset_quality': dataset_quality_score,
-                    'dataset_quality_latency': dataset_lat,
+                    "dataset_quality": dataset_quality_score,
+                    "dataset_quality_latency": dataset_lat,
                 }
             else:
                 # For non-Hugging Face datasets, we can't
                 # calculate quality with current tools
                 # Return a neutral score (0.5) to indicate "unknown quality"
-                logging.info(
-                    "Dataset quality not supported for non-HF dataset: "
-                    f"{dataset_link}"
-                )
+                logging.info("Dataset quality not supported for non-HF dataset: " f"{dataset_link}")
                 return {
-                    'dataset_quality': 0.5,  # Neutral score for unsupported
-                    'dataset_quality_latency': 0,
+                    "dataset_quality": 0.5,  # Neutral score for unsupported
+                    "dataset_quality_latency": 0,
                 }
         except ValueError as e:
-            logging.error(
-                f"Failed to extract repo_id from dataset URL "
-                f"{dataset_link}: {e}"
-            )
+            logging.error(f"Failed to extract repo_id from dataset URL " f"{dataset_link}: {e}")
         except Exception as e:
-            logging.error(
-                f"Failed to analyze dataset quality for "
-                f"{dataset_link}: {e}"
-                )
+            logging.error(f"Failed to analyze dataset quality for " f"{dataset_link}: {e}")
 
         return {
-            'dataset_quality': 0.0,
-            'dataset_quality_latency': 0,
+            "dataset_quality": 0.0,
+            "dataset_quality_latency": 0,
         }
 
     def _calculate_dataset_and_code_score(
-        self,
-        code_link: Optional[str],
-        dataset_link: Optional[str],
-        repo_metrics: Dict[str, Any]
+        self, code_link: str | None, dataset_link: str | None, repo_metrics: dict[str, Any]
     ) -> float:
         """
         Calculates a combined dataset and code score based on availability.
@@ -420,13 +394,12 @@ class MetricsCalculator:
         has_dataset_info = 1.0 if dataset_link else 0.0
 
         # Check for training code (0 or 1)
-        has_training_code = \
-            1.0 if (code_link and is_code_repository(code_link)) else 0.0
+        has_training_code = 1.0 if (code_link and is_code_repository(code_link)) else 0.0
 
         # Apply the formula from project plan
         return (0.6 * has_dataset_info) + (0.4 * has_training_code)
 
-    def _get_default_metrics(self) -> Dict[str, Any]:
+    def _get_default_metrics(self) -> dict[str, Any]:
         """
         Returns a default metric structure with zero values
         when analysis fails.
@@ -435,11 +408,18 @@ class MetricsCalculator:
             Dictionary with default metric values and latencies
         """
         return {
-            'bus_factor': 0.0, 'bus_factor_latency': 0,
-            'code_quality': 0.0, 'code_quality_latency': 0,
-            'license': 0.0, 'license_latency': 0,
-            'ramp_up_time': 0.0, 'ramp_up_time_latency': 0,
-            'size_score': {}, 'size_score_latency': 0,
-            'performance_claims': 0.0, 'performance_claims_latency': 0,
-            'dataset_quality': 0.0, 'dataset_quality_latency': 0,
+            "bus_factor": 0.0,
+            "bus_factor_latency": 0,
+            "code_quality": 0.0,
+            "code_quality_latency": 0,
+            "license": 0.0,
+            "license_latency": 0,
+            "ramp_up_time": 0.0,
+            "ramp_up_time_latency": 0,
+            "size_score": {},
+            "size_score_latency": 0,
+            "performance_claims": 0.0,
+            "performance_claims_latency": 0,
+            "dataset_quality": 0.0,
+            "dataset_quality_latency": 0,
         }

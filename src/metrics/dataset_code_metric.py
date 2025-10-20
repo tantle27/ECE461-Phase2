@@ -2,7 +2,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from src.api.git_client import GitClient
 from src.metrics.metric import Metric
@@ -14,26 +14,26 @@ class DatasetCodeInput:
 
 
 class DatasetCodeMetric(Metric):
-    def __init__(self, git_client: Optional[GitClient] = None):
+    def __init__(self, git_client: GitClient | None = None):
         self.git_client = git_client or GitClient()
 
         self.training_script_patterns = [
-            r'train\.py$',
-            r'finetune\.py$',
-            r'training\.py$',
-            r'train_.*\.py$',
-            r'fine_tune\.py$',
-            r'fine-tune\.py$',
-            r'model_train\.py$',
-            r'train_model\.py$',
-            r'run_training\.py$',
-            r'train_script\.py$',
-            r'experiment\.py$',
-            r'experiments/.*\.py$',
-            r'scripts/train.*\.py$',
-            r'scripts/finetune.*\.py$',
-            r'notebooks/.*train.*\.ipynb$',
-            r'notebooks/.*finetune.*\.ipynb$'
+            r"train\.py$",
+            r"finetune\.py$",
+            r"training\.py$",
+            r"train_.*\.py$",
+            r"fine_tune\.py$",
+            r"fine-tune\.py$",
+            r"model_train\.py$",
+            r"train_model\.py$",
+            r"run_training\.py$",
+            r"train_script\.py$",
+            r"experiment\.py$",
+            r"experiments/.*\.py$",
+            r"scripts/train.*\.py$",
+            r"scripts/finetune.*\.py$",
+            r"notebooks/.*train.*\.ipynb$",
+            r"notebooks/.*finetune.*\.ipynb$",
         ]
 
         # Enhanced dataset patterns
@@ -41,32 +41,52 @@ class DatasetCodeMetric(Metric):
             r'dataset[s]?\s*[:=]\s*["\']?([^"\'\s]+)["\']?',
             r'training\s+data[s]?\s*[:=]\s*["\']?([^"\'\s]+)["\']?',
             r'data[s]?\s*[:=]\s*["\']?([^"\'\s]+)["\']?',
-            r'https?://[^\s]+dataset[^\s]*',
-            r'https?://[^\s]+data[^\s]*',
-            r'huggingface\.co/[^\s]+',
-            r'kaggle\.com/[^\s]+',
-            r'github\.com/[^\s]+data[^\s]*',
-            r'zenodo\.org/[^\s]+',
-            r'figshare\.com/[^\s]+',
-            r'data\.world/[^\s]+',
-            r'paperswithcode\.com/datasets/[^\s]+',
-            r'mlcommons\.org/[^\s]+',
-            r'openml\.org/d/[^\s]+'
+            r"https?://[^\s]+dataset[^\s]*",
+            r"https?://[^\s]+data[^\s]*",
+            r"huggingface\.co/[^\s]+",
+            r"kaggle\.com/[^\s]+",
+            r"github\.com/[^\s]+data[^\s]*",
+            r"zenodo\.org/[^\s]+",
+            r"figshare\.com/[^\s]+",
+            r"data\.world/[^\s]+",
+            r"paperswithcode\.com/datasets/[^\s]+",
+            r"mlcommons\.org/[^\s]+",
+            r"openml\.org/d/[^\s]+",
         ]
 
         self.model_indicators = [
-            'model', 'pretrained', 'checkpoint', 'weights', 'inference',
-            'pipeline', 'api', 'serving', 'deployment'
+            "model",
+            "pretrained",
+            "checkpoint",
+            "weights",
+            "inference",
+            "pipeline",
+            "api",
+            "serving",
+            "deployment",
         ]
 
         self.dataset_indicators = [
-            'dataset', 'data', 'corpus', 'collection', 'benchmark',
-            'evaluation', 'testset', 'trainset', 'validation'
+            "dataset",
+            "data",
+            "corpus",
+            "collection",
+            "benchmark",
+            "evaluation",
+            "testset",
+            "trainset",
+            "validation",
         ]
 
         self.training_indicators = [
-            'training', 'train', 'finetune', 'experiment', 'research',
-            'baseline', 'reproduce', 'replication'
+            "training",
+            "train",
+            "finetune",
+            "experiment",
+            "research",
+            "baseline",
+            "reproduce",
+            "replication",
         ]
 
     async def calculate(self, metric_input: Any) -> float:
@@ -97,14 +117,13 @@ class DatasetCodeMetric(Metric):
     def _determine_repository_type(self, repo_url: str) -> str:
         try:
             if not os.path.exists(repo_url):
-                return 'unknown'
+                return "unknown"
 
             repo_path = Path(repo_url)
             readme_content = self.git_client.read_readme(repo_url) or ""
             readme_lower = readme_content.lower()
 
-            files = [f.name.lower() for f in
-                     repo_path.rglob("*") if f.is_file()]
+            files = [f.name.lower() for f in repo_path.rglob("*") if f.is_file()]
             dirs = [d.name.lower() for d in repo_path.rglob("*") if d.is_dir()]
 
             model_score = 0
@@ -123,12 +142,9 @@ class DatasetCodeMetric(Metric):
                 if indicator in readme_lower:
                     training_score += 1
 
-            model_files = ['model.py', 'inference.py',
-                           'predict.py', 'serve.py', 'api.py']
-            dataset_files = ['data.py', 'dataset.py',
-                             'load_data.py', 'preprocess.py']
-            training_files = ['train.py', 'finetune.py',
-                              'experiment.py', 'baseline.py']
+            model_files = ["model.py", "inference.py", "predict.py", "serve.py", "api.py"]
+            dataset_files = ["data.py", "dataset.py", "load_data.py", "preprocess.py"]
+            training_files = ["train.py", "finetune.py", "experiment.py", "baseline.py"]
 
             for file in files:
                 if any(pattern in file for pattern in model_files):
@@ -139,26 +155,24 @@ class DatasetCodeMetric(Metric):
                     training_score += 1
 
             for dir_name in dirs:
-                if 'model' in dir_name or 'checkpoint' in dir_name:
+                if "model" in dir_name or "checkpoint" in dir_name:
                     model_score += 1
-                if 'data' in dir_name or 'dataset' in dir_name:
+                if "data" in dir_name or "dataset" in dir_name:
                     dataset_score += 1
-                if 'train' in dir_name or 'experiment' in dir_name:
+                if "train" in dir_name or "experiment" in dir_name:
                     training_score += 1
 
             if model_score > dataset_score and model_score > training_score:
-                return 'model'
-            elif dataset_score > model_score \
-                    and dataset_score > training_score:
-                return 'dataset'
-            elif training_score > model_score \
-                    and training_score > dataset_score:
-                return 'training'
+                return "model"
+            elif dataset_score > model_score and dataset_score > training_score:
+                return "dataset"
+            elif training_score > model_score and training_score > dataset_score:
+                return "training"
             else:
-                return 'unknown'
+                return "unknown"
 
         except Exception:
-            return 'unknown'
+            return "unknown"
 
     def _check_dataset_info(self, repo_url: str) -> int:
         readme_content = self.git_client.read_readme(repo_url)
@@ -195,10 +209,10 @@ class DatasetCodeMetric(Metric):
             for file_path in notebook_files:
                 filename = os.path.basename(file_path).lower()
                 notebook_patterns = [
-                    r'train.*\.ipynb$',
-                    r'finetune.*\.ipynb$',
-                    r'training.*\.ipynb$',
-                    r'experiment.*\.ipynb$'
+                    r"train.*\.ipynb$",
+                    r"finetune.*\.ipynb$",
+                    r"training.*\.ipynb$",
+                    r"experiment.*\.ipynb$",
                 ]
                 for pattern in notebook_patterns:
                     if re.search(pattern, filename):
@@ -219,9 +233,17 @@ class DatasetCodeMetric(Metric):
                 return True
 
         dataset_keywords = [
-            'training data', 'data source', 'data link',
-            'download data', 'data url', 'data repository', 'data file',
-            'huggingface', 'kaggle', 'zenodo', 'figshare'
+            "training data",
+            "data source",
+            "data link",
+            "download data",
+            "data url",
+            "data repository",
+            "data file",
+            "huggingface",
+            "kaggle",
+            "zenodo",
+            "figshare",
         ]
 
         for keyword in dataset_keywords:
@@ -229,16 +251,16 @@ class DatasetCodeMetric(Metric):
                 return True
 
         dataset_context_patterns = [
-            r'dataset[s]?\s*[:=]',
-            r'dataset[s]?\s+is\s+',
-            r'dataset[s]?\s+available',
-            r'dataset[s]?\s+from',
-            r'dataset[s]?\s+at',
-            r'dataset[s]?\s+can\s+be',
-            r'using\s+dataset[s]?',
-            r'train[ed]?\s+on\s+dataset[s]?',
-            r'dataset[s]?\s+used',
-            r'dataset[s]?\s+for\s+training'
+            r"dataset[s]?\s*[:=]",
+            r"dataset[s]?\s+is\s+",
+            r"dataset[s]?\s+available",
+            r"dataset[s]?\s+from",
+            r"dataset[s]?\s+at",
+            r"dataset[s]?\s+can\s+be",
+            r"using\s+dataset[s]?",
+            r"train[ed]?\s+on\s+dataset[s]?",
+            r"dataset[s]?\s+used",
+            r"dataset[s]?\s+for\s+training",
         ]
 
         for pattern in dataset_context_patterns:
@@ -255,12 +277,26 @@ class DatasetCodeMetric(Metric):
             repo_path = Path(repo_url)
 
             dataset_file_patterns = [
-                'data.csv', 'data.json', 'data.jsonl', 'data.tsv', 'data.txt',
-                'dataset.csv', 'dataset.json', 'dataset.jsonl',
-                'train.csv', 'train.json', 'train.jsonl',
-                'test.csv', 'test.json', 'test.jsonl',
-                'validation.csv', 'validation.json', 'validation.jsonl',
-                'dev.csv', 'dev.json', 'dev.jsonl'
+                "data.csv",
+                "data.json",
+                "data.jsonl",
+                "data.tsv",
+                "data.txt",
+                "dataset.csv",
+                "dataset.json",
+                "dataset.jsonl",
+                "train.csv",
+                "train.json",
+                "train.jsonl",
+                "test.csv",
+                "test.json",
+                "test.jsonl",
+                "validation.csv",
+                "validation.json",
+                "validation.jsonl",
+                "dev.csv",
+                "dev.json",
+                "dev.jsonl",
             ]
 
             for pattern in dataset_file_patterns:
@@ -268,10 +304,19 @@ class DatasetCodeMetric(Metric):
                     return True
 
             # Check for data directories
-            data_dirs = ['data', 'datasets',
-                         'dataset', 'raw_data', 'processed_data',
-                         'data_files', 'data_dir', 'data_directory',
-                         'data_folder', 'data_path', 'data_location']
+            data_dirs = [
+                "data",
+                "datasets",
+                "dataset",
+                "raw_data",
+                "processed_data",
+                "data_files",
+                "data_dir",
+                "data_directory",
+                "data_folder",
+                "data_path",
+                "data_location",
+            ]
             for dir_name in data_dirs:
                 if (repo_path / dir_name).exists():
                     return True
@@ -282,15 +327,29 @@ class DatasetCodeMetric(Metric):
 
     def _is_training_file_by_content(self, file_path: Path) -> bool:
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, encoding="utf-8", errors="ignore") as f:
                 content = f.read().lower()
 
             training_keywords = [
-                'model.fit', 'model.train', 'trainer.train', 'train_epoch',
-                'optimizer.step', 'loss.backward', 'training_loop',
-                'fit(', 'train(', 'training', 'epoch', 'batch_size',
-                'learning_rate', 'optimizer', 'criterion', 'loss_function',
-                'train_dataloader', 'train_dataset', 'train_loader'
+                "model.fit",
+                "model.train",
+                "trainer.train",
+                "train_epoch",
+                "optimizer.step",
+                "loss.backward",
+                "training_loop",
+                "fit(",
+                "train(",
+                "training",
+                "epoch",
+                "batch_size",
+                "learning_rate",
+                "optimizer",
+                "criterion",
+                "loss_function",
+                "train_dataloader",
+                "train_dataset",
+                "train_loader",
             ]
 
             for keyword in training_keywords:
@@ -298,11 +357,12 @@ class DatasetCodeMetric(Metric):
                     return True
 
             training_imports = [
-                'from torch.optim', 'from torch.utils.data',
-                'from transformers import Trainer',
-                'from sklearn.model_selection',
-                'import tensorflow as tf',
-                'from tensorflow.keras'
+                "from torch.optim",
+                "from torch.utils.data",
+                "from transformers import Trainer",
+                "from sklearn.model_selection",
+                "import tensorflow as tf",
+                "from tensorflow.keras",
             ]
 
             for import_pattern in training_imports:
@@ -313,21 +373,18 @@ class DatasetCodeMetric(Metric):
         except Exception:
             return False
 
-    def _read_config_file(self, repo_url: str) -> Optional[str]:
+    def _read_config_file(self, repo_url: str) -> str | None:
         try:
-            config_path = os.path.join(repo_url, 'config.json')
+            config_path = os.path.join(repo_url, "config.json")
             if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, encoding="utf-8") as f:
                     return f.read()
 
-            config_files = ['config.yaml',
-                            'config.yml',
-                            'configuration.json',
-                            'settings.json']
+            config_files = ["config.yaml", "config.yml", "configuration.json", "settings.json"]
             for config_file in config_files:
                 config_path = os.path.join(repo_url, config_file)
                 if os.path.exists(config_path):
-                    with open(config_path, 'r', encoding='utf-8') as f:
+                    with open(config_path, encoding="utf-8") as f:
                         return f.read()
 
             return None
