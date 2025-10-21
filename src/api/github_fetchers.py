@@ -12,8 +12,8 @@ _GH = "https://api.github.com"
 
 def _headers() -> dict[str, str]:
     h = {"Accept": "application/vnd.github+json"}
-    if settings.github_token:
-        h["Authorization"] = f"Bearer {settings.github_token}"
+    if settings.GH_TOKEN:
+        h["Authorization"] = f"Bearer {settings.GH_TOKEN}"
     return h
 
 

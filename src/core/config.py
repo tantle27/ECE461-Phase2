@@ -5,7 +5,7 @@ class Settings(BaseSettings):  # type: ignore
     env: str = "dev"
 
     # Tokens (optional but recommended for GitHub rate limits)
-    github_token: str | None = Field(default=None, env="GITHUB_TOKEN")  # type: ignore
+    GH_TOKEN: str | None = Field(default=None, env="GH_TOKEN")  # type: ignore
 
     # HTTP behavior
     request_timeout_s: float = 15.0

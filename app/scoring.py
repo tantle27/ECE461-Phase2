@@ -139,4 +139,4 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
 # Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
 _THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
-_METRICS_CALCULATOR = MetricsCalculator(_THREAD_POOL, os.environ.get("GITHUB_TOKEN"))
+_METRICS_CALCULATOR = MetricsCalculator(_THREAD_POOL, os.environ.get("GH_TOKEN"))

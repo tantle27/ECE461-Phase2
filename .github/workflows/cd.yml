@@ -70,6 +70,35 @@ jobs:
           aws lambda wait function-updated \
             --function-name $LAMBDA_FUNCTION_NAME
 
+      - name: Update Lambda environment variables
+        env:
+          LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GENAI_API_KEY: ${{ secrets.GENAI_API_KEY }}
+        run: |
+          # Get current environment variables
+          CURRENT_VARS=$(aws lambda get-function-configuration \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --query 'Environment.Variables' \
+            --output json)
+          
+          # Merge with tokens (map GH_TOKEN to GITHUB_TOKEN for the app)
+          UPDATED_VARS=$(echo "$CURRENT_VARS" | jq \
+            --arg github "$GH_TOKEN" \
+            --arg genai "$GENAI_API_KEY" \
+            '. + {GITHUB_TOKEN: $github, GENAI_API_KEY: $genai}')
+          
+          # Update Lambda configuration
+          aws lambda update-function-configuration \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --environment "Variables=$UPDATED_VARS" \
+            --output json > /dev/null
+          
+          # Wait for update to complete
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME
+          
+          echo "✓ Environment variables updated with API tokens"
 
       - name: Notify deployment
         run: echo "Deployed ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} to Lambda function ${{ secrets.LAMBDA_FUNCTION_NAME }}"

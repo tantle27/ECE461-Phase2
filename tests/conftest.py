@@ -117,7 +117,7 @@ def process_pool():
 @pytest.fixture
 def metrics_calculator(process_pool, mock_git_client, mock_gen_ai_client, mock_hf_client):
     """Create a MetricsCalculator with mocked dependencies."""
-    calculator = MetricsCalculator(process_pool, github_token="fake_token")
+    calculator = MetricsCalculator(process_pool, GH_TOKEN="fake_token")
     calculator.git_client = mock_git_client
     calculator.gen_ai_client = mock_gen_ai_client
     calculator.hf_client = mock_hf_client
@@ -181,7 +181,7 @@ def clean_env():
     """Provide a clean environment for testing."""
     original_env = os.environ.copy()
     # Clear relevant environment variables
-    env_vars_to_clear = ["GITHUB_TOKEN", "GENAI_API_KEY", "LOG_FILE", "LOG_LEVEL"]
+    env_vars_to_clear = ["GH_TOKEN", "GENAI_API_KEY", "LOG_FILE", "LOG_LEVEL"]
     for var in env_vars_to_clear:
         os.environ.pop(var, None)
 
@@ -196,7 +196,7 @@ def clean_env():
 def test_env():
     """Set up test environment variables."""
     test_vars = {
-        "GITHUB_TOKEN": "test_github_token",
+        "GH_TOKEN": "test_GH_TOKEN",
         "GENAI_API_KEY": "test_genai_key",
         "LOG_LEVEL": "2",
         "LOG_FILE": "/tmp/test.log",

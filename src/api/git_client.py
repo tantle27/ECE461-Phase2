@@ -36,11 +36,11 @@ class GitClient:
     Client for cloning and analyzing Git repositories.
     """
 
-    def __init__(self, github_token: str | None = None):
+    def __init__(self, GH_TOKEN: str | None = None):
         """Initialize Git client."""
         self.temp_dirs: list[str] = []  # Track temp dirs for cleanup
-        token = github_token or os.environ.get("GITHUB_TOKEN") or None
-        self.github_token = token.strip() if token else None
+        token = GH_TOKEN or os.environ.get("GH_TOKEN") or None
+        self.GH_TOKEN = token.strip() if token else None
 
     def _normalize_git_url(self, url: str) -> str:
         """
@@ -71,7 +71,7 @@ class GitClient:
 
     def _inject_token(self, url: str) -> str:
         """Inject the GitHub token into an HTTPS clone URL when available."""
-        if not self.github_token:
+        if not self.GH_TOKEN:
             return url
 
         if url.startswith("git@github.com:"):
@@ -85,7 +85,7 @@ class GitClient:
         if parsed.username:
             return url  # Respect existing credentials
 
-        token = quote(self.github_token, safe="")
+        token = quote(self.GH_TOKEN, safe="")
         safe_netloc = f"{token}:x-oauth-basic@{parsed.netloc}"
         injected = urlunparse(parsed._replace(netloc=safe_netloc))
         return injected

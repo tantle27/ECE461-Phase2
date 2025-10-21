@@ -110,16 +110,16 @@ class MetricsCalculator:
     handling cases where code or dataset links may be missing.
     """
 
-    def __init__(self, process_pool: ProcessPoolExecutor, github_token: str | None = None):
+    def __init__(self, process_pool: ProcessPoolExecutor, GH_TOKEN: str | None = None):
         """
         Initialize the metrics calculator with necessary API clients and
         metric instances.
 
         Args:
             process_pool: ProcessPoolExecutor for CPU-bound operations
-            github_token: Optional GitHub token for API access
+            GH_TOKEN: Optional GitHub token for API access
         """
-        self.git_client = GitClient(github_token)
+        self.git_client = GitClient(GH_TOKEN)
         self.gen_ai_client = GenAIClient()
         self.hf_client = HuggingFaceClient()
         self.process_pool = process_pool
