@@ -54,7 +54,8 @@ class ArtifactQuery:
 
 _STORE: dict[str, Artifact] = {}
 _RATINGS_CACHE: dict[str, ModelRating] = {}
-_UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", Path(__file__).resolve().parent.parent / "uploads"))
+# Lambda: Only /tmp is writable, so default to /tmp/uploads instead of ./uploads
+_UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Simple bearer-token store for default user
