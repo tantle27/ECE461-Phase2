@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -134,9 +134,9 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     metrics = _run_async(_collect())
     total_latency_ms = int((time.time() - start_time) * 1000)
     return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
-    return _build_model_rating(artifact, model_link, metrics, total_latency_ms)
 
 
-# MetricsCalculator instance (process pool for CPU-bound tasks)
-_PROCESS_POOL = ProcessPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
-_METRICS_CALCULATOR = MetricsCalculator(_PROCESS_POOL, os.environ.get("GITHUB_TOKEN"))
+# MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
+# Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
+_THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
+_METRICS_CALCULATOR = MetricsCalculator(_THREAD_POOL, os.environ.get("GITHUB_TOKEN"))
