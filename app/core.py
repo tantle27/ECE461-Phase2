@@ -17,6 +17,7 @@ from typing import Any, cast
 from flask import Blueprint, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
+from app.db_adapter import ArtifactStore
 from app.scoring import ModelRating, _score_artifact_with_metrics
 
 logger = logging.getLogger(__name__)
@@ -49,9 +50,10 @@ class ArtifactQuery:
 
 
 # ---------------------------------------------------------------------------
-# In-memory persistence (mock for DynamoDB/S3)
+# Storage (DynamoDB-backed with in-memory fallback)
 # ---------------------------------------------------------------------------
 
+_ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
 _RATINGS_CACHE: dict[str, ModelRating] = {}
 # Lambda: Only /tmp is writable, so default to /tmp/uploads instead of ./uploads
@@ -125,26 +127,76 @@ def _store_key(artifact_type: str, artifact_id: str) -> str:
 
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
+    # Persist via adapter (writes to DynamoDB if enabled)
+    try:
+        _ARTIFACT_STORE.save(
+            artifact.metadata.type,
+            artifact.metadata.id,
+            artifact_to_dict(artifact),
+        )
+    except Exception:
+        logger.exception("Failed to persist artifact via adapter; keeping in memory only")
+    # Always keep in-memory copy (fallback)
     _STORE[_store_key(artifact.metadata.type, artifact.metadata.id)] = artifact
     return artifact
 
 
 def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
     logger.info("Fetching artifact %s/%s", artifact_type, artifact_id)
+    # Try primary store first
+    try:
+        data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
+        if data:
+            md = data.get("metadata", {})
+            return Artifact(
+                metadata=ArtifactMetadata(
+                    id=str(md.get("id", artifact_id)),
+                    name=str(md.get("name", "")),
+                    type=str(md.get("type", artifact_type)),
+                    version=str(md.get("version", "1.0.0")),
+                ),
+                data=data.get("data", {}),
+            )
+    except Exception:
+        logger.exception("Primary store fetch failed; falling back to memory")
+    # Fallback to in-memory
     return _STORE.get(_store_key(artifact_type, artifact_id))
 
 
 def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     logger.info("Listing artifacts page=%s size=%s", query.page, query.page_size)
-    filtered: list[Artifact] = [
-        item
-        for item in sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
-        if (not query.artifact_type or item.metadata.type == query.artifact_type)
-    ]
+    items: list[Artifact] = []
+    used_primary = False
+    try:
+        # Prefer primary store (DynamoDB if enabled)
+        primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
+        if primary_items:
+            for data in primary_items:
+                md = data.get("metadata", {})
+                items.append(
+                    Artifact(
+                        metadata=ArtifactMetadata(
+                            id=str(md.get("id", "")),
+                            name=str(md.get("name", "")),
+                            type=str(md.get("type", "")),
+                            version=str(md.get("version", "1.0.0")),
+                        ),
+                        data=data.get("data", {}),
+                    )
+                )
+            used_primary = True
+    except Exception:
+        logger.exception("Primary store list failed; falling back to memory")
+    if not used_primary:
+        items = [
+            item
+            for item in sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
+            if (not query.artifact_type or item.metadata.type == query.artifact_type)
+        ]
     if query.name:
         name_lower = query.name.lower()
-        filtered = [item for item in filtered if name_lower in item.metadata.name.lower()]
-    return _paginate_artifacts(filtered, query.page, query.page_size)
+        items = [item for item in items if name_lower in item.metadata.name.lower()]
+    return _paginate_artifacts(items, query.page, query.page_size)
 
 
 def reset_storage() -> None:
