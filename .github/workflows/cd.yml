@@ -83,20 +83,21 @@ jobs:
             --output json)
           
           # Merge with tokens (map GH_TOKEN to GITHUB_TOKEN for the app)
-          UPDATED_VARS=$(echo "$CURRENT_VARS" | jq \
+          # Compact JSON to avoid newline issues
+          UPDATED_VARS=$(echo "$CURRENT_VARS" | jq -c \
             --arg github "$GH_TOKEN" \
             --arg genai "$GENAI_API_KEY" \
             '. + {GITHUB_TOKEN: $github, GENAI_API_KEY: $genai}')
           
-          # Update Lambda configuration
+          # Update Lambda configuration using compact JSON
           aws lambda update-function-configuration \
-            --function-name $LAMBDA_FUNCTION_NAME \
-            --environment "Variables=$UPDATED_VARS" \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --environment Variables="$UPDATED_VARS" \
             --output json > /dev/null
           
           # Wait for update to complete
           aws lambda wait function-updated \
-            --function-name $LAMBDA_FUNCTION_NAME
+            --function-name "$LAMBDA_FUNCTION_NAME"
           
           echo "✓ Environment variables updated with API tokens"
 
