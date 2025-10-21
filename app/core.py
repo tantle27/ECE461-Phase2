@@ -386,8 +386,8 @@ def login_route() -> tuple[Response, int] | Response:
 
 
 @blueprint.route("/health", methods=["GET"])
-def health():
-    return {"ok": True}, 200
+def health() -> tuple[Response, int]:
+    return jsonify({"ok": True}), 200
 
 
 _OPENAPI = {
