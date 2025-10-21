@@ -385,25 +385,9 @@ def login_route() -> tuple[Response, int] | Response:
     return jsonify({"message": "invalid credentials"}), 401
 
 
-@blueprint.route("/health", methods=["GET"])
-def health_route() -> tuple[Response, int] | Response:
-    _require_auth()
-    last = list(_REQUEST_TIMES)[-1000:]
-    return (
-        jsonify(
-            {
-                "uptime_sec": int(time.time() - ps_start_time),
-                "requests_last_1000": len(last),
-                "ok": _STATS["ok"],
-                "err": _STATS["err"],
-                "p50_ms": int(_percentile(last, 0.50) * 1000),
-                "p95_ms": int(_percentile(last, 0.95) * 1000),
-                "p99_ms": int(_percentile(last, 0.99) * 1000),
-            }
-        ),
-        200,
-    )
-
+@app.route("/health", methods=["GET"])
+def health():
+    return {"ok": True}, 200
 
 _OPENAPI = {
     "openapi": "3.0.3",
