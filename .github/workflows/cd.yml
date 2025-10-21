@@ -78,28 +78,32 @@ jobs:
         run: |
           # Get current environment variables
           CURRENT_VARS=$(aws lambda get-function-configuration \
-            --function-name $LAMBDA_FUNCTION_NAME \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
             --query 'Environment.Variables' \
             --output json)
-          
-          # Merge with tokens (map GH_TOKEN to GITHUB_TOKEN for the app)
-          # Compact JSON to avoid newline issues
+
+          # Merge with tokens conditionally (only if provided)
           UPDATED_VARS=$(echo "$CURRENT_VARS" | jq -c \
-            --arg github "$GH_TOKEN" \
+            --arg gh "$GH_TOKEN" \
             --arg genai "$GENAI_API_KEY" \
-            '. + {GITHUB_TOKEN: $github, GENAI_API_KEY: $genai}')
-          
-          # Update Lambda configuration using compact JSON
+            '. as $e
+            | (if ($gh|length) > 0 then $e + {GH_TOKEN: $gh} else $e end)
+            | (if ($genai|length) > 0 then . + {GENAI_API_KEY: $genai} else . end)')
+
+          # Write payload to file to avoid CLI quoting issues
+          ENV_FILE=$(mktemp)
+          echo "{\"Variables\": $UPDATED_VARS}" > "$ENV_FILE"
+
+          # Update Lambda configuration using file:// JSON
           aws lambda update-function-configuration \
             --function-name "$LAMBDA_FUNCTION_NAME" \
-            --environment Variables="$UPDATED_VARS" \
+            --environment file://"$ENV_FILE" \
             --output json > /dev/null
-          
-          # Wait for update to complete
-          aws lambda wait function-updated \
-            --function-name "$LAMBDA_FUNCTION_NAME"
-          
-          echo "✓ Environment variables updated with API tokens"
+
+          # Wait for update
+          aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME"
+
+          echo "✓ Environment variables updated (GH_TOKEN/GENAI_API_KEY applied if provided)"
 
       - name: Notify deployment
         run: echo "Deployed ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:${{ github.sha }} to Lambda function ${{ secrets.LAMBDA_FUNCTION_NAME }}"
