@@ -385,9 +385,10 @@ def login_route() -> tuple[Response, int] | Response:
     return jsonify({"message": "invalid credentials"}), 401
 
 
-@app.route("/health", methods=["GET"])
+@blueprint.route("/health", methods=["GET"])
 def health():
     return {"ok": True}, 200
+
 
 _OPENAPI = {
     "openapi": "3.0.3",
