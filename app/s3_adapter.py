@@ -31,6 +31,8 @@ S3_PREFIX = os.environ.get("S3_PREFIX", "uploads").strip("/")
 S3_SSE = os.environ.get("S3_SSE")  # None|AES256|aws:kms
 S3_KMS_KEY_ID = os.environ.get("S3_KMS_KEY_ID")
 
+logger.info("S3 module init: USE_S3=%s S3_BUCKET=%s S3_REGION=%s", USE_S3, S3_BUCKET, S3_REGION)
+
 s3_client = None
 if USE_S3:
     try:
@@ -57,7 +59,9 @@ class S3Storage:
 
     def put_file(self, fileobj: io.BufferedReader | io.BytesIO, key_rel: str, content_type: Optional[str] = None) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
-            raise RuntimeError("S3Storage not enabled")
+                logger.error("S3Storage.put_file failed precondition: enabled=%s, s3_client=%s, bucket=%s", self.enabled, s3_client is not None, self.bucket)
+                raise RuntimeError("S3Storage not enabled")
+            logger.info("S3Storage.put_file: bucket=%s key=%s", self.bucket, self._key(key_rel))
         params: dict[str, Any] = {
             "Bucket": self.bucket,
             "Key": self._key(key_rel),
