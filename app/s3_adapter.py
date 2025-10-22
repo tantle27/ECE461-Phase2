@@ -73,10 +73,14 @@ class S3Storage:
             params["ServerSideEncryption"] = S3_SSE
             if S3_SSE == "aws:kms" and S3_KMS_KEY_ID:
                 params["SSEKMSKeyId"] = S3_KMS_KEY_ID
-        resp = s3_client.put_object(**params)
-        version_id = resp.get("VersionId")
-        # Head the object for size and content type
-        head = s3_client.head_object(Bucket=self.bucket, Key=params["Key"], VersionId=version_id) if version_id else s3_client.head_object(Bucket=self.bucket, Key=params["Key"])
+        try:
+            resp = s3_client.put_object(**params)
+            version_id = resp.get("VersionId")
+            # Head the object for size and content type
+            head = s3_client.head_object(Bucket=self.bucket, Key=params["Key"], VersionId=version_id) if version_id else s3_client.head_object(Bucket=self.bucket, Key=params["Key"])
+        except Exception as e:
+            logger.exception("S3 put_object/head_object failed: %s | params: bucket=%s key=%s", e, self.bucket, params.get("Key"))
+            raise
         return {
             "bucket": self.bucket,
             "key": params["Key"],
