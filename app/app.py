@@ -1,5 +1,17 @@
 from flask import Flask
 
+# Load registry secrets early so GH_TOKEN / GENAI_API_KEY are available
+# to modules that import configuration during startup. This import is
+# optional and failures are logged — we don't want missing boto3 or
+# IAM perms to prevent the app from starting.
+try:
+    # Use the src package path used elsewhere in the project
+    from src.core import secrets_loader  # type: ignore
+except Exception:
+    import logging
+
+    logging.exception("Failed to import secrets_loader; continuing without Secrets Manager lookup")
+
 from app.core import blueprint
 
 
