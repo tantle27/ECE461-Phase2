@@ -46,6 +46,7 @@ class Artifact:
 class ArtifactQuery:
     artifact_type: str | None = None
     name: str | None = None
+    types: list[str] = field(default_factory=list)
     page: int = 1
     page_size: int = 25
 
@@ -196,6 +197,11 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
             for item in sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
             if (not query.artifact_type or item.metadata.type == query.artifact_type)
         ]
+    
+    # Apply types filter if provided (OpenAPI spec requirement)
+    if query.types:
+        items = [item for item in items if item.metadata.type in query.types]
+    
     if query.name:
         name_lower = query.name.lower()
         items = [item for item in items if name_lower in item.metadata.name.lower()]
@@ -255,9 +261,12 @@ def _safe_int(value: Any, default: int) -> int:
 def _parse_query(payload: dict[str, Any]) -> ArtifactQuery:
     page = _safe_int(payload.get("page", 1), 1)
     page_size = _safe_int(payload.get("page_size", 25), 25)
+    types_raw = payload.get("types", [])
+    types_list = types_raw if isinstance(types_raw, list) else []
     return ArtifactQuery(
         artifact_type=payload.get("artifact_type"),
         name=payload.get("name"),
+        types=types_list,
         page=page if page > 0 else 1,
         page_size=page_size if 1 <= page_size <= 100 else 25,
     )
@@ -347,6 +356,19 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
             "Artifact 'data' must be a JSON object",
         )
     normalized: dict[str, Any] = dict(data)
+    
+    # Support OpenAPI spec format: {"url": "..."}
+    if "url" in normalized and not normalized.get("model_link"):
+        url = normalized.get("url")
+        if isinstance(url, str) and url.strip():
+            # Map url to the appropriate link field based on artifact_type
+            if artifact_type == "model":
+                normalized["model_link"] = url.strip()
+            elif artifact_type == "code":
+                normalized["code_link"] = url.strip()
+            elif artifact_type == "dataset":
+                normalized["dataset_link"] = url.strip()
+    
     if artifact_type == "model":
         model_link_raw = (
             normalized.get("model_link") or normalized.get("model_url") or normalized.get("model")
@@ -354,7 +376,7 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
         if not isinstance(model_link_raw, str) or not model_link_raw.strip():
             raise_error(
                 HTTPStatus.BAD_REQUEST,
-                "Model artifacts must include a non-empty 'model_link' field",
+                "Model artifacts must include a non-empty 'model_link' field or 'url' field",
             )
         # Type narrowing: model_link_raw is guaranteed to be str here
         model_link_str = cast(str, model_link_raw)
@@ -525,22 +547,52 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
 def enumerate_artifacts_route() -> tuple[Response, int] | Response:
-    """Enumerate artifacts matching ArtifactQuery; returns list w/ offset header for pagination."""
+    """Enumerate artifacts matching ArtifactQuery; returns list w/ offset header for pagination.
+    
+    OpenAPI spec expects an array of ArtifactQuery objects with optional offset parameter.
+    """
     _require_auth()
     payload = _json_body()
-    query = _parse_query(payload)
+    
+    # Support both single query object and array of queries (OpenAPI spec uses array)
+    if isinstance(payload, list):
+        # OpenAPI spec format: array of queries
+        # For simplicity, use the first query if multiple provided
+        if not payload:
+            return jsonify({"message": "Query array cannot be empty"}), 400
+        query_dict = payload[0]
+    else:
+        # Legacy format: single query object
+        query_dict = payload
+    
+    # Parse offset from query args if provided
+    offset_str = request.args.get("offset")
+    if offset_str:
+        try:
+            offset = int(offset_str)
+            # Convert offset to page number
+            page_size = query_dict.get("page_size", 25)
+            query_dict["page"] = (offset // page_size) + 1 if page_size > 0 else 1
+        except (ValueError, TypeError):
+            pass
+    
+    query = _parse_query(query_dict)
     result = list_artifacts(query)
 
-    # Calculate offset for next page (Lambda spec requirement)
+    # Calculate offset for next page (OpenAPI spec requirement)
     current_page = result.get("page", 1)
     page_size = result.get("page_size", 25)
     total = result.get("total", 0)
     next_offset = current_page * page_size
 
-    response = jsonify(result)
+    # OpenAPI spec expects array of ArtifactMetadata, not the full result object
+    artifacts_list = result.get("artifacts", [])
+    
+    response = jsonify(artifacts_list)
     # Add offset header if there are more pages
     if next_offset < total:
-        response.headers["X-Next-Offset"] = str(next_offset)
+        response.headers["offset"] = str(next_offset)
+    return response, 200
     return response, 200
 
 
@@ -832,6 +884,104 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     )
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
     return resp
+
+
+@blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
+@_record_timing
+def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+    """Calculate storage cost for artifact in MB. Supports ?dependency=true for recursive cost."""
+    _require_auth()
+    dependency = request.args.get("dependency", "false").lower() == "true"
+    
+    art = fetch_artifact(artifact_type, artifact_id)
+    if art is None:
+        return jsonify({"message": "Artifact not found"}), 404
+    
+    try:
+        # Calculate standalone cost for this artifact
+        standalone_cost_mb = _calculate_artifact_size_mb(art)
+        
+        if not dependency:
+            # Simple case: just return total_cost
+            return jsonify({
+                artifact_id: {
+                    "total_cost": round(standalone_cost_mb, 2)
+                }
+            }), 200
+        
+        # Complex case: calculate costs for all dependencies
+        visited: set[str] = set()
+        cost_map: dict[str, dict[str, float]] = {}
+        
+        def _collect_costs(current_art, current_id: str):
+            if current_id in visited:
+                return
+            visited.add(current_id)
+            
+            # Calculate standalone cost
+            size_mb = _calculate_artifact_size_mb(current_art)
+            cost_map[current_id] = {
+                "standalone_cost": round(size_mb, 2),
+                "total_cost": round(size_mb, 2)  # Will update after traversal
+            }
+            
+            # Find dependencies (look for references in data)
+            if isinstance(current_art.data, dict):
+                for key in ("code_link", "dataset_link", "base_model_id", "dependencies"):
+                    dep_val = current_art.data.get(key)
+                    if isinstance(dep_val, str) and dep_val.strip():
+                        # Try to resolve as artifact_id
+                        dep_art = fetch_artifact(artifact_type, dep_val)
+                        if dep_art:
+                            _collect_costs(dep_art, dep_val)
+                    elif isinstance(dep_val, list):
+                        for dep_id in dep_val:
+                            if isinstance(dep_id, str):
+                                dep_art = fetch_artifact(artifact_type, dep_id)
+                                if dep_art:
+                                    _collect_costs(dep_art, dep_id)
+        
+        # Traverse dependency tree
+        _collect_costs(art, artifact_id)
+        
+        # Calculate total costs (sum all dependencies)
+        total_sum = sum(c["standalone_cost"] for c in cost_map.values())
+        for aid in cost_map:
+            cost_map[aid]["total_cost"] = round(total_sum, 2)
+        
+        return jsonify(cost_map), 200
+        
+    except Exception:
+        logger.exception("Failed to calculate artifact cost for %s", artifact_id)
+        return jsonify({"message": "The artifact cost calculator encountered an error"}), 500
+
+
+def _calculate_artifact_size_mb(artifact) -> float:
+    """Calculate artifact size in MB from S3 metadata or local file."""
+    size_bytes = 0
+    
+    # Try S3 metadata first
+    if isinstance(artifact.data, dict):
+        if artifact.data.get("size"):
+            size_bytes = int(artifact.data.get("size", 0))
+        elif artifact.data.get("s3_key") and _S3.enabled:
+            try:
+                key = artifact.data.get("s3_key")
+                ver = artifact.data.get("s3_version_id")
+                _, meta = _S3.get_object(key, ver)
+                size_bytes = int(meta.get("size", 0))
+            except Exception:
+                logger.warning("Failed to get S3 object size for %s", artifact.metadata.id)
+        
+        # Fallback to local file
+        if size_bytes == 0 and artifact.data.get("path"):
+            rel = artifact.data.get("path")
+            zpath = (_UPLOAD_DIR.parent / rel).resolve()
+            if zpath.exists():
+                size_bytes = zpath.stat().st_size
+    
+    # Convert bytes to MB
+    return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
 
 # -------------------- HF ingest gate --------------------

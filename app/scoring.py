@@ -63,6 +63,9 @@ def _build_model_rating(
         "license",
         "performance_claims",
         "ramp_up_time",
+        "reproducibility",
+        "reviewedness",
+        "tree_score",
     ]
     latency_key_map = {
         "bus_factor_latency": "bus_factor",
@@ -73,11 +76,22 @@ def _build_model_rating(
         "performance_claims_latency": "performance_claims",
         "ramp_up_time_latency": "ramp_up_time",
         "size_score_latency": "size_score",
+        "reproducibility_latency": "reproducibility",
+        "reviewedness_latency": "reviewedness",
+        "tree_score_latency": "tree_score",
     }
 
     scores: dict[str, Any] = {
         key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None
     }
+    
+    # Add placeholder scores for OpenAPI spec compliance (if not present)
+    if "reproducibility" not in scores:
+        scores["reproducibility"] = 0.0
+    if "reviewedness" not in scores:
+        scores["reviewedness"] = 0.0
+    if "tree_score" not in scores:
+        scores["tree_score"] = 0.0
     scores["net_score"] = net_score
     if "size_score" in metrics:
         scores["size_score"] = metrics["size_score"]
@@ -88,6 +102,14 @@ def _build_model_rating(
         if latency_key in metrics
     }
     latencies["net_score"] = total_latency_ms
+    
+    # Add placeholder latencies for OpenAPI spec compliance (if not present)
+    if "reproducibility" not in latencies:
+        latencies["reproducibility"] = 0
+    if "reviewedness" not in latencies:
+        latencies["reviewedness"] = 0
+    if "tree_score" not in latencies:
+        latencies["tree_score"] = 0
 
     summary: dict[str, Any] = {
         "category": artifact.metadata.type.upper(),

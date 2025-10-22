@@ -29,40 +29,41 @@ def create_table():
     try:
         print(f"Creating DynamoDB table '{TABLE_NAME}'...")
 
+        # dynamodb_setup.py
         response = dynamodb.create_table(
-            TableName=TABLE_NAME,
+            TableName="model_registry",
             KeySchema=[
-                {"AttributeName": "PK", "KeyType": "HASH"},  # Partition key
-                {"AttributeName": "SK", "KeyType": "RANGE"}, # Sort key
+                {"AttributeName": "PK", "KeyType": "HASH"},  # MODEL#<id>
+                {"AttributeName": "SK", "KeyType": "RANGE"}, # VER#<semver> or ARTIFACT#/NOTE#
             ],
             AttributeDefinitions=[
                 {"AttributeName": "PK", "AttributeType": "S"},
                 {"AttributeName": "SK", "AttributeType": "S"},
-                {"AttributeName": "GSI1PK", "AttributeType": "S"},  # status
-                {"AttributeName": "GSI1SK", "AttributeType": "S"},
-                {"AttributeName": "GSI2PK", "AttributeType": "S"},  # tag
-                {"AttributeName": "GSI2SK", "AttributeType": "S"},
+                {"AttributeName": "status", "AttributeType": "S"},
+                {"AttributeName": "tag", "AttributeType": "S"},
+                {"AttributeName": "created_at", "AttributeType": "S"},
             ],
             GlobalSecondaryIndexes=[
                 {
-                    "IndexName": "GSI1",  # Filter by status
+                    "IndexName": "status_index",
                     "KeySchema": [
-                        {"AttributeName": "GSI1PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI1SK", "KeyType": "RANGE"},
+                        {"AttributeName": "status", "KeyType": "HASH"},
+                        {"AttributeName": "created_at", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 },
                 {
-                    "IndexName": "GSI2",  # Filter by tag
+                    "IndexName": "tags_index",
                     "KeySchema": [
-                        {"AttributeName": "GSI2PK", "KeyType": "HASH"},
-                        {"AttributeName": "GSI2SK", "KeyType": "RANGE"},
+                        {"AttributeName": "tag", "KeyType": "HASH"},
+                        {"AttributeName": "created_at", "KeyType": "RANGE"},
                     ],
                     "Projection": {"ProjectionType": "ALL"},
                 },
             ],
-            BillingMode="PAY_PER_REQUEST",  # serverless-friendly
+            BillingMode="PAY_PER_REQUEST",
         )
+
 
         waiter = dynamodb.get_waiter("table_exists")
         waiter.wait(TableName=TABLE_NAME)
