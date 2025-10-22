@@ -16,7 +16,6 @@ A lightweight, serverless **model registry** that stores and evaluates ML artifa
 * **Platform:** AWS Lambda (Function URL)
 * **Region:** `us-east-2`
 * **Runtime:** Python 3.11
-* **URL:** `https://ot47z7sef6wrgsvcw3bmrh752e0hzclv.lambda-url.us-east-2.on.aws`
 
 ### Storage
 
