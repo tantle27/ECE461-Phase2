@@ -11,7 +11,6 @@ log.setLevel(logging.INFO)
 
 def _transform_lambda_function_url_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """Transform Lambda Function URL event format to API Gateway format for awsgi.
-    
     Lambda Function URLs use a different event structure than API Gateway:
     - requestContext.http.method instead of httpMethod
     - rawPath instead of path
@@ -35,8 +34,7 @@ def _transform_lambda_function_url_event(event: Dict[str, Any]) -> Dict[str, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """AWS Lambda handler that adapts API Gateway/Function URL events to Flask WSGI."""
-    log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
-    
+    log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))    
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
     
