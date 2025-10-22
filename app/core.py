@@ -14,10 +14,11 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, cast
 
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, jsonify, request, send_file, redirect
 from werkzeug.utils import secure_filename
 
-from app.db_adapter import ArtifactStore
+from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
+from app.s3_adapter import S3Storage
 from app.scoring import ModelRating, _score_artifact_with_metrics
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,8 @@ class ArtifactQuery:
 _ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
 _RATINGS_CACHE: dict[str, ModelRating] = {}
+# Optional S3 blob store (enabled via USE_S3=true)
+_S3 = S3Storage()
 # Lambda: Only /tmp is writable, so default to /tmp/uploads instead of ./uploads
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -619,24 +622,57 @@ def upload_create_route() -> tuple[Response, int] | Response:
     if not safe_name:
         return jsonify({"message": "Invalid filename"}), 400
 
-    dest = _UPLOAD_DIR / safe_name
-    counter = 1
-    base = dest.stem
-    ext = dest.suffix
-    while dest.exists():
-        dest = _UPLOAD_DIR / f"{base}_{counter}{ext}"
-        counter += 1
-    f.save(dest)
-
     artifact_name = request.form.get("name", safe_name)
     artifact_type = request.form.get("artifact_type", "file")
     artifact_id = request.form.get("id", safe_name)
-    data = {
-        "path": str(dest.relative_to(_UPLOAD_DIR.parent)),
-        "original_filename": f.filename,
-        "content_type": f.mimetype,
-        "size": dest.stat().st_size,
-    }
+
+    data: dict[str, Any]
+    # If S3 is enabled, upload directly to S3; else save to /tmp/uploads
+    if _S3.enabled:
+        key_rel = f"{artifact_type}/{artifact_id}/{safe_name}"
+        try:
+            # Use stream without loading full file in memory when possible
+            meta = _S3.put_file(f.stream, key_rel, f.mimetype or "application/octet-stream")
+            data = {
+                "s3_bucket": meta["bucket"],
+                "s3_key": meta["key"],
+                "s3_version_id": meta.get("version_id"),
+                "original_filename": f.filename,
+                "content_type": meta.get("content_type") or f.mimetype,
+                "size": int(meta.get("size", 0)),
+            }
+        except Exception:
+            logger.exception("S3 upload failed; falling back to local storage")
+            # Fall back to local disk
+            dest = _UPLOAD_DIR / safe_name
+            counter = 1
+            base = dest.stem
+            ext = dest.suffix
+            while dest.exists():
+                dest = _UPLOAD_DIR / f"{base}_{counter}{ext}"
+                counter += 1
+            f.save(dest)
+            data = {
+                "path": str(dest.relative_to(_UPLOAD_DIR.parent)),
+                "original_filename": f.filename,
+                "content_type": f.mimetype,
+                "size": dest.stat().st_size,
+            }
+    else:
+        dest = _UPLOAD_DIR / safe_name
+        counter = 1
+        base = dest.stem
+        ext = dest.suffix
+        while dest.exists():
+            dest = _UPLOAD_DIR / f"{base}_{counter}{ext}"
+            counter += 1
+        f.save(dest)
+        data = {
+            "path": str(dest.relative_to(_UPLOAD_DIR.parent)),
+            "original_filename": f.filename,
+            "content_type": f.mimetype,
+            "size": dest.stat().st_size,
+        }
     art = Artifact(
         metadata=ArtifactMetadata(
             id=artifact_id,
@@ -711,6 +747,45 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     art = fetch_artifact("model", artifact_id)
     if art is None:
         return jsonify({"message": "Artifact not found"}), 404
+    # Prefer S3 if present in artifact metadata
+    if isinstance(art.data, dict) and art.data.get("s3_key") and art.data.get("s3_bucket") and _S3.enabled:
+        key = art.data.get("s3_key")
+        ver = art.data.get("s3_version_id")
+        try:
+            if part == "all":
+                # Stream original object (assumed zip) to client
+                body, meta = _S3.get_object(key, ver)
+                resp = send_file(
+                    io.BytesIO(body),
+                    as_attachment=True,
+                    download_name=f"{artifact_id}.zip",
+                    mimetype=meta.get("content_type") or "application/zip",
+                )
+                resp.headers["X-Size-Cost-Bytes"] = str(int(meta.get("size", len(body))))
+                return resp
+            # For parts, load zip into memory and filter
+            body, meta = _S3.get_object(key, ver)
+            size_bytes = int(meta.get("size", len(body)))
+            with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                    prefix = f"{part.strip('/')}/"
+                    for info in zin.infolist():
+                        if info.filename.startswith(prefix):
+                            zout.writestr(info, zin.read(info))
+                buf.seek(0)
+            resp = send_file(
+                buf,
+                as_attachment=True,
+                download_name=f"{artifact_id}-{part}.zip",
+                mimetype="application/zip",
+            )
+            resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+            return resp
+        except Exception:
+            logger.exception("Failed to serve from S3; falling back to local if available")
+
+    # Fallback to local disk
     rel = art.data.get("path")
     if not rel:
         return jsonify({"message": "Model has no stored package path"}), 400
@@ -842,16 +917,28 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     art = fetch_artifact("model", artifact_id)
     if not art:
         return jsonify({"message": "Artifact not found"}), 404
-    rel = art.data.get("path")
-    if not rel:
-        return jsonify({"message": "No package path"}), 400
-    zpath = (_UPLOAD_DIR.parent / rel).resolve()
-    if not zpath.exists():
-        return jsonify({"message": "Package not found"}), 404
+    # Support S3-backed blobs
+    s3_key = art.data.get("s3_key") if isinstance(art.data, dict) else None
+    s3_ver = art.data.get("s3_version_id") if isinstance(art.data, dict) else None
+    zbody: bytes | None = None
+    if s3_key and _S3.enabled:
+        try:
+            zbody, _meta = _S3.get_object(s3_key, s3_ver)
+        except Exception:
+            logger.exception("Failed to fetch S3 object for lineage")
+            zbody = None
+    if zbody is None:
+        rel = art.data.get("path")
+        if not rel:
+            return jsonify({"message": "No package path"}), 400
+        zpath = (_UPLOAD_DIR.parent / rel).resolve()
+        if not zpath.exists():
+            return jsonify({"message": "Package not found"}), 404
 
     parents: list[str] = []
     try:
-        with zipfile.ZipFile(str(zpath), "r") as zf:
+        zf_ctx = zipfile.ZipFile(io.BytesIO(zbody), "r") if zbody is not None else zipfile.ZipFile(str(zpath), "r")
+        with zf_ctx as zf:
             cand = [n for n in zf.namelist() if n.endswith("config.json")]
             for name in cand:
                 try:
@@ -900,5 +987,22 @@ def license_check_route() -> tuple[Response, int] | Response:
 @blueprint.route("/reset", methods=["DELETE"])
 def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
+    scope = str(request.args.get("scope", "memory")).lower()
     reset_storage()
-    return jsonify({"message": "Registry reset successful"}), 200
+
+    # Optional hard reset: clear DynamoDB-backed stores as well
+    if scope in {"all", "db", "dynamodb"}:
+        try:
+            ArtifactStore().clear()
+        except Exception:
+            logger.exception("Failed to clear ArtifactStore (DynamoDB)")
+        try:
+            TokenStore().clear()
+        except Exception:
+            logger.exception("Failed to clear TokenStore (DynamoDB)")
+        try:
+            RatingsCache().clear()
+        except Exception:
+            logger.exception("Failed to clear RatingsCache (DynamoDB)")
+
+    return jsonify({"message": "Registry reset successful", "scope": scope}), 200
