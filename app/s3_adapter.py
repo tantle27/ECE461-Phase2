@@ -30,6 +30,7 @@ S3_REGION = os.environ.get("S3_REGION", os.environ.get("AWS_REGION", "us-east-2"
 S3_PREFIX = os.environ.get("S3_PREFIX", "uploads").strip("/")
 S3_SSE = os.environ.get("S3_SSE")  # None|AES256|aws:kms
 S3_KMS_KEY_ID = os.environ.get("S3_KMS_KEY_ID")
+S3_ACL = os.environ.get("S3_ACL")  # e.g., bucket-owner-full-control (optional)
 
 logger.info("S3 module init: USE_S3=%s S3_BUCKET=%s S3_REGION=%s", USE_S3, S3_BUCKET, S3_REGION)
 
@@ -73,6 +74,9 @@ class S3Storage:
             params["ServerSideEncryption"] = S3_SSE
             if S3_SSE == "aws:kms" and S3_KMS_KEY_ID:
                 params["SSEKMSKeyId"] = S3_KMS_KEY_ID
+        if S3_ACL:
+            params["ACL"] = S3_ACL
+            logger.info("S3Storage.put_file: applying ACL=%s", S3_ACL)
         try:
             resp = s3_client.put_object(**params)
             version_id = resp.get("VersionId")
