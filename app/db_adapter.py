@@ -8,6 +8,7 @@ for local development.
 import json
 import logging
 import os
+from decimal import Decimal
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ class ArtifactStore:
                 metrics = data.get("metrics") or {}
                 trust_score = data.get("trust_score") or metrics.get("net_score", 0.0)
                 
-                # Build DynamoDB item
+                # Build DynamoDB item (convert floats to Decimal for DynamoDB)
                 item = {
                     "PK": self._make_pk(artifact_type, artifact_id),
                     "SK": self._make_sk(version),
@@ -73,8 +74,8 @@ class ArtifactStore:
                     "version": version,
                     "status": metadata.get("status") or data.get("status", "unvetted"),
                     "tags": metadata.get("tags") or data.get("tags", []),
-                    # Metrics and scores
-                    "trust_score": float(trust_score) if trust_score else 0.0,
+                    # Metrics and scores (use Decimal for DynamoDB)
+                    "trust_score": Decimal(str(trust_score)) if trust_score else Decimal("0.0"),
                     "metrics": json.dumps(metrics) if metrics else json.dumps({}),
                     # GSI keys for fast enumeration
                     "GSI1PK": f"TYPE#{artifact_type}",
@@ -186,9 +187,9 @@ class ArtifactStore:
         """List artifacts with trust_score >= min_score."""
         if self.use_dynamodb and dynamodb_table:
             try:
-                # Scan with filter (could use GSI3 sorted by trust_score for efficiency)
+                # Scan with filter (convert float to Decimal for DynamoDB comparison)
                 filter_expr = "trust_score >= :min_score"
-                expr_values = {":min_score": min_score}
+                expr_values = {":min_score": Decimal(str(min_score))}
                 
                 if artifact_type:
                     filter_expr += " AND artifact_type = :type"
@@ -200,8 +201,8 @@ class ArtifactStore:
                     Limit=limit,
                 )
                 items = response.get("Items", [])
-                # Sort by trust_score descending
-                items.sort(key=lambda x: x.get("trust_score", 0.0), reverse=True)
+                # Sort by trust_score descending (convert Decimal to float for sorting)
+                items.sort(key=lambda x: float(x.get("trust_score", 0)), reverse=True)
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
                 logger.error(f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory")
