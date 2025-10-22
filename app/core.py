@@ -715,6 +715,14 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     try:
         rating = _score_artifact_with_metrics(artifact)
         _RATINGS_CACHE[artifact_id] = rating
+        
+        # Persist metrics and scores back to the artifact
+        if isinstance(artifact.data, dict):
+            artifact.data["metrics"] = rating.scores
+            artifact.data["trust_score"] = rating.scores.get("net_score", 0.0)
+            artifact.data["last_rated"] = rating.generated_at.isoformat() + "Z"
+            save_artifact(artifact)
+            logger.info(f"Saved metrics for {artifact_id}: trust_score={artifact.data['trust_score']}")
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 400
     except Exception:
