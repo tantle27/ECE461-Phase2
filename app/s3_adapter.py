@@ -83,7 +83,11 @@ class S3Storage:
             # Head the object for size and content type
             head = s3_client.head_object(Bucket=self.bucket, Key=params["Key"], VersionId=version_id) if version_id else s3_client.head_object(Bucket=self.bucket, Key=params["Key"])
         except Exception as e:
-            logger.exception("S3 put_object/head_object failed: %s | params: bucket=%s key=%s", e, self.bucket, params.get("Key"))
+            try:
+                safe_params = {k: v for k, v in params.items() if k != "Body"}
+            except Exception:
+                safe_params = {"Bucket": self.bucket, "Key": params.get("Key"), "ContentType": params.get("ContentType"), "ACL": params.get("ACL"), "ServerSideEncryption": params.get("ServerSideEncryption")}
+            logger.exception("S3 put_object/head_object failed: %s | params=%s", e, safe_params)
             raise
         return {
             "bucket": self.bucket,
