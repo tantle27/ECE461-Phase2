@@ -121,6 +121,11 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     # Type narrowing: model_link is now guaranteed to be str (not None)
     model_link_str = cast(str, model_link)
 
+    logger.info(
+        f"Scoring artifact {artifact.metadata.id}: code_link={code_link}, "
+        f"dataset_link={dataset_link}, model_link={model_link_str}"
+    )
+
     start_time = time.time()
 
     async def _collect() -> dict[str, Any]:

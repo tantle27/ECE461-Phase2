@@ -187,6 +187,8 @@ class MetricsCalculator:
             logging.error(f"Failed to clone repository: {url}")
             return self._get_default_metrics()
 
+        logging.info(f"Successfully cloned {url} to {repo_path}")
+
         try:
             # Extract repo_id if this is a Hugging Face dataset URL
             repo_id = None
@@ -295,13 +297,18 @@ class MetricsCalculator:
         primary_repo_url = None
         if code_link and is_code_repository(code_link):
             primary_repo_url = code_link
+            logging.info(f"Using code_link as primary repo: {code_link}")
         elif is_code_repository(model_link):
             primary_repo_url = model_link
+            logging.info(f"Using model_link as primary repo (code_link not a repo): {model_link}")
 
         # If no code repository available,
         # try to analyze the model URL as repository
         if not primary_repo_url:
             primary_repo_url = model_link
+            logging.info(f"Using model_link as fallback primary repo: {model_link}")
+        else:
+            logging.info(f"Primary repo selected: {primary_repo_url}")
 
         # Handle dataset tracking
         if dataset_link:
