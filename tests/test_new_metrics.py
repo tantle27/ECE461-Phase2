@@ -24,8 +24,7 @@ class TestReproducibilityMetric:
         self.mock_git_client = Mock()
         self.mock_gen_ai_client = Mock()
 
-    @pytest.mark.asyncio
-    async def test_reproducibility_with_working_code(self):
+    def test_reproducibility_with_working_code(self):
         """Test reproducibility when demo code runs successfully."""
         # Mock repository with working demo code
         self.mock_git_client.find_demo_files.return_value = [
@@ -39,13 +38,12 @@ class TestReproducibilityMetric:
             "tutorial.py": {"runs": True, "errors": []},
         }
 
-        score = await self._calculate_reproducibility()
+        score = self._calculate_reproducibility()
 
         # Should get full score (1.0) when all code runs without debugging
         assert score == 1.0
 
-    @pytest.mark.asyncio
-    async def test_reproducibility_with_partial_working_code(self):
+    def test_reproducibility_with_partial_working_code(self):
         """Test reproducibility when some demo code needs debugging."""
         # Mock repository with partially working code
         self.mock_git_client.find_demo_files.return_value = ["demo.py", "broken_example.py"]
@@ -54,20 +52,19 @@ class TestReproducibilityMetric:
             "broken_example.py": {"runs": False, "errors": ["ImportError"]},
         }
 
-        score = await self._calculate_reproducibility()
+        score = self._calculate_reproducibility()
 
         # Should get partial score (0.5) when code runs with debugging
         assert score == 0.5
 
-    @pytest.mark.asyncio
-    async def test_reproducibility_no_demo_code(self):
+    def test_reproducibility_no_demo_code(self):
         """Test reproducibility when no demo code exists."""
         # Mock repository with no demo files
         self.mock_git_client.find_demo_files.return_value = []
         # Mock no model card available
         self.mock_git_client.read_model_card.return_value = None
 
-        score = await self._calculate_reproducibility()
+        score = self._calculate_reproducibility()
 
         # Should get zero score when no demo code exists
         assert score == 0.0
@@ -98,12 +95,12 @@ class TestReproducibilityMetric:
         ]
         self.mock_git_client.test_extracted_code.return_value = {"runs": True, "errors": []}
 
-        score = await self._calculate_reproducibility()
+        score = self._calculate_reproducibility()
 
         # Should get full score when model card code works
         assert score == 1.0
 
-    async def _calculate_reproducibility(self) -> float:
+    def _calculate_reproducibility(self) -> float:
         """Calculate reproducibility score."""
         # Find demo files
         demo_files = self.mock_git_client.find_demo_files()
