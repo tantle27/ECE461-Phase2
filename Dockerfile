@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.13
 
 WORKDIR ${LAMBDA_TASK_ROOT}
 
