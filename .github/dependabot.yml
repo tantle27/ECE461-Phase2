@@ -1,0 +1,62 @@
+version: 2
+# Dependabot configuration for a monorepo-style repository.
+# Adjust the directory paths below to match this repository's actual package locations.
+updates:
+  - package-ecosystem: "npm"
+    directory: "/" # root package.json
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/frontend" # example monorepo subpackage
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/backend" # example monorepo subpackage
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "auto"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "pip"
+    directory: "/python" # adjust if your Python requirements/pyproject are elsewhere
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "maven"
+    directory: "/" # adjust to the module root if you use Maven
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/" # scan .github/workflows
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "actions"
+
+  - package-ecosystem: "docker"
+    directory: "/" # adjust if Dockerfiles live in subfolders
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "docker"
