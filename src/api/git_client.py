@@ -9,8 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse
 
-from git import Repo
-from git.exc import GitCommandError
+# Lazy import to avoid git executable check on Lambda cold start
+# from git import Repo
+# from git.exc import GitCommandError
 
 
 @dataclass
@@ -96,6 +97,9 @@ class GitClient:
         :param url: Git repository URL
         :return: Path to cloned repository, or None if cloning failed
         """
+            from git import Repo
+            from git.exc import GitCommandError
+
         try:
             # Normalize URL for git cloning by removing web interface paths
             normalized_url = self._normalize_git_url(url)
@@ -136,6 +140,8 @@ class GitClient:
         :param repo_path: Path to local repository
         :return: CommitStats object
         """
+            from git import Repo
+
         try:
             repo = Repo(repo_path)
 
