@@ -163,7 +163,6 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
             )
     except Exception:
         logger.exception("Primary store fetch failed; falling back to memory")
-    # Fallback to in-memory
     return _STORE.get(_store_key(artifact_type, artifact_id))
 
 
