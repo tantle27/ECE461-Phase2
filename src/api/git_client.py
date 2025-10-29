@@ -97,8 +97,8 @@ class GitClient:
         :param url: Git repository URL
         :return: Path to cloned repository, or None if cloning failed
         """
-            from git import Repo
-            from git.exc import GitCommandError
+        from git import Repo
+        from git.exc import GitCommandError
 
         try:
             # Normalize URL for git cloning by removing web interface paths
@@ -140,7 +140,7 @@ class GitClient:
         :param repo_path: Path to local repository
         :return: CommitStats object
         """
-            from git import Repo
+        from git import Repo
 
         try:
             repo = Repo(repo_path)
