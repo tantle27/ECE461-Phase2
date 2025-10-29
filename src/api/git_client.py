@@ -97,8 +97,13 @@ class GitClient:
         :param url: Git repository URL
         :return: Path to cloned repository, or None if cloning failed
         """
-        from git import Repo
-        from git.exc import GitCommandError
+        # First, attempt to import GitPython; if unavailable, degrade gracefully
+        try:
+            from git import Repo  # type: ignore
+            from git.exc import GitCommandError as _GitCmdErr  # type: ignore
+        except Exception as e:
+            logging.warning("GitPython not available or git binary missing: %s", e)
+            return None
 
         try:
             # Normalize URL for git cloning by removing web interface paths
@@ -123,7 +128,7 @@ class GitClient:
 
             return temp_dir
 
-        except GitCommandError as e:
+        except _GitCmdErr as e:  # type: ignore[name-defined]
             message = e.stderr or str(e)
             if "Authentication failed" in message or "fatal: Invalid" in message:
                 logging.error("Failed to clone repository %s due to invalid GitHub token.", url)
@@ -140,7 +145,12 @@ class GitClient:
         :param repo_path: Path to local repository
         :return: CommitStats object
         """
-        from git import Repo
+        # Try to import GitPython; if not available, return empty stats
+        try:
+            from git import Repo  # type: ignore
+        except Exception as e:
+            logging.warning("GitPython not available or git binary missing (analyze_commits): %s", e)
+            return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
 
         try:
             repo = Repo(repo_path)
