@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -84,7 +84,7 @@ def _build_model_rating(
     scores: dict[str, Any] = {
         key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None
     }
-    
+
     # Add placeholder scores for OpenAPI spec compliance (if not present)
     if "reproducibility" not in scores:
         scores["reproducibility"] = 0.0
@@ -102,7 +102,7 @@ def _build_model_rating(
         if latency_key in metrics
     }
     latencies["net_score"] = total_latency_ms
-    
+
     # Add placeholder latencies for OpenAPI spec compliance (if not present)
     if "reproducibility" not in latencies:
         latencies["reproducibility"] = 0
@@ -166,4 +166,6 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
 # Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
 _THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
-_METRICS_CALCULATOR = MetricsCalculator(_THREAD_POOL, os.environ.get("GH_TOKEN"))
+_METRICS_CALCULATOR = MetricsCalculator(
+    cast(ProcessPoolExecutor, _THREAD_POOL), os.environ.get("GH_TOKEN")
+)

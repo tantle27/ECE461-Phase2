@@ -8,6 +8,7 @@ The loader is intentionally non-fatal: failure to read secrets will be
 logged but will not stop the application from starting (useful for local
 development where Secrets Manager isn't available).
 """
+
 from __future__ import annotations
 
 import json

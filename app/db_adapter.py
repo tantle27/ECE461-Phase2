@@ -57,11 +57,9 @@ class ArtifactStore:
                 metadata = artifact_data.get("metadata", {})
                 data = artifact_data.get("data", {})
                 version = metadata.get("version", "1.0.0")
-                
                 # Extract metrics and scores (may be None if not yet rated)
                 metrics = data.get("metrics") or {}
                 trust_score = data.get("trust_score") or metrics.get("net_score", 0.0)
-                
                 # Build DynamoDB item (convert floats to Decimal for DynamoDB)
                 item = {
                     "PK": self._make_pk(artifact_type, artifact_id),
@@ -81,9 +79,9 @@ class ArtifactStore:
                     "GSI1PK": f"TYPE#{artifact_type}",
                     "GSI1SK": artifact_id,
                     "GSI2PK": "STATUS",
-                    "GSI2SK": f"{metadata.get('status') or data.get('status', 'unvetted')}#{artifact_id}",
+                    "GSI2SK": f"{metadata.get(
+                        'status') or data.get('status', 'unvetted')}#{artifact_id}",
                 }
-                
                 # Optional fields (S3, license, etc.)
                 if data.get("s3_key"):
                     item["s3_key"] = data["s3_key"]
@@ -93,9 +91,10 @@ class ArtifactStore:
                     item["size_bytes"] = int(data["size"])
                 if data.get("license"):
                     item["license"] = data["license"]
-                
                 dynamodb_table.put_item(Item=item)
-                logger.info(f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})")
+                logger.info(
+                    f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})"
+                )
             except Exception as e:
                 logger.error(f"DynamoDB save failed: {e}, falling back to memory")
                 self._memory_store[f"{artifact_type}:{artifact_id}"] = artifact_data
@@ -160,9 +159,10 @@ class ArtifactStore:
         """List artifacts by status (e.g., 'unvetted', 'approved', 'rejected')."""
         if self.use_dynamodb and dynamodb_table:
             try:
+                key_cond = "GSI2PK = :status_key AND " "begins_with(GSI2SK, :status_val)"
                 response = dynamodb_table.query(
                     IndexName="GSI2",
-                    KeyConditionExpression="GSI2PK = :status_key AND begins_with(GSI2SK, :status_val)",
+                    KeyConditionExpression=key_cond,
                     ExpressionAttributeValues={
                         ":status_key": "STATUS",
                         ":status_val": status,
@@ -174,27 +174,31 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list_by_status failed: {e}, falling back to memory")
                 return [
-                    v for v in self._memory_store.values()
-                    if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
+                    v
+                    for v in self._memory_store.values()
+                    if v.get("metadata", {}).get("status") == status
+                    or v.get("data", {}).get("status") == status
                 ]
         else:
             return [
-                v for v in self._memory_store.values()
-                if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
+                v
+                for v in self._memory_store.values()
+                if v.get("metadata", {}).get("status") == status
+                or v.get("data", {}).get("status") == status
             ]
 
-    def list_by_min_trust_score(self, min_score: float, artifact_type: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list_by_min_trust_score(
+        self, min_score: float, artifact_type: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
         """List artifacts with trust_score >= min_score."""
         if self.use_dynamodb and dynamodb_table:
             try:
                 # Scan with filter (convert float to Decimal for DynamoDB comparison)
                 filter_expr = "trust_score >= :min_score"
-                expr_values = {":min_score": Decimal(str(min_score))}
-                
+                expr_values: dict[str, Any] = {":min_score": Decimal(str(min_score))}
                 if artifact_type:
                     filter_expr += " AND artifact_type = :type"
                     expr_values[":type"] = artifact_type
-                
                 response = dynamodb_table.scan(
                     FilterExpression=filter_expr,
                     ExpressionAttributeValues=expr_values,
@@ -205,22 +209,32 @@ class ArtifactStore:
                 items.sort(key=lambda x: float(x.get("trust_score", 0)), reverse=True)
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
-                logger.error(f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory")
+                logger.error(
+                    f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory"
+                )
                 results = [
-                    v for v in self._memory_store.values()
+                    v
+                    for v in self._memory_store.values()
                     if v.get("data", {}).get("trust_score", 0.0) >= min_score
                 ]
                 if artifact_type:
-                    results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
-                return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
+                    results = [
+                        r for r in results if r.get("metadata", {}).get("type") == artifact_type
+                    ]
+                return sorted(
+                    results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
+                )
         else:
             results = [
-                v for v in self._memory_store.values()
+                v
+                for v in self._memory_store.values()
                 if v.get("data", {}).get("trust_score", 0.0) >= min_score
             ]
             if artifact_type:
                 results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
-            return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
+            return sorted(
+                results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
+            )
 
     def delete(self, artifact_type: str, artifact_id: str) -> None:
         """Delete an artifact."""
@@ -285,9 +299,7 @@ class TokenStore:
         """Check if token exists."""
         if self.use_dynamodb and dynamodb_table:
             try:
-                response = dynamodb_table.get_item(
-                    Key={"PK": "TOKEN#AUTH", "SK": f"TOKEN#{token}"}
-                )
+                response = dynamodb_table.get_item(Key={"PK": "TOKEN#AUTH", "SK": f"TOKEN#{token}"})
                 return "Item" in response
             except Exception as e:
                 logger.error(f"DynamoDB token check failed: {e}")

@@ -30,11 +30,11 @@ def create_table():
         print(f"Creating DynamoDB table '{TABLE_NAME}'...")
 
         # dynamodb_setup.py
-        response = dynamodb.create_table(
+        dynamodb.create_table(
             TableName="model_registry",
             KeySchema=[
-                {"AttributeName": "PK", "KeyType": "HASH"},  # MODEL#<id>
-                {"AttributeName": "SK", "KeyType": "RANGE"}, # VER#<semver> or ARTIFACT#/NOTE#
+                {"AttributeName": "PK", "KeyType": "HASH"},
+                {"AttributeName": "SK", "KeyType": "RANGE"},
             ],
             AttributeDefinitions=[
                 {"AttributeName": "PK", "AttributeType": "S"},
@@ -63,7 +63,6 @@ def create_table():
             ],
             BillingMode="PAY_PER_REQUEST",
         )
-
 
         waiter = dynamodb.get_waiter("table_exists")
         waiter.wait(TableName=TABLE_NAME)

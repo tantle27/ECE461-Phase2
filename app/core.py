@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, BinaryIO
 
-from flask import Blueprint, Response, jsonify, request, send_file, redirect
+from flask import Blueprint, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
@@ -192,16 +192,16 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     except Exception:
         logger.exception("Primary store list failed; falling back to memory")
     if not used_primary:
+        # Sort in two steps to keep line-length under limits and improve readability
+        store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
         items = [
             item
-            for item in sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
+            for item in store_vals
             if (not query.artifact_type or item.metadata.type == query.artifact_type)
         ]
-    
     # Apply types filter if provided (OpenAPI spec requirement)
     if query.types:
         items = [item for item in items if item.metadata.type in query.types]
-    
     if query.name:
         name_lower = query.name.lower()
         items = [item for item in items if name_lower in item.metadata.name.lower()]
@@ -356,7 +356,7 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
             "Artifact 'data' must be a JSON object",
         )
     normalized: dict[str, Any] = dict(data)
-    
+
     # Support OpenAPI spec format: {"url": "..."}
     if "url" in normalized and not normalized.get("model_link"):
         url = normalized.get("url")
@@ -368,7 +368,6 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
                 normalized["code_link"] = url.strip()
             elif artifact_type == "dataset":
                 normalized["dataset_link"] = url.strip()
-    
     if artifact_type == "model":
         model_link_raw = (
             normalized.get("model_link") or normalized.get("model_url") or normalized.get("model")
@@ -579,12 +578,11 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 @_record_timing
 def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     """Enumerate artifacts matching ArtifactQuery; returns list w/ offset header for pagination.
-    
     OpenAPI spec expects an array of ArtifactQuery objects with optional offset parameter.
     """
     _require_auth()
     payload = _json_body()
-    
+
     # Support both single query object and array of queries (OpenAPI spec uses array)
     if isinstance(payload, list):
         # OpenAPI spec format: array of queries
@@ -595,7 +593,6 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     else:
         # Legacy format: single query object
         query_dict = payload
-    
     # Parse offset from query args if provided
     offset_str = request.args.get("offset")
     if offset_str:
@@ -606,7 +603,6 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
             query_dict["page"] = (offset // page_size) + 1 if page_size > 0 else 1
         except (ValueError, TypeError):
             pass
-    
     query = _parse_query(query_dict)
     result = list_artifacts(query)
 
@@ -725,7 +721,9 @@ def upload_create_route() -> tuple[Response, int] | Response:
         key_rel = f"{artifact_type}/{artifact_id}/{safe_name}"
         try:
             # Use stream without loading full file in memory when possible
-            meta = _S3.put_file(f.stream, key_rel, f.mimetype or "application/octet-stream")
+            meta = _S3.put_file(
+                cast(BinaryIO, f.stream), key_rel, f.mimetype or "application/octet-stream"
+            )
             data = {
                 "s3_bucket": meta["bucket"],
                 "s3_key": meta["key"],
@@ -796,14 +794,17 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     try:
         rating = _score_artifact_with_metrics(artifact)
         _RATINGS_CACHE[artifact_id] = rating
-        
+
         # Persist metrics and scores back to the artifact
         if isinstance(artifact.data, dict):
             artifact.data["metrics"] = rating.scores
             artifact.data["trust_score"] = rating.scores.get("net_score", 0.0)
             artifact.data["last_rated"] = rating.generated_at.isoformat() + "Z"
             save_artifact(artifact)
-            logger.info(f"Saved metrics for {artifact_id}: trust_score={artifact.data['trust_score']}")
+            logger.info(
+                f"Saved metrics for {artifact_id}: trust_score={artifact.data[
+                    'trust_score']}"
+            )
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 400
     except Exception:
@@ -817,6 +818,7 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     scores = rating.scores or {}
     lat_ms = rating.latencies or {}
     # Convert milliseconds to seconds (float)
+
     def sec(key: str) -> float:
         v = lat_ms.get(key, 0)
         try:
@@ -874,46 +876,49 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     if art is None:
         return jsonify({"message": "Artifact not found"}), 404
     # Prefer S3 if present in artifact metadata
-    if isinstance(art.data, dict) and art.data.get("s3_key") and art.data.get("s3_bucket") and _S3.enabled:
-        key = art.data.get("s3_key")
-        ver = art.data.get("s3_version_id")
-        try:
-            if part == "all":
-                # Stream original object (assumed zip) to client
-                body, meta = _S3.get_object(key, ver)
-                resp = send_file(
-                    io.BytesIO(body),
-                    as_attachment=True,
-                    download_name=f"{artifact_id}.zip",
-                    mimetype=meta.get("content_type") or "application/zip",
-                )
-                resp.headers["X-Size-Cost-Bytes"] = str(int(meta.get("size", len(body))))
-                return resp
-            # For parts, load zip into memory and filter
-            body, meta = _S3.get_object(key, ver)
-            size_bytes = int(meta.get("size", len(body)))
-            with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
-                buf = io.BytesIO()
-                with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-                    prefix = f"{part.strip('/')}/"
-                    for info in zin.infolist():
-                        if info.filename.startswith(prefix):
-                            zout.writestr(info, zin.read(info))
-                buf.seek(0)
-            resp = send_file(
-                buf,
-                as_attachment=True,
-                download_name=f"{artifact_id}-{part}.zip",
-                mimetype="application/zip",
-            )
-            resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-            return resp
-        except Exception:
-            logger.exception("Failed to serve from S3; falling back to local if available")
+    if isinstance(art.data, dict) and _S3.enabled:
+        s3_key = art.data.get("s3_key")
+        s3_bucket = art.data.get("s3_bucket")
+        if isinstance(s3_key, str) and s3_bucket:
+            key = s3_key
+            ver = art.data.get("s3_version_id")
+            try:
+                if part == "all":
+                    # Stream original object (assumed zip) to client
+                    body, meta = _S3.get_object(key, ver)
+                    resp = send_file(
+                        io.BytesIO(body),
+                        as_attachment=True,
+                        download_name=f"{artifact_id}.zip",
+                        mimetype=meta.get("content_type") or "application/zip",
+                    )
+                    resp.headers["X-Size-Cost-Bytes"] = str(int(meta.get("size", len(body))))
+                    return resp
+                    # For parts, load zip into memory and filter
+                    body, meta = _S3.get_object(key, ver)
+                    size_bytes = int(meta.get("size", len(body)))
+                    with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
+                        buf = io.BytesIO()
+                        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                            prefix = f"{part.strip('/')}/"
+                            for info in zin.infolist():
+                                if info.filename.startswith(prefix):
+                                    zout.writestr(info, zin.read(info))
+                        buf.seek(0)
+                    resp = send_file(
+                        buf,
+                        as_attachment=True,
+                        download_name=f"{artifact_id}-{part}.zip",
+                        mimetype="application/zip",
+                    )
+                    resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+                    return resp
+            except Exception:
+                logger.exception("Failed to serve from S3; falling back to local if available")
 
     # Fallback to local disk
     rel = art.data.get("path")
-    if not rel:
+    if not isinstance(rel, str) or not rel:
         return jsonify({"message": "Model has no stored package path"}), 400
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
@@ -958,39 +963,31 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
     """Calculate storage cost for artifact in MB. Supports ?dependency=true for recursive cost."""
     _require_auth()
     dependency = request.args.get("dependency", "false").lower() == "true"
-    
+
     art = fetch_artifact(artifact_type, artifact_id)
     if art is None:
         return jsonify({"message": "Artifact not found"}), 404
-    
     try:
         # Calculate standalone cost for this artifact
         standalone_cost_mb = _calculate_artifact_size_mb(art)
-        
+
         if not dependency:
             # Simple case: just return total_cost
-            return jsonify({
-                artifact_id: {
-                    "total_cost": round(standalone_cost_mb, 2)
-                }
-            }), 200
-        
+            return jsonify({artifact_id: {"total_cost": round(standalone_cost_mb, 2)}}), 200
         # Complex case: calculate costs for all dependencies
         visited: set[str] = set()
         cost_map: dict[str, dict[str, float]] = {}
-        
+
         def _collect_costs(current_art, current_id: str):
             if current_id in visited:
                 return
             visited.add(current_id)
-            
             # Calculate standalone cost
             size_mb = _calculate_artifact_size_mb(current_art)
             cost_map[current_id] = {
                 "standalone_cost": round(size_mb, 2),
-                "total_cost": round(size_mb, 2)  # Will update after traversal
+                "total_cost": round(size_mb, 2),  # Will update after traversal
             }
-            
             # Find dependencies (look for references in data)
             if isinstance(current_art.data, dict):
                 for key in ("code_link", "dataset_link", "base_model_id", "dependencies"):
@@ -1006,17 +1003,14 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
                                 dep_art = fetch_artifact(artifact_type, dep_id)
                                 if dep_art:
                                     _collect_costs(dep_art, dep_id)
-        
+
         # Traverse dependency tree
         _collect_costs(art, artifact_id)
-        
         # Calculate total costs (sum all dependencies)
         total_sum = sum(c["standalone_cost"] for c in cost_map.values())
         for aid in cost_map:
             cost_map[aid]["total_cost"] = round(total_sum, 2)
-        
         return jsonify(cost_map), 200
-        
     except Exception:
         logger.exception("Failed to calculate artifact cost for %s", artifact_id)
         return jsonify({"message": "The artifact cost calculator encountered an error"}), 500
@@ -1045,7 +1039,6 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
 def _calculate_artifact_size_mb(artifact) -> float:
     """Calculate artifact size in MB from S3 metadata or local file."""
     size_bytes = 0
-    
     # Try S3 metadata first
     if isinstance(artifact.data, dict):
         if artifact.data.get("size"):
@@ -1054,18 +1047,18 @@ def _calculate_artifact_size_mb(artifact) -> float:
             try:
                 key = artifact.data.get("s3_key")
                 ver = artifact.data.get("s3_version_id")
-                _, meta = _S3.get_object(key, ver)
-                size_bytes = int(meta.get("size", 0))
+                if isinstance(key, str):
+                    _, meta = _S3.get_object(key, ver)
+                    size_bytes = int(meta.get("size", 0))
             except Exception:
                 logger.warning("Failed to get S3 object size for %s", artifact.metadata.id)
-        
         # Fallback to local file
         if size_bytes == 0 and artifact.data.get("path"):
             rel = artifact.data.get("path")
-            zpath = (_UPLOAD_DIR.parent / rel).resolve()
-            if zpath.exists():
-                size_bytes = zpath.stat().st_size
-    
+            if isinstance(rel, str) and rel:
+                zpath = (_UPLOAD_DIR.parent / rel).resolve()
+                if zpath.exists():
+                    size_bytes = zpath.stat().st_size
     # Convert bytes to MB
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
@@ -1204,7 +1197,11 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     parents: list[str] = []
     try:
-        zf_ctx = zipfile.ZipFile(io.BytesIO(zbody), "r") if zbody is not None else zipfile.ZipFile(str(zpath), "r")
+        zf_ctx = (
+            zipfile.ZipFile(io.BytesIO(zbody), "r")
+            if zbody is not None
+            else zipfile.ZipFile(str(zpath), "r")
+        )
         with zf_ctx as zf:
             cand = [n for n in zf.namelist() if n.endswith("config.json")]
             for name in cand:

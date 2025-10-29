@@ -15,12 +15,12 @@ Env vars:
 - S3_SSE=aws:kms|AES256 (optional)
 - S3_KMS_KEY_ID=arn:aws:kms:... (optional, when S3_SSE=aws:kms)
 """
+
 from __future__ import annotations
 
-import io
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, BinaryIO
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +58,14 @@ class S3Storage:
             return f"{self.prefix}/{rel}"
         return rel
 
-    def put_file(self, fileobj: io.BufferedReader | io.BytesIO, key_rel: str, content_type: Optional[str] = None) -> dict[str, Any]:
+    def put_file(
+        self,
+        fileobj: BinaryIO,
+        key_rel: str,
+        content_type: Optional[str] = None,
+    ) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
-            logger.error("S3Storage.put_file failed precondition: enabled=%s, s3_client=%s, bucket=%s", self.enabled, s3_client is not None, self.bucket)
+            logger.error("S3Storage.put_file failed precondition.")
             raise RuntimeError("S3Storage not enabled")
         logger.info("S3Storage.put_file: bucket=%s key=%s", self.bucket, self._key(key_rel))
         params: dict[str, Any] = {
@@ -81,12 +86,22 @@ class S3Storage:
             resp = s3_client.put_object(**params)
             version_id = resp.get("VersionId")
             # Head the object for size and content type
-            head = s3_client.head_object(Bucket=self.bucket, Key=params["Key"], VersionId=version_id) if version_id else s3_client.head_object(Bucket=self.bucket, Key=params["Key"])
+            head = (
+                s3_client.head_object(Bucket=self.bucket, Key=params["Key"], VersionId=version_id)
+                if version_id
+                else s3_client.head_object(Bucket=self.bucket, Key=params["Key"])
+            )
         except Exception as e:
             try:
                 safe_params = {k: v for k, v in params.items() if k != "Body"}
             except Exception:
-                safe_params = {"Bucket": self.bucket, "Key": params.get("Key"), "ContentType": params.get("ContentType"), "ACL": params.get("ACL"), "ServerSideEncryption": params.get("ServerSideEncryption")}
+                safe_params = {
+                    "Bucket": self.bucket,
+                    "Key": params.get("Key"),
+                    "ContentType": params.get("ContentType"),
+                    "ACL": params.get("ACL"),
+                    "ServerSideEncryption": params.get("ServerSideEncryption"),
+                }
             logger.exception("S3 put_object/head_object failed: %s | params=%s", e, safe_params)
             raise
         return {
@@ -97,7 +112,9 @@ class S3Storage:
             "content_type": head.get("ContentType"),
         }
 
-    def get_object(self, key: str, version_id: Optional[str] = None) -> tuple[bytes, dict[str, Any]]:
+    def get_object(
+        self, key: str, version_id: Optional[str] = None
+    ) -> tuple[bytes, dict[str, Any]]:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}
@@ -111,7 +128,9 @@ class S3Storage:
         }
         return body, meta
 
-    def generate_presigned_url(self, key: str, expires_in: int = 3600, version_id: Optional[str] = None) -> str:
+    def generate_presigned_url(
+        self, key: str, expires_in: int = 3600, version_id: Optional[str] = None
+    ) -> str:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}

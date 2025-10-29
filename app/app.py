@@ -5,8 +5,10 @@ from flask import Flask
 # optional and failures are logged — we don't want missing boto3 or
 # IAM perms to prevent the app from starting.
 try:
-    # Use the src package path used elsewhere in the project
-    from src.core import secrets_loader  # type: ignore
+    # Use the src package path used elsewhere in the project. Import for side-effects only.
+    import importlib
+
+    importlib.import_module("src.core.secrets_loader")
 except Exception:
     import logging
 
