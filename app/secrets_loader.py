@@ -47,6 +47,7 @@ def load_registry_secrets() -> None:
 
     try:
         data = json.loads(secret_string)
+        logging.info("Loaded secrets from %s", secret_arn)
     except json.JSONDecodeError:
         logging.exception("Secret %s is not valid JSON", secret_arn)
         return
