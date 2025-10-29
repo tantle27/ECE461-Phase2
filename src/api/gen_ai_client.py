@@ -9,208 +9,198 @@ from typing import Any
 
 import aiohttp
 
-# If GENAI_PROVIDER=bedrock is set, delegate to the BedrockClient which matches
-# the async interface expected by the rest of the codebase.
 _GENAI_PROVIDER = os.environ.get("GENAI_PROVIDER", "").lower()
-if _GENAI_PROVIDER == "bedrock":
-    try:
-        from src.api.bedrock_client import BedrockClient  # type: ignore
+_GenAIDefault = "bedrock"
 
-        class GenAIClient:
-            def __init__(self):
-                # Use BedrockClient under the hood; preserve attribute names
-                self._bedrock = BedrockClient()
 
-            async def chat(self, message: str, model: str = None) -> str:
-                return await self._bedrock.chat(message, model=model)
-
-            async def get_performance_claims(self, readme_text: str) -> dict:
-                return await self._bedrock.get_performance_claims(readme_text)
-
-            async def get_readme_clarity(self, readme_text: str) -> float:
-                return await self._bedrock.get_readme_clarity(readme_text)
-
-    except Exception:
-        logging.exception("Failed to import BedrockClient; falling back to default GenAIClient")
-
-else:
-    class GenAIClient:
-        def __init__(self):
-            self.url = "https://genai.rcac.purdue.edu/api/chat/completions"
-            env_api_key = os.environ.get("GENAI_API_KEY")
-            self.has_api_key = bool(env_api_key)
-            self.max_retries = 3
-            self.retry_delay_seconds = 0.5
-            self._default_chat_response = "No performance claims found in the documentation."
-            self._default_performance_result: dict[str, Any] = {
-                "mentions_benchmarks": 0.0,
-                "has_metrics": 0.0,
-                "claims": [],
-                "score": 0.0,
+class GenAIClient:
+    def __init__(self):
+        # Default client configuration
+        self.url = "https://genai.rcac.purdue.edu/api/chat/completions"
+        env_api_key = os.environ.get("GENAI_API_KEY")
+        self.has_api_key = bool(env_api_key)
+        self.max_retries = 3
+        self.retry_delay_seconds = 0.5
+        self._default_chat_response = "No performance claims found in the documentation."
+        self._default_performance_result: dict[str, Any] = {
+            "mentions_benchmarks": 0.0,
+            "has_metrics": 0.0,
+            "claims": [],
+            "score": 0.0,
+        }
+        self._default_clarity_score = 0.5
+        if env_api_key:
+            self.headers = {
+                "Authorization": f"Bearer {env_api_key}",
+                "Content-Type": "application/json",
             }
-            self._default_clarity_score = 0.5
-            if env_api_key:
-                self.headers = {
-                    "Authorization": f"Bearer {env_api_key}",
-                    "Content-Type": "application/json",
-                }
-            else:
-                self.headers = {"Content-Type": "application/json"}
+        else:
+            self.headers = {"Content-Type": "application/json"}
 
-        async def chat(self, message: str, model: str = "llama3.3:70b") -> str:
-            # If no API key is available, return a default response
-            if not self.has_api_key:
-                return self._default_chat_response
-
-            body = {"model": model, "messages": [{"role": "user", "content": message}]}
-            # Create SSL context that doesn't verify certificates for servers
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            last_error: Exception | None = None
-            for attempt in range(1, self.max_retries + 1):
-                try:
-                    async with aiohttp.ClientSession(connector=connector) as session:
-                        async with session.post(self.url, headers=self.headers, json=body) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                return data["choices"][0]["message"]["content"]
-                            if response.status == 401:
-                                logging.error(
-                                    "GenAI authentication failed. " "Falling back to default response."
-                                )
-                                self.has_api_key = False
-                                return self._default_chat_response
-                            if 500 <= response.status < 600:
-                                error_text = await response.text()
-                                logging.warning(
-                                    "GenAI service error (%s): %s",
-                                    response.status, error_text.strip()
-                                )
-                                last_error = Exception(f"Error: {response.status}, {error_text}")
-                                await asyncio.sleep(self.retry_delay_seconds * attempt)
-                                continue
-                            error = await response.text()
-                            raise Exception(f"Error: {response.status}, {error}")
-                except aiohttp.ClientError as exc:
-                    logging.warning(
-                        "GenAI client error on attempt %d/%d: %s", attempt,
-                        self.max_retries, str(exc)
-                    )
-                    last_error = exc
-                    await asyncio.sleep(self.retry_delay_seconds * attempt)
-
-            if last_error:
-                raise Exception("GenAI chat failed after retries") from last_error
-            raise Exception("GenAI chat failed without specific error")
-
-        async def get_performance_claims(self, readme_text: str) -> dict:
-            # If no API key is available, return a default score
-            if not self.has_api_key:
-                return deepcopy(self._default_performance_result)
-
+        # Optional Bedrock delegation
+        self._bedrock = None
+        if _GENAI_PROVIDER == "bedrock":
             try:
-                extraction_prompt = (
-                    self._read_prompt(
-                        "src/api/performance_claims_extraction_prompt.txt") + readme_text
-                )
-                extraction_response = await self.chat(extraction_prompt)
+                from src.api.bedrock_client import BedrockClient  # type: ignore
 
-                conversion_prompt = (
-                    self._read_prompt("src/api/performance_claims_conversion_prompt.txt")
-                    + "\n"
-                    + extraction_response
+                self._bedrock = BedrockClient()
+            except Exception:
+                logging.exception(
+                    "Failed to import BedrockClient; using default GenAIClient implementation"
                 )
-                json_response = await self.chat(conversion_prompt)
-            except Exception as exc:
+
+    async def chat(self, message: str, model: str | None = "llama3.3:70b") -> str:
+        # Delegate to Bedrock if configured
+        if self._bedrock is not None:
+            return await self._bedrock.chat(message, model=model)
+
+        # Default HTTP client behavior
+        if not self.has_api_key:
+            return self._default_chat_response
+
+        body = {
+            "model": model or "llama3.3:70b",
+            "messages": [{"role": "user", "content": message}],
+        }
+        # Create SSL context that doesn't verify certificates for servers
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.post(self.url, headers=self.headers, json=body) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data["choices"][0]["message"]["content"]
+                        if response.status == 401:
+                            logging.error(
+                                "GenAI authentication failed. Falling back to default response."
+                            )
+                            self.has_api_key = False
+                            return self._default_chat_response
+                        if 500 <= response.status < 600:
+                            error_text = await response.text()
+                            logging.warning(
+                                "GenAI service error (%s): %s", response.status, error_text.strip()
+                            )
+                            last_error = Exception(f"Error: {response.status}, {error_text}")
+                            await asyncio.sleep(self.retry_delay_seconds * attempt)
+                            continue
+                        error = await response.text()
+                        raise Exception(f"Error: {response.status}, {error}")
+            except aiohttp.ClientError as exc:
                 logging.warning(
-                    "Falling back to default performance claims due to GenAI " "error: %s", str(exc)
+                    "GenAI client error on attempt %d/%d: %s", attempt, self.max_retries, str(exc)
                 )
-                return deepcopy(self._default_performance_result)
+                last_error = exc
+                await asyncio.sleep(self.retry_delay_seconds * attempt)
 
-            # Extract JSON object from response (handles markdown code blocks)
-            match = re.search(r"\{[^}]*\}", json_response)
-            if match:
-                json_str = match.group(0)
-                try:
-                    return json.loads(json_str)
-                except json.JSONDecodeError:
-                    logging.warning("Failed to parse extracted JSON. Returning defaults.")
-                    return deepcopy(self._default_performance_result)
+        if last_error:
+            raise Exception("GenAI chat failed after retries") from last_error
+        raise Exception("GenAI chat failed without specific error")
 
-            # Try parsing the entire response as fallback
+    async def get_performance_claims(self, readme_text: str) -> dict:
+        if self._bedrock is not None:
+            return await self._bedrock.get_performance_claims(readme_text)
+
+        # Default path
+        if not self.has_api_key:
+            return deepcopy(self._default_performance_result)
+
+        try:
+            extraction_prompt = (
+                self._read_prompt("src/api/performance_claims_extraction_prompt.txt") + readme_text
+            )
+            extraction_response = await self.chat(extraction_prompt)
+
+            conversion_prompt = (
+                self._read_prompt("src/api/performance_claims_conversion_prompt.txt")
+                + "\n"
+                + extraction_response
+            )
+            json_response = await self.chat(conversion_prompt)
+        except Exception as exc:
+            logging.warning(
+                "Falling back to default performance claims due to GenAI error: %s", str(exc)
+            )
+            return deepcopy(self._default_performance_result)
+
+        # Extract JSON object from response (handles markdown code blocks)
+        match = re.search(r"\{[^}]*\}", json_response)
+        if match:
+            json_str = match.group(0)
             try:
-                return json.loads(json_response)
+                return json.loads(json_str)
             except json.JSONDecodeError:
-                logging.warning("Failed to parse GenAI response as JSON. Returning defaults.")
+                logging.warning("Failed to parse extracted JSON. Returning defaults.")
                 return deepcopy(self._default_performance_result)
 
-        async def get_readme_clarity(self, readme_text: str) -> float:
-            # If no API key is available, return a default score
-            if not self.has_api_key:
-                return self._default_clarity_score  # Neutral score when API is unavailable
+        # Try parsing the entire response as fallback
+        try:
+            return json.loads(json_response)
+        except json.JSONDecodeError:
+            logging.warning("Failed to parse GenAI response as JSON. Returning defaults.")
+            return deepcopy(self._default_performance_result)
 
-            prompt = self._read_prompt("src/api/readme_clarity_ai_prompt.txt")
-            prompt += readme_text
+    async def get_readme_clarity(self, readme_text: str) -> float:
+        if self._bedrock is not None:
+            return await self._bedrock.get_readme_clarity(readme_text)
+
+        # Default path
+        if not self.has_api_key:
+            return self._default_clarity_score  # Neutral score when API is unavailable
+
+        prompt = self._read_prompt("src/api/readme_clarity_ai_prompt.txt")
+        prompt += readme_text
+        try:
+            response = await self.chat(prompt)
+        except Exception as exc:
+            logging.warning(
+                "Falling back to default clarity score due to GenAI error: %s", str(exc)
+            )
+            return self._default_clarity_score
+
+        # Try to extract a floating point number from the response
+        try:
+            return float(response.strip())
+        except ValueError:
+            pass
+
+        number_match = re.search(r"\b(?:0?\.\d+|1\.0+|0\.0+|1)\b", response)
+        if number_match:
             try:
-                response = await self.chat(prompt)
-            except Exception as exc:
-                logging.warning(
-                    "Falling back to default clarity score due to GenAI error: %s", str(exc)
-                )
-                return self._default_clarity_score
-
-            # Try to extract a floating point number from the response
-            # Handle various possible formats from LLM
-
-            # First, try to parse the response directly as a float
-            try:
-                return float(response.strip())
+                value = float(number_match.group(0))
+                return max(0.0, min(1.0, value))
             except ValueError:
                 pass
 
-            # Try to find a number in the response using regex
-            # Look for patterns like "0.6", "0.85", "1.0", etc.
-            number_match = re.search(r"\b(?:0?\.\d+|1\.0+|0\.0+|1)\b", response)
-            if number_match:
-                try:
-                    value = float(number_match.group(0))
-                    # Ensure the value is within expected range [0, 1]
-                    return max(0.0, min(1.0, value))
-                except ValueError:
-                    pass
-
-            # Try to find any decimal number in the response
-            decimal_match = re.search(r"\d*\.?\d+", response)
-            if decimal_match:
-                try:
-                    value = float(decimal_match.group(0))
-                    # Ensure the value is within expected range [0, 1]
-                    return max(0.0, min(1.0, value))
-                except ValueError:
-                    pass
-
-            # If all parsing attempts fail,
-            # return a default score based on content length
-            # This is a fallback to prevent complete failure
-            logging.warning(f"Could not parse GenAI response as float: {response[:200]}...")
-
-            # If we can't parse any number, raise an exception
-            logging.warning(f"Could not parse GenAI response as float: {response[:200]}...")
-            return self._default_clarity_score
-
-        @staticmethod
-        def _read_prompt(path: str) -> str:
+        decimal_match = re.search(r"\d*\.?\d+", response)
+        if decimal_match:
             try:
-                with open(path, "r", encoding="utf-8") as handle:
-                    return handle.read()
-            except FileNotFoundError:
-                logging.error("Prompt file not found: %s", path)
-            except OSError as exc:
-                logging.error("Failed to read prompt %s: %s", path, str(exc))
-            return ""
+                value = float(decimal_match.group(0))
+                return max(0.0, min(1.0, value))
+            except ValueError:
+                pass
+
+        logging.warning(f"Could not parse GenAI response as float: {response[:200]}...")
+        return self._default_clarity_score
+
+    @staticmethod
+    def _read_prompt(path: str) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except FileNotFoundError:
+            logging.error("Prompt file not found: %s", path)
+        except OSError as exc:
+            logging.error("Failed to read prompt %s: %s", path, str(exc))
+        return ""
+
+    GenAIClient = _GenAIDefault
 
 
 if __name__ == "__main__":
