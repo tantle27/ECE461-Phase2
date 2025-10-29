@@ -79,8 +79,10 @@ class ArtifactStore:
                     "GSI1PK": f"TYPE#{artifact_type}",
                     "GSI1SK": artifact_id,
                     "GSI2PK": "STATUS",
-                    "GSI2SK": f"{metadata.get(
-                        'status') or data.get('status', 'unvetted')}#{artifact_id}",
+                    "GSI2SK": (
+                        f"{metadata.get('status') or data.get('status', 'unvetted')}"
+                        f"#{artifact_id}"
+                    ),
                 }
                 # Optional fields (S3, license, etc.)
                 if data.get("s3_key"):

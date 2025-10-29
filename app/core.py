@@ -801,9 +801,11 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             artifact.data["trust_score"] = rating.scores.get("net_score", 0.0)
             artifact.data["last_rated"] = rating.generated_at.isoformat() + "Z"
             save_artifact(artifact)
+            # Log using parameterized message to avoid f-string line breaks
             logger.info(
-                f"Saved metrics for {artifact_id}: trust_score={artifact.data[
-                    'trust_score']}"
+                "Saved metrics for %s: trust_score=%s",
+                artifact_id,
+                artifact.data.get("trust_score"),
             )
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 400
