@@ -58,6 +58,7 @@ class ArtifactQuery:
 _ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
 _RATINGS_CACHE: dict[str, ModelRating] = {}
+_AUDIT_LOG: dict[str, list[dict[str, Any]]] = {}  # artifact_id -> audit entries
 # Optional S3 blob store (enabled via USE_S3=true)
 _S3 = S3Storage()
 # Lambda: Only /tmp is writable, so default to /tmp/uploads instead of ./uploads
@@ -191,14 +192,14 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     except Exception:
         logger.exception("Primary store list failed; falling back to memory")
     if not used_primary:
-        # Sort in two steps to keep line-length under limits and improve readability
+        # Sort for stable output
         store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
         items = [
             item
             for item in store_vals
             if (not query.artifact_type or item.metadata.type == query.artifact_type)
         ]
-    # Apply types filter if provided (OpenAPI spec requirement)
+    # Apply filters
     if query.types:
         items = [item for item in items if item.metadata.type in query.types]
     if query.name:
@@ -212,6 +213,7 @@ def reset_storage() -> None:
     _STORE.clear()
     _RATINGS_CACHE.clear()
     _TOKENS.clear()
+    _AUDIT_LOG.clear()
 
 
 def _require_auth(admin: bool = False) -> None:
@@ -376,7 +378,6 @@ def _validate_artifact_data(artifact_type: str, data: Any) -> dict[str, Any]:
                 HTTPStatus.BAD_REQUEST,
                 "Model artifacts must include a non-empty 'model_link' field or 'url' field",
             )
-        # Type narrowing: model_link_raw is guaranteed to be str here
         model_link_str = cast(str, model_link_raw)
         normalized["model_link"] = model_link_str.strip()
         for key in ("code_link", "code", "dataset_link", "dataset"):
@@ -466,26 +467,61 @@ def health() -> tuple[Response, int]:
     return jsonify({"ok": True}), 200
 
 
+@blueprint.route("/health/components", methods=["GET"])
+def health_components_route() -> tuple[Response, int] | Response:
+    wm = request.args.get("windowMinutes", default="60")
+    try:
+        window_minutes = max(5, min(1440, int(wm)))
+    except Exception:
+        window_minutes = 60
+    include_timeline = str(request.args.get("includeTimeline", "false")).lower() == "true"
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    components = [
+        {
+            "id": "api",
+            "display_name": "Registry API",
+            "status": "ok",
+            "observed_at": now_iso,
+            "metrics": {"p50_ms": int(_percentile(_REQUEST_TIMES, 0.50) * 1000)},
+            "issues": [],
+            "timeline": (
+                [{"bucket": now_iso, "value": len(_REQUEST_TIMES), "unit": "req"}]
+                if include_timeline
+                else []
+            ),
+            "logs": [],
+        }
+    ]
+    return (
+        jsonify(
+            {
+                "components": components,
+                "generated_at": now_iso,
+                "window_minutes": window_minutes,
+            }
+        ),
+        200,
+    )
+
+
 _OPENAPI = {
     "openapi": "3.0.2",
-    "info": {"title": "ECE 461 - Fall 2025 - Project Phase 2", "version": "3.3.1"},
+    "info": {"title": "ECE 461 - Fall 2025 - Project Phase 2", "version": "3.4.2"},
     "paths": {
         "/artifact/{artifact_type}": {"post": {"summary": "Create artifact"}},
         "/artifacts": {"post": {"summary": "Enumerate artifacts"}},
-        "/directory": {"get": {"summary": "List artifacts"}},
-        "/search": {"get": {"summary": "Search artifacts"}},
         "/artifact/model/{artifact_id}/rate": {"get": {"summary": "Rate model"}},
         "/artifact/model/{artifact_id}/download": {"get": {"summary": "Download model"}},
         "/artifact/model/{artifact_id}/lineage": {"get": {"summary": "Lineage graph"}},
         "/artifact/model/{artifact_id}/license-check": {"post": {"summary": "License check"}},
         "/artifact/byRegEx": {"post": {"summary": "Artifacts by RegEx"}},
         "/artifact/byName/{name}": {"get": {"summary": "Artifacts by Name"}},
+        "/artifact/{artifact_type}/{id}/audit": {"get": {"summary": "Audit log"}},
         "/authenticate": {"put": {"summary": "Create auth token"}},
-        "/ingest/hf": {"post": {"summary": "Gate and ingest HF model"}},
-        "/license/check": {"post": {"summary": "License compatibility"}},
         "/reset": {"delete": {"summary": "Reset system"}},
         "/health": {"get": {"summary": "System health"}},
-        "/login": {"post": {"summary": "Obtain bearer token"}},
+        "/health/components": {"get": {"summary": "Component health"}},
+        "/tracks": {"get": {"summary": "Planned tracks"}},
     },
 }
 
@@ -498,13 +534,21 @@ def openapi_route() -> tuple[Response, int] | Response:
 # -------------------- Core CRUD / list / search --------------------
 
 
+def _audit_add(artifact_type: str, artifact_id: str, action: str, name: str = "") -> None:
+    aid = str(artifact_id)
+    entry = {
+        "user": {"name": _DEFAULT_USER["username"], "is_admin": True},
+        "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "artifact": {"name": name, "id": aid, "type": artifact_type},
+        "action": action,
+    }
+    _AUDIT_LOG.setdefault(aid, []).append(entry)
+
+
 @blueprint.route("/artifact/<string:artifact_type>", methods=["POST"])
 @_record_timing
 def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
-    """Register a new artifact from ArtifactData {"url": "..."}; returns Artifact.
-
-    Per spec, request body contains only ArtifactData with a single url.
-    """
+    """Register a new artifact from ArtifactData {"url": "..."}; returns Artifact."""
     _require_auth()
     payload = _json_body()
     # Validate/normalize data according to artifact_type; supports {"url": "..."}
@@ -515,7 +559,6 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     name_guess = "example"
     try:
         if isinstance(url, str) and url.strip():
-            # Use last path segment as name
             name_guess = url.rstrip("/").split("/")[-1] or name_guess
     except Exception:
         pass
@@ -526,7 +569,7 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
         version="1.0.0",
     )
     artifact = save_artifact(Artifact(metadata=metadata, data=data))
-    # Return Artifact at root (not wrapped)
+    _audit_add(artifact_type, artifact.metadata.id, "CREATE", name_guess)
     return jsonify(artifact_to_dict(artifact)), 201
 
 
@@ -537,7 +580,7 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
     artifact = fetch_artifact(artifact_type, artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact not found"}), 404
-    # Return Artifact at root to match spec
+    _audit_add(artifact_type, artifact_id, "DOWNLOAD", artifact.metadata.name)
     return jsonify(artifact_to_dict(artifact)), 200
 
 
@@ -555,67 +598,62 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
         version=str(metadata_dict.get("version", "1.0.1")),
     )
     artifact = save_artifact(Artifact(metadata=metadata, data=data))
-    # Return Artifact at root to match spec
+    _audit_add(artifact_type, artifact_id, "UPDATE", metadata.name)
     return jsonify(artifact_to_dict(artifact)), 200
 
 
-# Non-baseline: Delete an artifact (implemented for convenience)
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
 @_record_timing
 def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
-    # Delete from primary store and in-memory
     try:
         ArtifactStore().delete(artifact_type, artifact_id)
     except Exception:
         logger.exception("Primary delete failed; will still remove from memory if present")
     _STORE.pop(_store_key(artifact_type, artifact_id), None)
+    _audit_add(artifact_type, artifact_id, "UPDATE", "")
     return jsonify({"message": "Artifact deleted"}), 200
 
 
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
 def enumerate_artifacts_route() -> tuple[Response, int] | Response:
-    """Enumerate artifacts matching ArtifactQuery; returns list w/ offset header for pagination.
-    OpenAPI spec expects an array of ArtifactQuery objects with optional offset parameter.
-    """
+    """Enumerate artifacts matching ArtifactQuery (array per spec)."""
     _require_auth()
-    payload = _json_body()
+    payload = request.get_json(silent=True)
 
-    # Support both single query object and array of queries (OpenAPI spec uses array)
-    if isinstance(payload, list):
-        # OpenAPI spec format: array of queries
-        # For simplicity, use the first query if multiple provided
-        if not payload:
-            return jsonify({"message": "Query array cannot be empty"}), 400
-        query_dict = payload[0]
-    else:
-        # Legacy format: single query object
-        query_dict = payload
+    if not isinstance(payload, list):
+        return jsonify({"message": "Expected an array of ArtifactQuery"}), 400
+    if not payload:
+        return jsonify({"message": "Query array cannot be empty"}), 400
+
+    # Per spec, use the first query; require 'name'
+    query_dict = payload[0]
+    if not isinstance(query_dict, dict) or "name" not in query_dict:
+        return jsonify({"message": "ArtifactQuery must include 'name'"}), 400
+
     # Parse offset from query args if provided
     offset_str = request.args.get("offset")
     if offset_str:
         try:
             offset = int(offset_str)
-            # Convert offset to page number
             page_size = query_dict.get("page_size", 25)
             query_dict["page"] = (offset // page_size) + 1 if page_size > 0 else 1
         except (ValueError, TypeError):
             pass
+
     query = _parse_query(query_dict)
     result = list_artifacts(query)
 
-    # If query requests everything by name "*" and total is very large, indicate too many results
+    # If name is "*" and result is huge, return 413 (per spec language)
     if (str(query_dict.get("name", "")).strip() == "*") and result.get("total", 0) > 500:
         return jsonify({"message": "Too many artifacts returned"}), 413
 
-    # Calculate offset for next page (OpenAPI spec requirement)
     current_page = int(result.get("page", 1))
     page_size = int(result.get("page_size", 25))
     total = int(result.get("total", 0))
     next_offset = current_page * page_size
 
-    # Spec expects array of ArtifactMetadata
     items = result.get("items", [])
     artifacts_meta = [
         {
@@ -717,9 +755,9 @@ def upload_create_route() -> tuple[Response, int] | Response:
     data: dict[str, Any]
     # If S3 is enabled, upload directly to S3; else save to /tmp/uploads
     if _S3.enabled:
-        key_rel = f"{artifact_type}/{artifact_id}/{safe_name}"
+        # Place under uploads/{artifact_type}/{artifact_id}/filename to match “relevant place in S3”
+        key_rel = f"uploads/{artifact_type}/{artifact_id}/{safe_name}"
         try:
-            # Use stream without loading full file in memory when possible
             meta = _S3.put_file(
                 cast(BinaryIO, f.stream), key_rel, f.mimetype or "application/octet-stream"
             )
@@ -733,7 +771,6 @@ def upload_create_route() -> tuple[Response, int] | Response:
             }
         except Exception:
             logger.exception("S3 upload failed; falling back to local storage")
-            # Fall back to local disk
             dest = _UPLOAD_DIR / safe_name
             counter = 1
             base = dest.stem
@@ -773,6 +810,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
         data=data,
     )
     save_artifact(art)
+    _audit_add(artifact_type, artifact_id, "CREATE", artifact_name)
     return jsonify({"artifact": artifact_to_dict(art)}), 201
 
 
@@ -785,7 +823,6 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
-        # Return in OpenAPI 3.3.1 compatible flattened structure
         return jsonify(_to_openapi_model_rating(rating)), 200
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
@@ -800,12 +837,12 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             artifact.data["trust_score"] = rating.scores.get("net_score", 0.0)
             artifact.data["last_rated"] = rating.generated_at.isoformat() + "Z"
             save_artifact(artifact)
-            # Log using parameterized message to avoid f-string line breaks
             logger.info(
                 "Saved metrics for %s: trust_score=%s",
                 artifact_id,
                 artifact.data.get("trust_score"),
             )
+        _audit_add("model", artifact_id, "RATE", artifact.metadata.name)
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 400
     except Exception:
@@ -818,7 +855,6 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     """Convert internal ModelRating to the flattened schema required by the spec."""
     scores = rating.scores or {}
     lat_ms = rating.latencies or {}
-    # Convert milliseconds to seconds (float)
 
     def sec(key: str) -> float:
         v = lat_ms.get(key, 0)
@@ -827,7 +863,6 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
         except Exception:
             return 0.0
 
-    # size_score is an object
     size_score = scores.get("size_score") or {
         "raspberry_pi": 0.0,
         "jetson_nano": 0.0,
@@ -884,36 +919,36 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             key = s3_key
             ver = art.data.get("s3_version_id")
             try:
+                body, meta = _S3.get_object(key, ver)
+                size_bytes = int(meta.get("size", len(body)))
                 if part == "all":
-                    # Stream original object (assumed zip) to client
-                    body, meta = _S3.get_object(key, ver)
                     resp = send_file(
                         io.BytesIO(body),
                         as_attachment=True,
                         download_name=f"{artifact_id}.zip",
                         mimetype=meta.get("content_type") or "application/zip",
                     )
-                    resp.headers["X-Size-Cost-Bytes"] = str(int(meta.get("size", len(body))))
-                    return resp
-                    # For parts, load zip into memory and filter
-                    body, meta = _S3.get_object(key, ver)
-                    size_bytes = int(meta.get("size", len(body)))
-                    with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
-                        buf = io.BytesIO()
-                        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-                            prefix = f"{part.strip('/')}/"
-                            for info in zin.infolist():
-                                if info.filename.startswith(prefix):
-                                    zout.writestr(info, zin.read(info))
-                        buf.seek(0)
-                    resp = send_file(
-                        buf,
-                        as_attachment=True,
-                        download_name=f"{artifact_id}-{part}.zip",
-                        mimetype="application/zip",
-                    )
                     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+                    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
                     return resp
+                # parts
+                with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                        prefix = f"{part.strip('/')}/"
+                        for info in zin.infolist():
+                            if info.filename.startswith(prefix):
+                                zout.writestr(info, zin.read(info))
+                    buf.seek(0)
+                resp = send_file(
+                    buf,
+                    as_attachment=True,
+                    download_name=f"{artifact_id}-{part}.zip",
+                    mimetype="application/zip",
+                )
+                resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+                _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+                return resp
             except Exception:
                 logger.exception("Failed to serve from S3; falling back to local if available")
 
@@ -936,9 +971,9 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+        _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
         return resp
 
-    # Build a filtered zip in-memory for weights/ or dataset/
     with zipfile.ZipFile(str(zpath), "r") as zin:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
@@ -955,6 +990,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         mimetype="application/zip",
     )
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
 
 
@@ -969,13 +1005,11 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
     if art is None:
         return jsonify({"message": "Artifact not found"}), 404
     try:
-        # Calculate standalone cost for this artifact
         standalone_cost_mb = _calculate_artifact_size_mb(art)
 
         if not dependency:
-            # Simple case: just return total_cost
             return jsonify({artifact_id: {"total_cost": round(standalone_cost_mb, 2)}}), 200
-        # Complex case: calculate costs for all dependencies
+
         visited: set[str] = set()
         cost_map: dict[str, dict[str, float]] = {}
 
@@ -983,18 +1017,15 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
             if current_id in visited:
                 return
             visited.add(current_id)
-            # Calculate standalone cost
             size_mb = _calculate_artifact_size_mb(current_art)
             cost_map[current_id] = {
                 "standalone_cost": round(size_mb, 2),
-                "total_cost": round(size_mb, 2),  # Will update after traversal
+                "total_cost": round(size_mb, 2),
             }
-            # Find dependencies (look for references in data)
             if isinstance(current_art.data, dict):
                 for key in ("code_link", "dataset_link", "base_model_id", "dependencies"):
                     dep_val = current_art.data.get(key)
                     if isinstance(dep_val, str) and dep_val.strip():
-                        # Try to resolve as artifact_id
                         dep_art = fetch_artifact(artifact_type, dep_val)
                         if dep_art:
                             _collect_costs(dep_art, dep_val)
@@ -1005,9 +1036,7 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
                                 if dep_art:
                                     _collect_costs(dep_art, dep_id)
 
-        # Traverse dependency tree
         _collect_costs(art, artifact_id)
-        # Calculate total costs (sum all dependencies)
         total_sum = sum(c["standalone_cost"] for c in cost_map.values())
         for aid in cost_map:
             cost_map[aid]["total_cost"] = round(total_sum, 2)
@@ -1023,24 +1052,19 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
 @blueprint.route("/artifact/model/<string:artifact_id>/license-check", methods=["POST"])
 @_record_timing
 def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Response:
-    """Assess license compatibility for fine-tune and inference usage.
-
-    Spec expects boolean response. Return True for now (stub).
-    """
+    """Assess license compatibility for fine-tune and inference usage (stub True)."""
     _require_auth()
-    # Validate body contains github_url
     body = _json_body()
     gh_url = str(body.get("github_url", "")).strip()
     if not gh_url:
         return jsonify({"message": "github_url is required"}), 400
-    # TODO: integrate license analysis; for now, optimistic stub
+    # Stubbed success
     return jsonify(True), 200
 
 
 def _calculate_artifact_size_mb(artifact) -> float:
     """Calculate artifact size in MB from S3 metadata or local file."""
     size_bytes = 0
-    # Try S3 metadata first
     if isinstance(artifact.data, dict):
         if artifact.data.get("size"):
             size_bytes = int(artifact.data.get("size", 0))
@@ -1053,18 +1077,18 @@ def _calculate_artifact_size_mb(artifact) -> float:
                     size_bytes = int(meta.get("size", 0))
             except Exception:
                 logger.warning("Failed to get S3 object size for %s", artifact.metadata.id)
-        # Fallback to local file
         if size_bytes == 0 and artifact.data.get("path"):
             rel = artifact.data.get("path")
             if isinstance(rel, str) and rel:
                 zpath = (_UPLOAD_DIR.parent / rel).resolve()
                 if zpath.exists():
                     size_bytes = zpath.stat().st_size
-    # Convert bytes to MB
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
 
-# -------------------- HF ingest gate --------------------
+# -------------------- Ingest (legacy helper) --------------------
+
+
 @blueprint.route("/ingest", methods=["POST"])
 def ingest_route() -> tuple[Response, int] | Response:
     """Ingest a model artifact into the registry."""
@@ -1074,7 +1098,6 @@ def ingest_route() -> tuple[Response, int] | Response:
     metadata = payload.get("metadata") or {}
     data = payload.get("data") or {}
 
-    # Validate & normalize
     normalized = _validate_artifact_data(artifact_type, data)
     artifact = Artifact(
         metadata=ArtifactMetadata(
@@ -1087,6 +1110,7 @@ def ingest_route() -> tuple[Response, int] | Response:
     )
 
     save_artifact(artifact)
+    _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
     return jsonify({"artifact": artifact_to_dict(artifact)}), 201
 
 
@@ -1139,6 +1163,7 @@ def ingest_hf_route() -> tuple[Response, int] | Response:
         },
     )
     save_artifact(art)
+    _audit_add("model", art.metadata.id, "CREATE", art.metadata.name)
     return (
         jsonify({"ingestible": True, "artifact": artifact_to_dict(art), "scores": rating.scores}),
         201,
@@ -1150,11 +1175,7 @@ def ingest_hf_route() -> tuple[Response, int] | Response:
 
 @blueprint.route("/authenticate", methods=["PUT"])
 def authenticate_route() -> tuple[Response, int] | Response:
-    """Create an access token per spec.
-
-    Accepts {"user": {"name": ... , "is_admin": bool}, "secret": {"password": ...}}
-    Returns AuthenticationToken string, including the 'bearer ' prefix.
-    """
+    """Create an access token per spec."""
     body = _json_body()
     user = (body.get("user") or {}) if isinstance(body, dict) else {}
     secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
@@ -1178,7 +1199,6 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     art = fetch_artifact("model", artifact_id)
     if not art:
         return jsonify({"message": "Artifact not found"}), 404
-    # Support S3-backed blobs
     s3_key = art.data.get("s3_key") if isinstance(art.data, dict) else None
     s3_ver = art.data.get("s3_version_id") if isinstance(art.data, dict) else None
     zbody: bytes | None = None
@@ -1219,7 +1239,6 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         pass
     parents = sorted(set(parents))
-    # Build objects per spec
     nodes = [
         {
             "artifact_id": artifact_id,
@@ -1246,7 +1265,7 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     return jsonify({"nodes": nodes, "edges": edges}), 200
 
 
-# -------------------- License compatibility (stubbed API) --------------------
+# -------------------- License compatibility (legacy helper) --------------------
 
 
 @blueprint.route("/license/check", methods=["POST"])
@@ -1263,7 +1282,7 @@ def license_check_route() -> tuple[Response, int] | Response:
     result = {
         "github_url": gh_url,
         "model_id": model_id,
-        "compatible": True,  # placeholder
+        "compatible": True,
         "reason": "Stub: implement ModelGo-like policy check",
         "details": {"repo_license": "MIT", "model_license": "Apache-2.0"},
     }
@@ -1279,7 +1298,6 @@ def reset_route() -> tuple[Response, int] | Response:
     scope = str(request.args.get("scope", "memory")).lower()
     reset_storage()
 
-    # Optional hard reset: clear DynamoDB-backed stores as well
     if scope in {"all", "db", "dynamodb"}:
         try:
             ArtifactStore().clear()
@@ -1348,3 +1366,36 @@ def by_regex_route() -> tuple[Response, int] | Response:
     if not matches:
         return jsonify({"message": "No artifact found under this regex"}), 404
     return jsonify(matches), 200
+
+
+# -------------------- Audit log (NON-BASELINE) --------------------
+
+
+@blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/audit", methods=["GET"])
+@_record_timing
+def audit_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+    _require_auth()
+    _ = fetch_artifact(artifact_type, artifact_id)
+    # If it doesn't exist in either store, 404 per spec
+    if not _ and _store_key(artifact_type, artifact_id) not in _STORE:
+        return jsonify({"message": "Artifact not found"}), 404
+    entries = _AUDIT_LOG.get(str(artifact_id), [])
+    _audit_add(artifact_type, artifact_id, "AUDIT")
+    return jsonify(entries), 200
+
+
+# -------------------- Tracks (NON-BASELINE helper) --------------------
+
+
+@blueprint.route("/tracks", methods=["GET"])
+def tracks_route() -> tuple[Response, int] | Response:
+    return jsonify(
+        {
+            "plannedTracks": [
+                "Performance track",
+                "Access control track",
+                "High assurance track",
+                "Other Security track",
+            ]
+        }
+    ), 200
