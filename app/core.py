@@ -469,8 +469,8 @@ def health() -> tuple[Response, int]:
 
 
 _OPENAPI = {
-    "openapi": "3.0.3",
-    "info": {"title": "Trustworthy Model Registry", "version": "0.2.0"},
+    "openapi": "3.0.2",
+    "info": {"title": "ECE 461 - Fall 2025 - Project Phase 2", "version": "3.3.1"},
     "paths": {
         "/artifact/{artifact_type}": {"post": {"summary": "Create artifact"}},
         "/artifacts": {"post": {"summary": "Enumerate artifacts"}},
@@ -479,6 +479,10 @@ _OPENAPI = {
         "/artifact/model/{artifact_id}/rate": {"get": {"summary": "Rate model"}},
         "/artifact/model/{artifact_id}/download": {"get": {"summary": "Download model"}},
         "/artifact/model/{artifact_id}/lineage": {"get": {"summary": "Lineage graph"}},
+        "/artifact/model/{artifact_id}/license-check": {"post": {"summary": "License check"}},
+        "/artifact/byRegEx": {"post": {"summary": "Artifacts by RegEx"}},
+        "/artifact/byName/{name}": {"get": {"summary": "Artifacts by Name"}},
+        "/authenticate": {"put": {"summary": "Create auth token"}},
         "/ingest/hf": {"post": {"summary": "Gate and ingest HF model"}},
         "/license/check": {"post": {"summary": "License compatibility"}},
         "/reset": {"delete": {"summary": "Reset system"}},
@@ -499,22 +503,33 @@ def openapi_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/<string:artifact_type>", methods=["POST"])
 @_record_timing
 def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
-    """Ingest artifact from ArtifactData (with url fields); stores metadata; returns Artifact.
+    """Register a new artifact from ArtifactData {"url": "..."}; returns Artifact.
 
-    Lambda spec: stores to S3, but currently using in-memory store (no DB requirement).
+    Per spec, request body contains only ArtifactData with a single url.
     """
     _require_auth()
     payload = _json_body()
-    metadata_dict = payload.get("metadata") or {}
-    data = _validate_artifact_data(artifact_type, payload.get("data") or {})
+    # Validate/normalize data according to artifact_type; supports {"url": "..."}
+    data = _validate_artifact_data(artifact_type, payload)
+
+    # Derive basic metadata (name from URL if possible, generated id)
+    url = (payload or {}).get("url") if isinstance(payload, dict) else None
+    name_guess = "example"
+    try:
+        if isinstance(url, str) and url.strip():
+            # Use last path segment as name
+            name_guess = url.rstrip("/").split("/")[-1] or name_guess
+    except Exception:
+        pass
     metadata = ArtifactMetadata(
-        id=str(metadata_dict.get("id", "generated-id")),
-        name=str(metadata_dict.get("name", "example")),
+        id=str(int(time.time() * 1000)),
+        name=name_guess,
         type=artifact_type,
-        version=str(metadata_dict.get("version", "1.0.0")),
+        version="1.0.0",
     )
     artifact = save_artifact(Artifact(metadata=metadata, data=data))
-    return jsonify({"artifact": artifact_to_dict(artifact)}), 201
+    # Return Artifact at root (not wrapped)
+    return jsonify(artifact_to_dict(artifact)), 201
 
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
@@ -524,7 +539,8 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
     artifact = fetch_artifact(artifact_type, artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact not found"}), 404
-    return jsonify({"artifact": artifact_to_dict(artifact)}), 200
+    # Return Artifact at root to match spec
+    return jsonify(artifact_to_dict(artifact)), 200
 
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
@@ -541,7 +557,22 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
         version=str(metadata_dict.get("version", "1.0.1")),
     )
     artifact = save_artifact(Artifact(metadata=metadata, data=data))
-    return jsonify({"artifact": artifact_to_dict(artifact)}), 200
+    # Return Artifact at root to match spec
+    return jsonify(artifact_to_dict(artifact)), 200
+
+
+# Non-baseline: Delete an artifact (implemented for convenience)
+@blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
+@_record_timing
+def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+    _require_auth()
+    # Delete from primary store and in-memory
+    try:
+        ArtifactStore().delete(artifact_type, artifact_id)
+    except Exception:
+        logger.exception("Primary delete failed; will still remove from memory if present")
+    _STORE.pop(_store_key(artifact_type, artifact_id), None)
+    return jsonify({"message": "Artifact deleted"}), 200
 
 
 @blueprint.route("/artifacts", methods=["POST"])
@@ -579,20 +610,30 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     query = _parse_query(query_dict)
     result = list_artifacts(query)
 
+    # If query requests everything by name "*" and total is very large, indicate too many results
+    if (str(query_dict.get("name", "")).strip() == "*") and result.get("total", 0) > 500:
+        return jsonify({"message": "Too many artifacts returned"}), 413
+
     # Calculate offset for next page (OpenAPI spec requirement)
-    current_page = result.get("page", 1)
-    page_size = result.get("page_size", 25)
-    total = result.get("total", 0)
+    current_page = int(result.get("page", 1))
+    page_size = int(result.get("page_size", 25))
+    total = int(result.get("total", 0))
     next_offset = current_page * page_size
 
-    # OpenAPI spec expects array of ArtifactMetadata, not the full result object
-    artifacts_list = result.get("artifacts", [])
-    
-    response = jsonify(artifacts_list)
-    # Add offset header if there are more pages
+    # Spec expects array of ArtifactMetadata
+    items = result.get("items", [])
+    artifacts_meta = [
+        {
+            "name": (it.get("metadata") or {}).get("name"),
+            "id": (it.get("metadata") or {}).get("id"),
+            "type": (it.get("metadata") or {}).get("type"),
+        }
+        for it in items
+    ]
+
+    response = jsonify(artifacts_meta)
     if next_offset < total:
         response.headers["offset"] = str(next_offset)
-    return response, 200
     return response, 200
 
 
@@ -747,20 +788,8 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
-        return (
-            jsonify(
-                {
-                    "model_rating": {
-                        "id": rating.id,
-                        "generated_at": rating.generated_at.isoformat() + "Z",
-                        "scores": rating.scores,
-                        "latencies": rating.latencies,
-                        "summary": rating.summary,
-                    }
-                }
-            ),
-            200,
-        )
+        # Return in OpenAPI 3.3.1 compatible flattened structure
+        return jsonify(_to_openapi_model_rating(rating)), 200
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact not found"}), 404
@@ -780,20 +809,57 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         logger.exception("Failed to score artifact %s", artifact_id)
         return jsonify({"message": "Failed to compute model rating"}), 500
-    return (
-        jsonify(
-            {
-                "model_rating": {
-                    "id": rating.id,
-                    "generated_at": rating.generated_at.isoformat() + "Z",
-                    "scores": rating.scores,
-                    "latencies": rating.latencies,
-                    "summary": rating.summary,
-                }
-            }
-        ),
-        200,
-    )
+    return jsonify(_to_openapi_model_rating(rating)), 200
+
+
+def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
+    """Convert internal ModelRating to the flattened schema required by the spec."""
+    scores = rating.scores or {}
+    lat_ms = rating.latencies or {}
+    # Convert milliseconds to seconds (float)
+    def sec(key: str) -> float:
+        v = lat_ms.get(key, 0)
+        try:
+            return float(v) / 1000.0
+        except Exception:
+            return 0.0
+
+    # size_score is an object
+    size_score = scores.get("size_score") or {
+        "raspberry_pi": 0.0,
+        "jetson_nano": 0.0,
+        "desktop_pc": 0.0,
+        "aws_server": 0.0,
+    }
+
+    return {
+        "name": rating.summary.get("name"),
+        "category": rating.summary.get("category"),
+        "net_score": float(scores.get("net_score", 0.0) or 0.0),
+        "net_score_latency": sec("net_score"),
+        "ramp_up_time": float(scores.get("ramp_up_time", 0.0) or 0.0),
+        "ramp_up_time_latency": sec("ramp_up_time"),
+        "bus_factor": float(scores.get("bus_factor", 0.0) or 0.0),
+        "bus_factor_latency": sec("bus_factor"),
+        "performance_claims": float(scores.get("performance_claims", 0.0) or 0.0),
+        "performance_claims_latency": sec("performance_claims"),
+        "license": float(scores.get("license", 0.0) or 0.0),
+        "license_latency": sec("license"),
+        "dataset_and_code_score": float(scores.get("dataset_and_code_score", 0.0) or 0.0),
+        "dataset_and_code_score_latency": sec("dataset_and_code_score"),
+        "dataset_quality": float(scores.get("dataset_quality", 0.0) or 0.0),
+        "dataset_quality_latency": sec("dataset_quality"),
+        "code_quality": float(scores.get("code_quality", 0.0) or 0.0),
+        "code_quality_latency": sec("code_quality"),
+        "reproducibility": float(scores.get("reproducibility", 0.0) or 0.0),
+        "reproducibility_latency": sec("reproducibility"),
+        "reviewedness": float(scores.get("reviewedness", 0.0) or 0.0),
+        "reviewedness_latency": sec("reviewedness"),
+        "tree_score": float(scores.get("tree_score", 0.0) or 0.0),
+        "tree_score_latency": sec("tree_score"),
+        "size_score": size_score,
+        "size_score_latency": sec("size_score"),
+    }
 
 
 # -------------------- Download (full/parts) & size cost --------------------
@@ -956,6 +1022,26 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
         return jsonify({"message": "The artifact cost calculator encountered an error"}), 500
 
 
+# -------------------- License check (per-spec endpoint) --------------------
+
+
+@blueprint.route("/artifact/model/<string:artifact_id>/license-check", methods=["POST"])
+@_record_timing
+def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Response:
+    """Assess license compatibility for fine-tune and inference usage.
+
+    Spec expects boolean response. Return True for now (stub).
+    """
+    _require_auth()
+    # Validate body contains github_url
+    body = _json_body()
+    gh_url = str(body.get("github_url", "")).strip()
+    if not gh_url:
+        return jsonify({"message": "github_url is required"}), 400
+    # TODO: integrate license analysis; for now, optimistic stub
+    return jsonify(True), 200
+
+
 def _calculate_artifact_size_mb(artifact) -> float:
     """Calculate artifact size in MB from S3 metadata or local file."""
     size_bytes = 0
@@ -1065,6 +1151,29 @@ def ingest_hf_route() -> tuple[Response, int] | Response:
     )
 
 
+# -------------------- Authentication (per-spec) --------------------
+
+
+@blueprint.route("/authenticate", methods=["PUT"])
+def authenticate_route() -> tuple[Response, int] | Response:
+    """Create an access token per spec.
+
+    Accepts {"user": {"name": ... , "is_admin": bool}, "secret": {"password": ...}}
+    Returns AuthenticationToken string, including the 'bearer ' prefix.
+    """
+    body = _json_body()
+    user = (body.get("user") or {}) if isinstance(body, dict) else {}
+    secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
+    username = str(user.get("name", "")).strip()
+    password = str(secret.get("password", "")).strip()
+    if username == _DEFAULT_USER["username"] and password == _DEFAULT_USER["password"]:
+        tok = f"t_{int(time.time()*1000)}"
+        _TOKENS.add(tok)
+        TokenStore().add(tok)
+        return jsonify(f"bearer {tok}"), 200
+    return jsonify({"message": "invalid credentials"}), 401
+
+
 # -------------------- Lineage graph --------------------
 
 
@@ -1112,8 +1221,31 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         pass
     parents = sorted(set(parents))
-    graph = {"nodes": [artifact_id] + parents, "edges": [[p, artifact_id] for p in parents]}
-    return jsonify({"lineage": graph}), 200
+    # Build objects per spec
+    nodes = [
+        {
+            "artifact_id": artifact_id,
+            "name": art.metadata.name,
+            "source": "config_json",
+        }
+    ]
+    for p in parents:
+        nodes.append(
+            {
+                "artifact_id": p,
+                "name": p,
+                "source": "config_json",
+            }
+        )
+    edges = [
+        {
+            "from_node_artifact_id": p,
+            "to_node_artifact_id": artifact_id,
+            "relationship": "derived_from",
+        }
+        for p in parents
+    ]
+    return jsonify({"nodes": nodes, "edges": edges}), 200
 
 
 # -------------------- License compatibility (stubbed API) --------------------
@@ -1122,6 +1254,7 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
 @blueprint.route("/license/check", methods=["POST"])
 @_record_timing
 def license_check_route() -> tuple[Response, int] | Response:
+    """Legacy license check endpoint; returns structured result for compatibility."""
     _require_auth()
     body = _json_body()
     gh_url = str(body.get("github_url", "")).strip()
@@ -1164,3 +1297,56 @@ def reset_route() -> tuple[Response, int] | Response:
             logger.exception("Failed to clear RatingsCache (DynamoDB)")
 
     return jsonify({"message": "Registry reset successful", "scope": scope}), 200
+
+
+# -------------------- Name and RegEx lookups (per-spec) --------------------
+
+
+@blueprint.route("/artifact/byName/<string:name>", methods=["GET"])
+@_record_timing
+def by_name_route(name: str) -> tuple[Response, int] | Response:
+    _require_auth()
+    needle = name.strip().lower()
+    results = []
+    for art in _STORE.values():
+        if art.metadata.name.lower() == needle:
+            results.append(
+                {
+                    "name": art.metadata.name,
+                    "id": art.metadata.id,
+                    "type": art.metadata.type,
+                }
+            )
+    if not results:
+        return jsonify({"message": "No such artifact"}), 404
+    return jsonify(results), 200
+
+
+@blueprint.route("/artifact/byRegEx", methods=["POST"])
+@_record_timing
+def by_regex_route() -> tuple[Response, int] | Response:
+    _require_auth()
+    body = _json_body()
+    regex = str(body.get("regex", "")).strip()
+    if not regex:
+        return jsonify({"message": "Missing regex"}), 400
+    try:
+        sanitized = _sanitize_search_pattern(regex)
+        pattern = re.compile(sanitized, re.IGNORECASE)
+    except re.error:
+        return jsonify({"message": "Invalid regex"}), 400
+    matches = []
+    for art in _STORE.values():
+        if pattern.search(art.metadata.name) or (
+            isinstance(art.data, dict) and pattern.search(str(art.data.get("readme", "")))
+        ):
+            matches.append(
+                {
+                    "name": art.metadata.name,
+                    "id": art.metadata.id,
+                    "type": art.metadata.type,
+                }
+            )
+    if not matches:
+        return jsonify({"message": "No artifact found under this regex"}), 404
+    return jsonify(matches), 200
