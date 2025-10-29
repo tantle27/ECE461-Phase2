@@ -14,6 +14,7 @@ except Exception:
 
 from app.core import blueprint
 
+
 def create_app(config=None):
     app = Flask(__name__)
     app.register_blueprint(blueprint)
