@@ -4,18 +4,15 @@ from flask import Flask
 # to modules that import configuration during startup. This import is
 # optional and failures are logged — we don't want missing boto3 or
 # IAM perms to prevent the app from starting.
-try:
-    # Use the src package path used elsewhere in the project. Import for side-effects only.
-    import importlib
 
-    importlib.import_module("src.core.secrets_loader")
+try:
+    from app.secrets_loader import load_registry_secrets
+    load_registry_secrets()
 except Exception:
     import logging
-
-    logging.exception("Failed to import secrets_loader; continuing without Secrets Manager lookup")
+    logging.exception("secrets_loader failed - continuing without Secrets Manager")
 
 from app.core import blueprint
-
 
 def create_app(config=None):
     app = Flask(__name__)
