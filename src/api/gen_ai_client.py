@@ -187,7 +187,6 @@ class GenAIClient:
                 pass
 
         logging.warning(f"Could not parse GenAI response as float: {response[:200]}...")
-        logging.warning(f"Could not parse GenAI response as float: {response[:200]}...")
         return self._default_clarity_score
 
     @staticmethod
