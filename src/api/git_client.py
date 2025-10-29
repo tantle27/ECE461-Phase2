@@ -9,372 +9,249 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse
 
-# Lazy import to avoid git executable check on Lambda cold start
-# from git import Repo
-# from git.exc import GitCommandError
-
 
 @dataclass
 class CommitStats:
-    """Statistics about commits in a repository."""
-
     total_commits: int
-    contributors: dict[str, int]  # author -> commit count
+    contributors: dict[str, int]
     bus_factor: float
 
 
 @dataclass
 class CodeQualityStats:
-    """Statistics about code quality."""
-
     has_tests: bool
     lint_errors: int
     code_quality_score: float
 
 
 class GitClient:
-    """
-    Client for cloning and analyzing Git repositories.
-    """
-
     def __init__(self, GH_TOKEN: str | None = None):
-        """Initialize Git client."""
-        self.temp_dirs: list[str] = []  # Track temp dirs for cleanup
+        self.temp_dirs: list[str] = []
         token = GH_TOKEN or os.environ.get("GH_TOKEN") or None
         self.GH_TOKEN = token.strip() if token else None
+        self.git_bin = os.environ.get("GIT_PYTHON_GIT_EXECUTABLE") or shutil.which("git") or "/usr/bin/git"
+
+    # ---------- URL helpers ----------
 
     def _normalize_git_url(self, url: str) -> str:
-        """
-        Normalize a git URL by removing web interface paths.
-
-        Args:
-            url: Repository URL that may include web interface paths
-
-        Returns:
-            Clean URL suitable for git clone operations
-        """
-        # Remove common web interface paths
-        patterns_to_remove = [
-            r"/tree/[^/]+/?$",  # /tree/main, /tree/master, etc.
-            r"/blob/[^/]+/.*$",  # /blob/main/file.py, etc.
-            r"/commits?/[^/]+/?$",  # /commit/abc123, /commits/main
-            r"/releases?/?.*$",  # /releases, /release/v1.0
-            r"/issues?/?.*$",  # /issues, /issues/1
-            r"/pull/?.*$",  # /pull/1
-            r"/wiki/?.*$",  # /wiki, /wiki/page
+        patterns = [
+            r"/tree/[^/]+/?$",
+            r"/blob/[^/]+/.*$",
+            r"/commits?/[^/]+/?$",
+            r"/releases?/?.*$",
+            r"/issues?/?.*$",
+            r"/pull/?.*$",
+            r"/wiki/?.*$",
         ]
-
-        normalized_url = url.rstrip("/")
-        for pattern in patterns_to_remove:
-            normalized_url = re.sub(pattern, "", normalized_url)
-
-        return normalized_url
+        normalized = url.rstrip("/")
+        for p in patterns:
+            normalized = re.sub(p, "", normalized)
+        return normalized
 
     def _inject_token(self, url: str) -> str:
-        """Inject the GitHub token into an HTTPS clone URL when available."""
         if not self.GH_TOKEN:
             return url
-
         if url.startswith("git@github.com:"):
             path = url.split(":", 1)[1]
             url = f"https://github.com/{path}"
-
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"}:
             return url
-
         if parsed.username:
-            return url  # Respect existing credentials
+            return url
+        tok = quote(self.GH_TOKEN, safe="")
+        netloc = f"{tok}:x-oauth-basic@{parsed.netloc}"
+        return urlunparse(parsed._replace(netloc=netloc))
 
-        token = quote(self.GH_TOKEN, safe="")
-        safe_netloc = f"{token}:x-oauth-basic@{parsed.netloc}"
-        injected = urlunparse(parsed._replace(netloc=safe_netloc))
-        return injected
+    # ---------- clone strategies ----------
 
-    def clone_repository(self, url: str) -> str | None:
-        """
-        Clone a repository to a temporary directory.
-        :param url: Git repository URL
-        :return: Path to cloned repository, or None if cloning failed
-        """
-        # First, attempt to import GitPython; if unavailable, degrade gracefully
+    def _clone_with_gitpython(self, clone_url: str, dst: str) -> bool:
         try:
             from git import Repo  # type: ignore
-            from git.exc import GitCommandError as _GitCmdErr  # type: ignore
-        except Exception as e:
-            logging.warning("GitPython not available or git binary missing: %s", e)
-            return None
-
-        try:
-            # Normalize URL for git cloning by removing web interface paths
-            normalized_url = self._normalize_git_url(url)
-            clone_url = self._inject_token(normalized_url)
-
-            # Create temporary directory
-            temp_dir = tempfile.mkdtemp(prefix="model_analysis_")
-            self.temp_dirs.append(temp_dir)
-
-            logging.info(f"Cloning repository: {normalized_url}")
-
-            # Clone the repository with shallow clone for speed
             Repo.clone_from(
                 clone_url,
-                temp_dir,
-                depth=1,  # Shallow clone - only latest commit
-                single_branch=True,  # Only clone the default branch
+                dst,
+                depth=1,
+                single_branch=True,
                 env={"GIT_TERMINAL_PROMPT": "0"},
             )
-            logging.info(f"Successfully cloned to: {temp_dir}")
-
-            return temp_dir
-
-        except _GitCmdErr as e:  # type: ignore[name-defined]
-            message = e.stderr or str(e)
-            if "Authentication failed" in message or "fatal: Invalid" in message:
-                logging.error("Failed to clone repository %s due to invalid GitHub token.", url)
-            else:
-                logging.error("Failed to clone repository %s: %s", url, message.strip())
-            return None
+            return True
         except Exception as e:
-            logging.error(f"Failed to clone repository {url}: {str(e)}")
+            logging.warning("GitPython clone failed: %s", e)
+            return False
+
+    def _clone_with_cli(self, clone_url: str, dst: str) -> bool:
+        try:
+            cmd = [
+                self.git_bin,
+                "clone",
+                "--depth=1",
+                "--single-branch",
+                "--no-tags",
+                clone_url,
+                dst,
+            ]
+            env = os.environ.copy()
+            env.setdefault("GIT_TERMINAL_PROMPT", "0")
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=25)
+            return True
+        except subprocess.CalledProcessError as e:
+            msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else str(e)
+            if "Authentication failed" in msg or "fatal: Invalid" in msg:
+                logging.error("Authentication failed for %s", clone_url)
+            else:
+                logging.error("git clone failed: %s", msg.strip())
+            return False
+        except subprocess.TimeoutExpired:
+            logging.error("git clone timed out")
+            return False
+        except Exception as e:
+            logging.error("git clone error: %s", e)
+            return False
+
+    def clone_repository(self, url: str) -> str | None:
+        normalized = self._normalize_git_url(url)
+        clone_url = self._inject_token(normalized)
+        tmp = tempfile.mkdtemp(prefix="model_analysis_", dir="/tmp")
+        self.temp_dirs.append(tmp)
+
+        # Try GitPython first, then fall back to git CLI
+        ok = self._clone_with_gitpython(clone_url, tmp)
+        if not ok:
+            ok = self._clone_with_cli(clone_url, tmp)
+
+        if not ok:
             return None
+        return tmp
+
+    # ---------- analyses ----------
 
     def analyze_commits(self, repo_path: str) -> CommitStats:
-        """
-        Analyze commit history to calculate bus factor.
-        :param repo_path: Path to local repository
-        :return: CommitStats object
-        """
-        # Try to import GitPython; if not available, return empty stats
         try:
             from git import Repo  # type: ignore
-        except Exception as e:
-            logging.warning("GitPython not available or git binary missing (analyze_commits): %s", e)
+        except Exception:
             return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
 
         try:
             repo = Repo(repo_path)
-
-            # For shallow clones, we need to fetch more history
-            # Fetch last 100 commits from the last 365 days for performance
             try:
-                # Try to unshallow if this is a shallow clone
                 if repo.git.rev_parse("--is-shallow-repository") == "true":
-                    since_date = datetime.now() - timedelta(days=365)
-                    repo.git.fetch(
-                        "--depth=100", f"--shallow-since={since_date.strftime('%Y-%m-%d')}"
-                    )
+                    since = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                    repo.git.fetch("--depth=100", f"--shallow-since={since}")
             except Exception:
-                # If fetch fails, continue with whatever we have
                 pass
 
-            # Get commits from the last 365 days, limit to 100 for performance
             since_date = datetime.now() - timedelta(days=365)
             commits = list(repo.iter_commits(since=since_date, max_count=100))
 
-            # Count commits by author
-            contributors: dict[str, int] = {}
-            for commit in commits:
-                author = getattr(commit.author, "email", None) or getattr(
-                    commit.author, "name", None
-                )
-                if author:  # Skip commits with no author identifier
-                    contributors[author] = contributors.get(author, 0) + 1
+            contribs: dict[str, int] = {}
+            for c in commits:
+                author = getattr(c.author, "email", None) or getattr(c.author, "name", None)
+                if author:
+                    contribs[author] = contribs.get(author, 0) + 1
 
-            # Calculate bus factor using Herfindahl-Hirschman Index
-            total_commits = len(commits)
-            if total_commits == 0:
-                return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
+            total = len(commits)
+            if total == 0:
+                return CommitStats(0, {}, 0.0)
 
-            # Calculate concentration index using all contributors
-            concentration = sum((count / total_commits) ** 2 for count in contributors.values())
-            # Higher is better (more distributed)
-            bus_factor = 1.0 - concentration
-
-            return CommitStats(
-                total_commits=total_commits,
-                contributors=dict(
-                    sorted(contributors.items(), key=lambda item: item[1], reverse=True)
-                ),
-                bus_factor=max(0.0, min(1.0, bus_factor)),
-            )
-
+            concentration = sum((n / total) ** 2 for n in contribs.values())
+            bus = max(0.0, min(1.0, 1.0 - concentration))
+            return CommitStats(total, dict(sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)), bus)
         except Exception as e:
-            logging.error(f"Failed to analyze commits: {str(e)}")
-            return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
+            logging.error("commit analysis failed: %s", e)
+            return CommitStats(0, {}, 0.0)
 
     def analyze_code_quality(self, repo_path: str) -> CodeQualityStats:
-        """
-        Analyze code quality by checking for tests and running linter.
-
-        :param repo_path: Path to local repository
-        :return: CodeQualityStats object
-        """
         try:
-            # Check if path exists first
             if not os.path.exists(repo_path):
-                return CodeQualityStats(has_tests=False, lint_errors=0, code_quality_score=0.0)
+                return CodeQualityStats(False, 0, 0.0)
 
-            repo_path_obj = Path(repo_path)
-
-            # Check for test directories/files
+            p = Path(repo_path)
             test_patterns = ["test", "tests", "spec", "specs"]
-            has_tests = any(any(repo_path_obj.rglob(f"{pattern}*")) for pattern in test_patterns)
+            has_tests = any(any(p.rglob(f"{pat}*")) for pat in test_patterns)
 
-            # Run flake8 on Python files to count lint errors
             lint_errors = 0
             try:
-                python_files = list(repo_path_obj.rglob("*.py"))
-                if python_files:
-                    # Limit to first 50 files for performance
-                    # Prioritize non-test files
-                    main_files = [
-                        f for f in python_files if "/test" not in str(f) and "/tests/" not in str(f)
-                    ]
-                    files_to_check = (main_files[:30] + python_files[:20])[:50]
-
-                    if files_to_check:
-                        # Run flake8 with timeout and count errors
-                        result = subprocess.run(
-                            ["flake8", "--count", "--quiet"] + [str(f) for f in files_to_check],
+                py_files = list(p.rglob("*.py"))
+                if py_files:
+                    mains = [f for f in py_files if "/test" not in str(f) and "/tests/" not in str(f)]
+                    files = (mains[:30] + py_files[:20])[:50]
+                    if files:
+                        res = subprocess.run(
+                            ["flake8", "--count", "--quiet", *map(str, files)],
                             capture_output=True,
                             text=True,
                             cwd=repo_path,
-                            timeout=5,  # 5 second timeout
+                            timeout=5,
                         )
-                        # flake8 returns the count as the last line of stderr
-                        if result.stderr:
+                        if res.stderr:
                             try:
-                                lint_errors = int(result.stderr.strip().split("\n")[-1])
-                            except (ValueError, IndexError):
+                                lint_errors = int(res.stderr.strip().split("\n")[-1])
+                            except Exception:
                                 lint_errors = 0
             except subprocess.TimeoutExpired:
-                logging.warning("Flake8 timed out, using 0 lint errors")
                 lint_errors = 0
             except Exception:
-                # logging.warning(f"Failed to run flake8: {str(e)}")
                 lint_errors = 0
 
-            # Calculate code quality score
-            # Start with 1.0, subtract 0.05 for each lint error, minimum 0.0
-            code_quality_score = max(0.0, 1.0 - (lint_errors * 0.05))
-
-            return CodeQualityStats(
-                has_tests=has_tests, lint_errors=lint_errors, code_quality_score=code_quality_score
-            )
-
+            score = max(0.0, 1.0 - (lint_errors * 0.05))
+            return CodeQualityStats(has_tests, lint_errors, score)
         except Exception as e:
-            logging.error(f"Failed to analyze code quality: {str(e)}")
-            return CodeQualityStats(has_tests=False, lint_errors=0, code_quality_score=0.0)
+            logging.error("code quality analysis failed: %s", e)
+            return CodeQualityStats(False, 0, 0.0)
 
     def analyze_ramp_up_time(self, repo_path: str) -> dict[str, bool]:
         try:
-            # Check if path exists first
             if not os.path.exists(repo_path):
-                return {
-                    "has_examples": False,
-                    "has_dependencies": False,
-                }
-
-            repo_path_obj = Path(repo_path)
-
-            # Check for example code
-            example_patterns = ["examples", "notebooks", "demo.py", "example.py"]
-            has_examples = any(
-                any(repo_path_obj.rglob(f"{pattern}*")) for pattern in example_patterns
-            )
-
-            # Check for dependency files
-            dependency_files = ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"]
-            has_dependencies = any((repo_path_obj / file).exists() for file in dependency_files)
-
-            return {
-                "has_examples": has_examples,
-                "has_dependencies": has_dependencies,
-            }
-
+                return {"has_examples": False, "has_dependencies": False}
+            p = Path(repo_path)
+            has_examples = any(any(p.rglob(f"{pat}*")) for pat in ["examples", "notebooks", "demo.py", "example.py"])
+            has_deps = any((p / f).exists() for f in ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"])
+            return {"has_examples": has_examples, "has_dependencies": has_deps}
         except Exception as e:
-            logging.error(f"Failed to analyze ramp-up time: {str(e)}")
-            return {
-                "has_examples": False,
-                "has_dependencies": False,
-            }
+            logging.error("ramp-up analysis failed: %s", e)
+            return {"has_examples": False, "has_dependencies": False}
 
     def get_repository_size(self, repo_path: str) -> dict[str, float]:
-        """
-        Calculate repository size and hardware compatibility scores.
-
-        :param repo_path: Path to local repository
-        :return: Dictionary with hardware compatibility scores
-        """
         try:
-            # Check if path exists first
             if not os.path.exists(repo_path):
-                return {
-                    "raspberry_pi": 0.0,
-                    "jetson_nano": 0.0,
-                    "desktop_pc": 0.0,
-                    "aws_server": 0.0,
-                }
-
-            repo_path_obj = Path(repo_path)
-
-            # Calculate total size of repository
-            total_size = 0
-            for file_path in repo_path_obj.rglob("*"):
-                if any(part == ".git" for part in file_path.parts):
+                return {"raspberry_pi": 0.0, "jetson_nano": 0.0, "desktop_pc": 0.0, "aws_server": 0.0}
+            p = Path(repo_path)
+            total = 0
+            for fp in p.rglob("*"):
+                if any(part == ".git" for part in fp.parts):
                     continue
-                if file_path.is_file():
-                    total_size += file_path.stat().st_size
-
-            # Convert to GB
-            size_gb = total_size / (1024**3)
-
-            # Calculate compatibility scores based on size thresholds
-            size_scores = {
+                if fp.is_file():
+                    total += fp.stat().st_size
+            size_gb = total / (1024**3)
+            return {
                 "raspberry_pi": 1.0 if size_gb < 1.0 else 0.0,
                 "jetson_nano": 1.0 if size_gb < 4.0 else 0.0,
                 "desktop_pc": 1.0 if size_gb < 16.0 else 0.0,
-                "aws_server": 1.0,  # Assumed to handle any size
+                "aws_server": 1.0,
             }
-
-            return size_scores
-
         except Exception as e:
-            logging.error(f"Failed to calculate repository size: {str(e)}")
+            logging.error("size calc failed: %s", e)
             return {"raspberry_pi": 0.0, "jetson_nano": 0.0, "desktop_pc": 0.0, "aws_server": 0.0}
 
     def read_readme(self, repo_path: str) -> str | None:
-        """
-        Read the README file from a repository.
-
-        :param repo_path: Path to local repository
-        :return: README content as string, or None if not found
-        """
         try:
             if not os.path.exists(repo_path):
                 return None
-
-            repo_path_obj = Path(repo_path)
-            readme_files = list(repo_path_obj.glob("README*"))
-
-            if not readme_files:
+            p = Path(repo_path)
+            files = list(p.glob("README*"))
+            if not files:
                 return None
-
-            readme_path = readme_files[0]
-            with open(readme_path, encoding="utf-8") as f:
+            with open(files[0], encoding="utf-8") as f:
                 return f.read()
-
         except Exception as e:
-            logging.warning(f"Failed to read README: {str(e)}")
+            logging.warning("readme read failed: %s", e)
             return None
 
     def cleanup(self):
-        """Clean up temporary directories."""
-        for temp_dir in self.temp_dirs:
+        for d in self.temp_dirs:
             try:
-                shutil.rmtree(temp_dir)
-                logging.info(f"Cleaned up temporary directory: {temp_dir}")
+                shutil.rmtree(d, ignore_errors=True)
             except Exception as e:
-                logging.warning(f"Failed to clean up {temp_dir}: {str(e)}")
+                logging.warning("cleanup failed for %s: %s", d, e)
         self.temp_dirs.clear()

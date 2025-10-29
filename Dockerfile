@@ -1,35 +1,40 @@
 # syntax=docker/dockerfile:1.7
-FROM public.ecr.aws/lambda/python:3.13 AS build
 
+# ---------- Build stage ----------
+FROM public.ecr.aws/lambda/python:3.13 AS build
 WORKDIR /opt/app
 
-# Build toolchain for compiling Python extensions
-# Add more -devel packages only if your deps need them (e.g., openssl-devel, libffi-devel)
+# Toolchain for any wheels you need to compile
 RUN microdnf install -y gcc gcc-c++ make \
  && microdnf clean all \
  && rm -rf /var/cache/dnf
 
 COPY requirements.txt .
 
-# Build and install all deps into /opt/python (Lambda looks in /var/task at runtime; we’ll copy there)
+# Install all deps into /opt/python so they can be copied to the final image
+# Ensure git-related tools are present in site-packages
 RUN pip install --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt -t /opt/python
+ && pip install --no-cache-dir -r requirements.txt gitpython flake8 boto3
 
-# ------------------------------------------------------------
-
+# ---------- Runtime stage ----------
 FROM public.ecr.aws/lambda/python:3.13
 
-# Lambda runtime working dir
+# Lambda looks in /var/task by default
 WORKDIR ${LAMBDA_TASK_ROOT}
 
-# Copy dependencies built in the first stage
-COPY --from=build /opt/python/ ${LAMBDA_TASK_ROOT}/
+# Install git for runtime repo analysis
+RUN microdnf install -y git ca-certificates \
+ && microdnf clean all \
+ && rm -rf /var/cache/dnf
 
-# Copy your app
+# Make sure GitPython finds git and no interactive prompts occur
+ENV GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git \
+    GIT_PYTHON_REFRESH=quiet \
+    GIT_TERMINAL_PROMPT=0
+
+# Copy dependencies and app code
+COPY --from=build /opt/python/ ${LAMBDA_TASK_ROOT}/
 COPY . ${LAMBDA_TASK_ROOT}
 
-# If you only needed git to pull private repos in requirements, keep it in the build stage.
-# If you also need git at runtime, uncomment:
-# RUN microdnf install -y git && microdnf clean all && rm -rf /var/cache/dnf
-
+# Handler
 CMD ["app.lambda_handler.handler"]
