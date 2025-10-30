@@ -12,15 +12,20 @@ case "$1" in
         ;;
     test)
         echo "Running tests..."
-        output=$(python3 -m pytest --cov=src --cov-report=term-missing 2>&1)
+        tmp_out="$(mktemp)"
+        python3 -m pytest --cov=src --cov-report=term-missing 2>&1 | tee "$tmp_out"
+        pytest_status=${PIPESTATUS[0]}
+        output="$(cat "$tmp_out")"
+        rm -f "$tmp_out"
         passed=$(echo "$output" | grep -o '[0-9]* passed' | awk '{print $1}')
         coverage=$(echo "$output" | grep 'TOTAL' | awk '{print $NF}' | tr -d '%')
         echo "${passed:-0}/${passed:-0} test cases passed. ${coverage:-0}% line coverage achieved."
+        exit "${pytest_status}"
         ;;
     *)
-        # If the argument is a file, process it. Otherwise, show usage.
         if [ -f "$1" ]; then
             cd "$PROJECT_ROOT" && python3 -m src.main "$1"
+            exit $?
         else
             echo "Usage:"
             echo "./run install                # Install dependencies"
