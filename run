@@ -11,7 +11,7 @@ case "$1" in
     ;;
 
   test)
-    # Run pytest quietly; parse counts & coverage; print exactly one line; ALWAYS exit 0.
+    # Run pytest quietly; print exactly one summary line; always exit 0 for the sanity check.
     out="$(python3 -m pytest --cov=src --cov-report=term-missing -q 2>&1 || true)"
     passed="$(echo "$out" | grep -oE '[0-9]+ passed' | awk '{print $1}')"
     total="$(echo "$out" | grep -oE 'collected [0-9]+ items?' | awk '{print $2}')"
@@ -24,10 +24,9 @@ case "$1" in
     ;;
 
   *)
-    # Delegate to Python for URL processing; always exit 0 so the basic sanity check passes.
     if [ -f "${1:-}" ]; then
-      cd "$PROJECT_ROOT" && python3 -m src.main "$1" >/dev/stdout 2>/dev/stderr || true
-      exit 0
+      cd "$PROJECT_ROOT" && python3 -m src.main "$1"
+      exit $?
     else
       echo "Usage:"
       echo "  ./run install                # Install dependencies"
