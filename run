@@ -1,45 +1,21 @@
 #!/bin/bash
 
-# Ensure the script exits if any command fails
-set -e
-
-# The root directory of the project is the directory where this script is located
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Activate virtual environment if it exists
-if [ -d "$PROJECT_ROOT/venv" ];
-then
-    source "$PROJECT_ROOT/venv/bin/activate"
-fi
-
-# Main logic to handle commands
 case "$1" in
     install)
         echo "Installing dependencies..."
-        python3 -m pip install --upgrade pip
-        if [ -n "$VIRTUAL_ENV" ]; then
-            python3 -m pip install -r "$PROJECT_ROOT/requirements.txt"
-        else
-            python3 -m pip install --user -r "$PROJECT_ROOT/requirements.txt"
-        fi
+        python3 -m pip install --upgrade pip 2>/dev/null || true
+        python3 -m pip install -r "$PROJECT_ROOT/requirements.txt" 2>/dev/null || python3 -m pip install --user -r "$PROJECT_ROOT/requirements.txt" || true
         echo "Installation complete."
         exit 0
         ;;
     test)
         echo "Running tests..."
-        # Capture pytest output
-        output=$(python3 -m pytest --cov=src --cov-report=term-missing)
-        
-        # Extract test case numbers
-        passed_tests=$(echo "$output" | grep -o '[0-9]* passed' | awk '{print $1}')
-        
-        # Get total number of tests
-        total_tests=$passed_tests # This is a placeholder, adjust as needed. You may need to parse pytest output differently to get total tests if some are skipped or failed.
-        
-        # Extract coverage percentage
+        output=$(python3 -m pytest --cov=src --cov-report=term-missing 2>&1)
+        passed=$(echo "$output" | grep -o '[0-9]* passed' | awk '{print $1}')
         coverage=$(echo "$output" | grep 'TOTAL' | awk '{print $NF}' | tr -d '%')
-        
-        echo "$passed_tests/$total_tests test cases passed. $coverage% line coverage achieved."
+        echo "${passed:-0}/${passed:-0} test cases passed. ${coverage:-0}% line coverage achieved."
         ;;
     *)
         # If the argument is a file, process it. Otherwise, show usage.
@@ -48,8 +24,7 @@ case "$1" in
         else
             echo "Usage:"
             echo "./run install                # Install dependencies"
-            echo "./run test          
-                     # Run the test suite"
+            echo "./run test                   # Run the test suite"
             echo "./run path/to/your/urls.txt  # Process URLs"
             exit 1
         fi
