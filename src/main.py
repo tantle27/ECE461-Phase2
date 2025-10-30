@@ -2,252 +2,223 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.metrics.metrics_calculator import MetricsCalculator
 
 
-# --- Environment validation ---
-def validate_environment():
-    """Validate environment variables and handle invalid values."""
-    # Validate GitHub token if provided
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if github_token and not github_token.strip():
-        print("Error: Invalid GitHub token", file=sys.stderr)
-        sys.exit(1)
 
-    # Validate log file path if provided
+_GH_TOKEN_PATTERNS = [
+    re.compile(r"^ghp_[A-Za-z0-9]{36,}$"),                 # classic personal token
+    re.compile(r"^gho_[A-Za-z0-9]{36,}$"),                 # OAuth token
+    re.compile(r"^ghu_[A-Za-z0-9]{36,}$"),                 # user-to-server
+    re.compile(r"^ghs_[A-Za-z0-9]{36,}$"),                 # server-to-server
+    re.compile(r"^github_pat_[A-Za-z0-9_]{30,}$"),         # fine-grained
+]
+
+def _github_token_is_valid(tok: str) -> bool:
+    return any(p.match(tok) for p in _GH_TOKEN_PATTERNS)
+
+def _fail(msg: str) -> None:
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+def validate_environment() -> None:
+    tok = os.environ.get("GITHUB_TOKEN")
+    if tok is not None:
+        if not tok.strip():
+            _fail("Invalid GitHub token (blank).")
+        # Treat clearly malformed tokens as invalid
+        if not _github_token_is_valid(tok.strip()):
+            _fail("Invalid GitHub token format.")
+
+    # LOG_FILE: if provided, must be writable path
     log_file = os.environ.get("LOG_FILE")
     if log_file:
         try:
-            # Test if we can write to the log file path
-            with open(log_file, 'a'):
+            # touch/append test
+            with open(log_file, "a"):
                 pass
         except (OSError, IOError) as e:
-            print(f"Error: Invalid log file path: {e}", file=sys.stderr)
-            sys.exit(1)
+            _fail(f"Invalid log file path: {e}")
 
-    # Handle log level 0 - create blank log file
+    # LOG_LEVEL: if 0 and LOG_FILE set, create blank file
     log_level = os.environ.get("LOG_LEVEL", "0")
     if log_level == "0" and log_file:
-        # Create a blank log file for level 0
         try:
-            with open(log_file, 'w'):
+            with open(log_file, "w"):
                 pass
         except (OSError, IOError) as e:
-            print(
-                f"Error: Failed to create blank log file: {e}",
-                file=sys.stderr)
-            sys.exit(1)
+            _fail(f"Failed to create blank log file: {e}")
 
-
-# Validate environment before setting up logging
+# Run validation *before* configuring logging
 validate_environment()
 
 
-# --- Logging setup ---
-# Adheres to the LOG_FILE and LOG_LEVEL environment variable
-# requirements
+# ----------------- Logging (never to stdout) -----------------
+
 LOG_LEVEL_STR = os.environ.get("LOG_LEVEL", "0")
 LOG_FILE = os.environ.get("LOG_FILE")
+_log_level_map = {"1": logging.INFO, "2": logging.DEBUG}
+_log_level = _log_level_map.get(LOG_LEVEL_STR)
 
-log_level_map = {
-    "1": logging.INFO, "2": logging.DEBUG
-}
-log_level = log_level_map.get(LOG_LEVEL_STR)
-
-# Configure logging to file or stdout based on environment
-if LOG_LEVEL_STR != "0" and log_level:
-    if LOG_FILE:
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s [%(levelname)s] %(message)s",
-            filename=LOG_FILE,
-            filemode='a',
-            force=True
-        )
-    else:
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s [%(levelname)s] %(message)s",
-            stream=sys.stdout,
-            force=True
-        )
-    # Ensure the root logger is at the right level
-    logging.getLogger().setLevel(log_level)
+# Only log to file when both LOG_LEVEL>0 and LOG_FILE provided; otherwise disable logging.
+if _log_level and LOG_FILE:
+    logging.basicConfig(
+        level=_log_level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        filename=LOG_FILE,
+        filemode="a",
+        force=True,
+    )
+    logging.getLogger().setLevel(_log_level)
 else:
-    # For LOG_LEVEL 0, disable all logging
     logging.disable(logging.CRITICAL)
-    # Ensure the root logger level is high enough to suppress everything
     logging.getLogger().setLevel(logging.CRITICAL + 1)
-# --- End of logging setup ---
 
 
-def parse_url_file(file_path: str) -> List[
-    Tuple[Optional[str], Optional[str], str]
-]:
+# ----------------- URL Parsing -----------------
+
+def _classify_url(u: str) -> str:
+    s = u.strip()
+    if not s:
+        return "unknown"
+    if "huggingface.co/datasets" in s:
+        return "dataset"
+    if "github.com" in s:
+        return "code"
+    if "huggingface.co" in s:
+        return "model"
+    return "unknown"
+
+def parse_url_file(file_path: str) -> List[Tuple[Optional[str], Optional[str], str]]:
     """
-    Reads a file and returns a list of tuples containing
-    (code_link, dataset_link, model_link).
-    Format: code_link, dataset_link, model_link per line.
-    Code and dataset links can be empty.
+    Accept both formats:
+      - CSV triplet per line: code_link,dataset_link,model_link (empty fields allowed)
+      - Single URL per line with code/dataset lines preceding the model line
+    Return: list of (code_link, dataset_link, model_link) for each model.
     """
-    logging.info(f"Reading URLs from: {file_path}")
+    logging.info("Reading URLs from: %s", file_path)
     try:
-        with open(file_path, "r", encoding='utf-8') as f:
-            entries = []
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
+        entries: List[Tuple[Optional[str], Optional[str], str]] = []
+        last_code: Optional[str] = None
+        last_dataset: Optional[str] = None
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line_num, raw in enumerate(f, 1):
+                line = raw.strip()
                 if not line:
                     continue
 
-                parts = [part.strip() for part in line.split(',')]
-                if len(parts) != 3:
-                    logging.warning(
-                        "Line %d has %d parts, expected 3. Skipping.",
-                        line_num, len(parts)
-                    )
-                    continue
+                if "," in line:
+                    parts = [p.strip() for p in line.split(",")]
+                    while len(parts) < 3:
+                        parts.append("")
+                    code_link = parts[0] or None
+                    dataset_link = parts[1] or None
+                    model_link = parts[2] or None
+                    if model_link:
+                        entries.append((code_link, dataset_link, model_link))
+                        logging.debug("Line %d: triplet appended", line_num)
+                    else:
+                        logging.warning("Line %d: triplet missing model URL; skipped", line_num)
+                else:
+                    kind = _classify_url(line)
+                    if kind == "code":
+                        last_code = line
+                    elif kind == "dataset":
+                        last_dataset = line
+                    elif kind == "model":
+                        entries.append((last_code, last_dataset, line))
+                        last_code = None
+                        last_dataset = None
+                    else:
+                        logging.warning("Line %d: unknown URL type: %s", line_num, line)
 
-                code_link = parts[0] if parts[0] else None
-                dataset_link = parts[1] if parts[1] else None
-                model_link = parts[2] if parts[2] else None
-
-                if not model_link:
-                    logging.warning(
-                        "Line %d has no model link. Skipping.", line_num
-                    )
-                    continue
-
-                entries.append((code_link, dataset_link, model_link))
-
-        logging.info(f"Found {len(entries)} valid entries.")
+        logging.info("Found %d model entries.", len(entries))
         return entries
     except FileNotFoundError:
-        # Prints a user-friendly error message and exits as
-        # required
-        error_msg = f"Error: URL file not found at '{file_path}'."
-        logging.error(error_msg)
-        print(error_msg + " Please check the path.", file=sys.stderr)
-        sys.exit(1)
+        _fail(f"URL file not found at '{file_path}'. Please check the path.")
 
+
+# ----------------- Scoring -----------------
 
 def calculate_net_score(metrics: Dict[str, Any]) -> float:
-    """
-    Calculate the net score using the weighted formula from the project plan.
-    """
-    # Weights are taken directly from the project plan
-    # to match Sarah's priorities
     weights = {
-        'license': 0.30,
-        'ramp_up_time': 0.20,
-        'dataset_and_code_score': 0.15,
-        'performance_claims': 0.10,
-        'bus_factor': 0.15,  # Adjusted based on re-reading priorities
-        'code_quality': 0.05,
-        'dataset_quality': 0.05,
+        "license": 0.30,
+        "ramp_up_time": 0.20,
+        "dataset_and_code_score": 0.15,
+        "performance_claims": 0.10,
+        "bus_factor": 0.15,
+        "code_quality": 0.05,
+        "dataset_quality": 0.05,
     }
+    net = sum(metrics.get(m, 0.0) * w for m, w in weights.items())
+    return min(1.0, max(0.0, net))
 
-    net_score = sum(
-        metrics.get(metric, 0.0) * weight
-        for metric, weight in weights.items()
-    )
-    # The score must be in the range [0, 1]
-    return min(1.0, max(0.0, net_score))
 
+# ----------------- Analysis -----------------
 
 async def analyze_entry(
     entry: Tuple[Optional[str], Optional[str], str],
-    process_pool: ProcessPoolExecutor,
-    encountered_datasets: set
+    process_pool: ThreadPoolExecutor,
+    encountered_datasets: set,
 ) -> Dict[str, Any]:
-    """
-    Analyzes a single entry containing code, dataset, and model links,
-    orchestrates metric calculation, and returns the final scorecard.
-    """
     code_link, dataset_link, model_link = entry
     start_time = time.time()
 
     github_token = os.environ.get("GITHUB_TOKEN")
     calculator = MetricsCalculator(process_pool, github_token)
-    local_metrics = await calculator.analyze_entry(
-        code_link, dataset_link, model_link, encountered_datasets
-    )
+    local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
-    net_score = calculate_net_score(local_metrics)
+    net_score = calculate_net_score(local)
     total_latency_ms = int((time.time() - start_time) * 1000)
 
-    # The output format strictly follows Table 1 in
-    # the project specification
-    scorecard: Dict[str, Any] = {
+    return {
         "name": model_link.split("/")[-1],
         "category": "MODEL",
         "net_score": round(net_score, 2),
         "net_score_latency": total_latency_ms,
-        "ramp_up_time": local_metrics.get('ramp_up_time', 0.0),
-        "ramp_up_time_latency": local_metrics.get(
-            'ramp_up_time_latency', 0
-        ),
-        "bus_factor": local_metrics.get('bus_factor', 0.0),
-        "bus_factor_latency": local_metrics.get('bus_factor_latency', 0),
-        "performance_claims": local_metrics.get('performance_claims', 0.0),
-        "performance_claims_latency": local_metrics.get(
-            'performance_claims_latency', 0
-        ),
-        "license": local_metrics.get('license', 0.0),
-        "license_latency": local_metrics.get('license_latency', 0),
-        "size_score": local_metrics.get('size_score', {}),
-        "size_score_latency": local_metrics.get('size_score_latency', 0),
-        "dataset_and_code_score": local_metrics.get(
-            'dataset_and_code_score', 0.0
-        ),
-        "dataset_and_code_score_latency": local_metrics.get(
-            'dataset_and_code_score_latency', 0
-        ),
-        "dataset_quality": local_metrics.get('dataset_quality', 0.0),
-        "dataset_quality_latency": local_metrics.get(
-            'dataset_quality_latency', 0
-        ),
-        "code_quality": local_metrics.get('code_quality', 0.0),
-        "code_quality_latency": local_metrics.get('code_quality_latency', 0),
+        "ramp_up_time": local.get("ramp_up_time", 0.0),
+        "ramp_up_time_latency": local.get("ramp_up_time_latency", 0),
+        "bus_factor": local.get("bus_factor", 0.0),
+        "bus_factor_latency": local.get("bus_factor_latency", 0),
+        "performance_claims": local.get("performance_claims", 0.0),
+        "performance_claims_latency": local.get("performance_claims_latency", 0),
+        "license": local.get("license", 0.0),
+        "license_latency": local.get("license_latency", 0),
+        "size_score": local.get("size_score", {}),
+        "size_score_latency": local.get("size_score_latency", 0),
+        "dataset_and_code_score": local.get("dataset_and_code_score", 0.0),
+        "dataset_and_code_score_latency": local.get("dataset_and_code_score_latency", 0),
+        "dataset_quality": local.get("dataset_quality", 0.0),
+        "dataset_quality_latency": local.get("dataset_quality_latency", 0),
+        "code_quality": local.get("code_quality", 0.0),
+        "code_quality_latency": local.get("code_quality_latency", 0),
     }
-    return scorecard
 
 
-async def process_entries(
-    entries: List[Tuple[Optional[str], Optional[str], str]]
-) -> None:
-    """
-    Processes each entry concurrently using an advanced hybrid model.
-    """
-    logging.info(
-        "Processing %d entries with advanced concurrency.", len(entries)
-    )
-    # Manages workers based on available CPU cores,
-    # as requested by Sarah
+async def process_entries(entries: List[Tuple[Optional[str], Optional[str], str]]) -> None:
+    logging.info("Processing %d entries", len(entries))
     max_workers = os.cpu_count() or 4
-    logging.info("Using %d worker processes.", max_workers)
+    logging.info("Using %d worker threads", max_workers)
 
-    # Track encountered datasets to handle shared datasets
     encountered_datasets: set[str] = set()
 
-    with ProcessPoolExecutor(max_workers=max_workers) as process_pool:
-        tasks = [analyze_entry(entry, process_pool, encountered_datasets)
-                 for entry in entries]
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        tasks = [analyze_entry(e, pool, encountered_datasets) for e in entries]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logging.error("An analysis task failed: %s", result)
-                # failed entries
-                entry = entries[i]
-                code_link, dataset_link, model_link = entry
-                default_scorecard = {
-                    "name": model_link.split("/")[-1]
-                    if model_link else "unknown",
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                logging.error("Analysis task failed: %s", res)
+                _, _, model_link = entries[i]
+                fallback = {
+                    "name": model_link.split("/")[-1] if model_link else "unknown",
                     "category": "MODEL",
                     "net_score": 0.0,
                     "net_score_latency": 0,
@@ -268,23 +239,30 @@ async def process_entries(
                     "code_quality": 0.0,
                     "code_quality_latency": 0,
                 }
-                print(json.dumps(default_scorecard, separators=(',', ':')))
+                print(json.dumps(fallback, separators=(",", ":")))
             else:
-                # Prints output to stdout in NDJSON format
-                print(json.dumps(result, separators=(',', ':')))
+                print(json.dumps(res, separators=(",", ":")))
 
 
-def main():
-    """Main entry point of the application."""
-    # Handles the `./run URL_FILE` invocation
+def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python -m src.main <URL_FILE>", file=sys.stderr)
         sys.exit(1)
 
     url_file = sys.argv[1]
     entries = parse_url_file(url_file)
-    if entries:
+
+    try:
+        if not entries:
+            print("Error: No model URLs found in the provided file.", file=sys.stderr)
+            sys.exit(1)
         asyncio.run(process_entries(entries))
+    except Exception as e:
+        logging.error("Unhandled error in URL processing: %s", e)
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
