@@ -74,7 +74,7 @@ class ArtifactStore:
                     "tags": metadata.get("tags") or data.get("tags", []),
                     # Metrics and scores (use Decimal for DynamoDB)
                     "trust_score": Decimal(str(trust_score)) if trust_score else Decimal("0.0"),
-                    "metrics": json.dumps(metrics) if metrics else json.dumps({}),
+                    # "metrics": json.dumps(metrics) if metrics else json.dumps({}),
                     # GSI keys for fast enumeration
                     "GSI1PK": f"TYPE#{artifact_type}",
                     "GSI1SK": artifact_id,
