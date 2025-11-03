@@ -135,13 +135,13 @@ class TestGitClientCoverage(unittest.TestCase):
         original_rmtree = shutil.rmtree
         call_count = 0
 
-        def mock_rmtree(path, onerror=None):
+        def mock_rmtree(path, ignore_errors=False, onerror=None):
             nonlocal call_count
             call_count += 1
             if call_count == 1:  # First call fails
                 raise PermissionError("Cannot remove directory")
             else:  # Second call succeeds
-                original_rmtree(path, onerror=onerror)
+                original_rmtree(path, ignore_errors=ignore_errors, onerror=onerror)
 
         with patch("shutil.rmtree", side_effect=mock_rmtree):
             self.git_client.cleanup()

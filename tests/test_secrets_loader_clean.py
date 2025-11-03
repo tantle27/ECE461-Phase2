@@ -14,8 +14,8 @@ import json
 import os
 from unittest.mock import Mock, patch
 
-# Import from src.core.secrets_loader
-from src.core.secrets_loader import load_registry_secrets
+# Import from app.secrets_loader
+from app.secrets_loader import load_registry_secrets
 
 
 class TestSecretsLoaderConfiguration:

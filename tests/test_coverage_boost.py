@@ -15,7 +15,7 @@ from src.metrics.size_metric import SizeMetric
 from src.metrics.license_metric import LicenseMetric
 from src.api.git_client import GitClient
 from src.api.gen_ai_client import GenAIClient
-import src.core.secrets_loader  # Import module directly
+import app.secrets_loader  # Import module directly
 
 
 @pytest.mark.integration
@@ -144,9 +144,9 @@ class TestSecretsLoader:
         # Test that the function exists and can be called
         try:
             # The function is called at import time, so we test it exists
-            assert hasattr(src.core.secrets_loader, 'load_registry_secrets')
+            assert hasattr(app.secrets_loader, 'load_registry_secrets')
             # Test calling it directly
-            src.core.secrets_loader.load_registry_secrets()
+            app.secrets_loader.load_registry_secrets()
         except Exception:
             # Expected if AWS credentials not available
             pass
@@ -159,7 +159,7 @@ class TestSecretsLoader:
         # Test with mock ARN
         os.environ['REGISTRY_SECRET_ARN'] = 'test-arn'
         try:
-            src.core.secrets_loader.load_registry_secrets()
+            app.secrets_loader.load_registry_secrets()
         except Exception:
             # Expected to fail without real AWS access
             pass

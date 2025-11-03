@@ -146,19 +146,25 @@ class TestSecretsLoaderImport:
 
     def test_secrets_loader_import_success(self):
         """Test successful secrets loader import."""
-        # This tests the import path in create_app
-        with mock.patch('app.app.secrets_loader'):
-            app = create_app()
-            assert app is not None
-            # The import should succeed without errors
+        # Since secrets_loader is imported at module level,
+        # we just test that app creation succeeds when it's available
+        app = create_app()
+        assert app is not None
+        # Test that we can import the secrets loader module
+        try:
+            from app.secrets_loader import load_registry_secrets
+            assert callable(load_registry_secrets)
+        except ImportError:
+            pytest.skip("secrets_loader not available")
 
     def test_secrets_loader_import_failure(self):
         """Test handling of secrets loader import failure."""
         if not APP_AVAILABLE:
             pytest.skip(f"App creation unavailable: {IMPORT_ERROR}")
-        # Mock only the specific secrets_loader import, not all imports
-        with mock.patch('app.app.secrets_loader', side_effect=ImportError("Mocked import error")):
-            # This should not prevent app creation
+        # Mock the import to raise ImportError
+        with mock.patch('app.secrets_loader.load_registry_secrets',
+                        side_effect=ImportError("Mocked import error")):
+            # This should not prevent app creation due to exception handling
             app = create_app()
             assert app is not None
 
@@ -166,7 +172,8 @@ class TestSecretsLoaderImport:
         """Test general exception handling in secrets loader import."""
         if not APP_AVAILABLE:
             pytest.skip(f"App creation unavailable: {IMPORT_ERROR}")
-        with mock.patch('app.app.secrets_loader', side_effect=Exception("General error")):
+        with mock.patch('app.secrets_loader.load_registry_secrets',
+                        side_effect=Exception("General error")):
             app = create_app()
             assert app is not None
 
