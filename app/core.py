@@ -360,20 +360,31 @@ def health_components_route() -> tuple[Response, int] | Response:
 
 @blueprint.route("/authenticate", methods=["PUT"])
 def authenticate_route() -> tuple[Response, int] | Response:
+    # Log raw request data for debugging
+    logger.warning(f"AUTH: Raw request data: {request.get_data(as_text=True)[:200]}")
+    logger.warning(f"AUTH: Content-Type: {request.content_type}")
+    
     body = _json_body() or {}
+    logger.warning(f"AUTH: Parsed body type={type(body)}, keys={list(body.keys()) if isinstance(body, dict) else 'not-dict'}")
+    
     user = (body.get("user") or {}) if isinstance(body, dict) else {}
     secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
     username = str(user.get("name", "")).strip()
     password = str(secret.get("password", "")).strip()
 
     logger.warning(f"AUTH: Received authentication request for username='{username}'")
+    logger.warning(f"AUTH: Request body structure: user={user}, secret keys={list(secret.keys()) if isinstance(secret, dict) else 'not-dict'}")
+    logger.warning(f"AUTH: Expected username='{_DEFAULT_USER['username']}', received='{username}', match={username == _DEFAULT_USER['username']}")
+    logger.warning(f"AUTH: Expected password length={len(_DEFAULT_USER['password'])}, received length={len(password)}")
+    logger.warning(f"AUTH: Password match={password == _DEFAULT_USER['password']}")
     
     # Spec: if system supports auth, validate; else 501.
     if not username or not password:
         logger.warning("AUTH: Missing username or password")
         return jsonify({"message": "Missing user or password"}), 400
     if username != _DEFAULT_USER["username"] or password != _DEFAULT_USER["password"]:
-        logger.warning(f"AUTH: Invalid credentials for username='{username}'")
+        logger.warning(f"AUTH: CREDENTIAL MISMATCH - Expected user='{_DEFAULT_USER['username']}' pass_len={len(_DEFAULT_USER['password'])}, Got user='{username}' pass_len={len(password)}")
+        logger.warning(f"AUTH: Password comparison: received first 20 chars='{password[:20]}...', expected first 20 chars='{_DEFAULT_USER['password'][:20]}...'")
         return jsonify({"message": "The user or password is invalid."}), 401
 
     # Default user is always admin
