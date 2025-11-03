@@ -8,6 +8,7 @@ import Tracks from './pages/Tracks'
 import Reset from './pages/Reset'
 import SignIn from './pages/SignIn'
 import { useAuth } from './context/AuthContext'
+import AuthRequired from './components/AuthRequired'
 
 export default function App() {
   const linkBase = "px-2 py-1 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -43,11 +44,11 @@ export default function App() {
       <main id="main-content" tabIndex={-1} className="max-w-4xl mx-auto p-6">
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/upload" element={<Upload />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/artifacts" element={<Artifacts />} />
+          <Route path="/upload" element={<AuthRequired><Upload /></AuthRequired>} />
+          <Route path="/search" element={<AuthRequired><Search /></AuthRequired>} />
+          <Route path="/artifacts" element={<AuthRequired><Artifacts /></AuthRequired>} />
           <Route path="/info/tracks" element={<Tracks />} />
-          <Route path="/info/reset" element={<Reset />} />
+          <Route path="/info/reset" element={<AuthRequired><Reset /></AuthRequired>} />
           <Route path="/signin" element={<SignIn />} />
         </Routes>
       </main>

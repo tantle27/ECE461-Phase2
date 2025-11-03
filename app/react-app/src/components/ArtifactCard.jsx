@@ -2,7 +2,12 @@ import React from 'react'
 
 export default function ArtifactCard({ artifact }) {
   if (!artifact) return null
-  const { id, name, type, metadata, url } = artifact
+  const md = artifact.metadata || {}
+  const id = md.id || artifact.id
+  const name = md.name || artifact.name
+  const type = md.type || artifact.type
+  const url = (artifact.data && artifact.data.url) || artifact.url
+  const metadata = artifact.metadata
   return (
     <article className="p-4 bg-white rounded shadow">
       <header className="flex justify-between items-start">

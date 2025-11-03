@@ -59,6 +59,9 @@ _S3 = S3Storage()
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Simple local persistence for dev reloads (tokens + artifacts)
+_PERSIST_PATH = Path(os.environ.get("REGISTRY_PERSIST_PATH", "/tmp/registry_store.json"))
+
 # token -> is_admin
 _TOKENS: dict[str, bool] = {}
 _DEFAULT_USER = {
@@ -74,6 +77,56 @@ _DEFAULT_USER = {
 _REQUEST_TIMES: list[float] = []
 _STATS = {"ok": 0, "err": 0}
 ps_start_time = time.time()
+
+def _persist_state() -> None:
+    """Persist tokens and in-memory artifacts to disk for dev reloads."""
+    try:
+        data = {
+            "tokens": [{"t": t, "admin": admin} for t, admin in _TOKENS.items()],
+            "store": [artifact_to_dict(a) for a in _STORE.values()],
+        }
+        _PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _PERSIST_PATH.write_text(json.dumps(data))
+        logger.info("Persisted state to %s (artifacts=%d, tokens=%d)", _PERSIST_PATH, len(_STORE), len(_TOKENS))
+    except Exception:
+        logger.exception("Failed to persist registry state to %s", _PERSIST_PATH)
+
+def _load_state() -> None:
+    """Load tokens and artifacts from disk if present (best-effort)."""
+    if not _PERSIST_PATH.exists():
+        return
+    try:
+        data = json.loads(_PERSIST_PATH.read_text()) or {}
+        # Load tokens
+        _TOKENS.clear()
+        for ent in data.get("tokens", []) or []:
+            t = ent.get("t")
+            admin = bool(ent.get("admin", False))
+            if isinstance(t, str) and t:
+                _TOKENS[t] = admin
+        # Load artifacts
+        _STORE.clear()
+        for it in data.get("store", []) or []:
+            md = (it.get("metadata") or {})
+            art = Artifact(
+                metadata=ArtifactMetadata(
+                    id=str(md.get("id", "")),
+                    name=str(md.get("name", "")),
+                    type=str(md.get("type", "")),
+                    version=str(md.get("version", "1.0.0")),
+                ),
+                data=it.get("data", {}),
+            )
+            if art.metadata.id and art.metadata.type:
+                _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
+                # Keep adapter's memory store in sync for list/get fallbacks
+                try:
+                    _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
+                except Exception:
+                    pass
+        logger.warning("Loaded persisted state from %s (artifacts=%d, tokens=%d)", _PERSIST_PATH, len(_STORE), len(_TOKENS))
+    except Exception:
+        logger.exception("Failed to load persisted registry state from %s", _PERSIST_PATH)
 
 def _record_timing(f):
     @wraps(f)
@@ -128,6 +181,11 @@ def save_artifact(artifact: Artifact) -> Artifact:
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
     _STORE[_store_key(artifact.metadata.type, artifact.metadata.id)] = artifact
+    # Persist new state for dev reload resiliency
+    try:
+        _persist_state()
+    except Exception:
+        pass
     return artifact
 
 def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
@@ -310,6 +368,12 @@ def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dic
 
 blueprint = Blueprint("registry", __name__)
 
+# Load any previously persisted dev state (tokens + artifacts) on startup
+try:
+    _load_state()
+except Exception:
+    pass
+
 # -------------------- Health --------------------
 
 @blueprint.route("/health", methods=["GET"])
@@ -399,6 +463,11 @@ def authenticate_route() -> tuple[Response, int] | Response:
         logger.warning(f"AUTH: Added token to TokenStore")
     except Exception as e:
         logger.warning(f"AUTH: Failed to add token to TokenStore: {e}")
+    # Persist tokens so reloader doesn't log out the session in dev
+    try:
+        _persist_state()
+    except Exception:
+        pass
 
     # Spec's example returns a JSON string of the token with bearer prefix
     response = jsonify(f"bearer {tok}")
@@ -513,6 +582,13 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return jsonify(artifact_to_dict(art)), 200
 
+# Alias: support singular path for fetching an artifact as well
+@blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
+@_record_timing
+def get_artifact_route_alias(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+    # Delegate to the primary handler to keep behavior consistent
+    return get_artifact_route(artifact_type, artifact_id)
+
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
 @_record_timing
 def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
@@ -563,6 +639,10 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
         logger.exception("Primary delete failed; removing from memory only")
     _STORE.pop(k, None)
     _audit_add(artifact_type, artifact_id, "UPDATE", "")
+    try:
+        _persist_state()
+    except Exception:
+        pass
     return jsonify({"message": "Artifact is deleted."}), 200
 
 # -------------------- Upload helpers (kept) --------------------
@@ -1035,6 +1115,11 @@ def reset_route() -> tuple[Response, int] | Response:
     # Don't clear tokens - keep authentication working
     logger.warning(f"RESET: Keeping _TOKENS with {len(_TOKENS)} items for authentication")
     logger.warning("RESET: Reset complete!")
+    # Persist the cleared store while keeping tokens
+    try:
+        _persist_state()
+    except Exception:
+        pass
     
     return jsonify({"message": "Registry is reset."}), 200
 
