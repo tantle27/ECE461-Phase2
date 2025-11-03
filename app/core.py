@@ -368,7 +368,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     except Exception:
         pass
 
-    # Spec’s example returns a JSON string of the token, not an object
+    # Spec's example returns a JSON string of the token, not an object
     return jsonify(f"bearer {tok}"), 200
 
 # -------------------- Audit helper --------------------
@@ -956,6 +956,12 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
 @blueprint.route("/reset", methods=["DELETE"])
 def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
+    
+    # Get current admin token before reset
+    token_hdr = request.headers.get("X-Authorization", "")
+    auth_hdr = request.headers.get("Authorization", "")
+    current_token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
+    
     reset_storage()
     try:
         ArtifactStore().clear()
@@ -969,6 +975,15 @@ def reset_route() -> tuple[Response, int] | Response:
         RatingsCache().clear()
     except Exception:
         logger.exception("Failed to clear RatingsCache (DynamoDB)")
+    
+    # Restore the admin token that was used for reset
+    if current_token:
+        _TOKENS[current_token] = True
+        try:
+            TokenStore().add(current_token)
+        except Exception:
+            pass
+    
     return jsonify({"message": "Registry is reset."}), 200
 
 # -------------------- Name and RegEx lookups --------------------
@@ -1043,9 +1058,6 @@ def tracks_route() -> tuple[Response, int] | Response:
         {
             "plannedTracks": [
                 "Performance track",
-                "Access control track",
-                "High assurance track",
-                "Other Security track",
             ]
         }
     ), 200
