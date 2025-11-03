@@ -962,7 +962,12 @@ def reset_route() -> tuple[Response, int] | Response:
     auth_hdr = request.headers.get("Authorization", "")
     current_token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
     
-    reset_storage()
+    # Clear in-memory stores but NOT tokens yet
+    logger.warning("Resetting in-memory artifact store")
+    _STORE.clear()
+    _RATINGS_CACHE.clear()
+    _AUDIT_LOG.clear()
+    
     try:
         ArtifactStore().clear()
     except Exception:
@@ -976,7 +981,8 @@ def reset_route() -> tuple[Response, int] | Response:
     except Exception:
         logger.exception("Failed to clear RatingsCache (DynamoDB)")
     
-    # Restore the admin token that was used for reset
+    # Now clear tokens and restore the admin token that was used for reset
+    _TOKENS.clear()
     if current_token:
         _TOKENS[current_token] = True
         try:
@@ -1058,6 +1064,7 @@ def tracks_route() -> tuple[Response, int] | Response:
         {
             "plannedTracks": [
                 "Performance track",
+                "Access control track",
             ]
         }
     ), 200
