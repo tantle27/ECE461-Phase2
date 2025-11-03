@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+.container {
+  @apply max-w-4xl mx-auto p-6;
+}
+
+/* Skip link: visually hidden until keyboard focus */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.skip-link:focus {
+  left: 0;
+  top: 0;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 1rem;
+  background: white;
+  color: #1e3a8a; /* blue-800 */
+  z-index: 1000;
+  border: 2px solid #1e3a8a;
+  border-radius: 4px;
+}
+
+/* Ensure visible focus outlines for keyboard users */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid #0ea5e9; /* sky-500 */
+  outline-offset: 2px;
+}
