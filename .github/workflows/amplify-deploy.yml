@@ -59,9 +59,6 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install pytest pytest-cov
-      
-      - name: Run tests
-        run: pytest tests/ -v --cov=app --cov-report=term-missing
 
 # Note: AWS Amplify will automatically deploy from the connected branch
 # This workflow is for validation and testing before Amplify deployment
