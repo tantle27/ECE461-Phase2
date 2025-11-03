@@ -224,19 +224,31 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     token_hdr = request.headers.get("X-Authorization", "")
     auth_hdr = request.headers.get("Authorization", "")
     token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
+    
+    logger.warning(f"AUTH_CHECK: X-Authorization='{token_hdr}', Authorization='{auth_hdr}'")
+    logger.warning(f"AUTH_CHECK: Parsed token='{token}', admin_required={admin}")
+    logger.warning(f"AUTH_CHECK: Current _TOKENS has {len(_TOKENS)} tokens: {list(_TOKENS.keys())}")
+    logger.warning(f"AUTH_CHECK: Token in _TOKENS? {token in _TOKENS}")
+    
     if not token or token not in _TOKENS:
         # spec: 403 for invalid or missing AuthenticationToken
+        logger.warning(f"AUTH_CHECK: FAILED - Token missing or not found in _TOKENS")
         response = jsonify({"message": "Authentication failed due to invalid or missing AuthenticationToken."})
         response.status_code = HTTPStatus.FORBIDDEN
         from flask import abort
         abort(response)
     is_admin = bool(_TOKENS[token])
+    logger.warning(f"AUTH_CHECK: Token valid, is_admin={is_admin}")
+    
     if admin and not is_admin:
         # spec: 401 when you do not have permission to reset
+        logger.warning(f"AUTH_CHECK: FAILED - Admin required but user is not admin")
         response = jsonify({"message": "You do not have permission to reset the registry."})
         response.status_code = HTTPStatus.UNAUTHORIZED
         from flask import abort
         abort(response)
+    
+    logger.warning(f"AUTH_CHECK: SUCCESS - Token '{token}' authenticated, is_admin={is_admin}")
     return token, is_admin
 
 def _json_body() -> dict[str, Any]:
@@ -354,23 +366,33 @@ def authenticate_route() -> tuple[Response, int] | Response:
     username = str(user.get("name", "")).strip()
     password = str(secret.get("password", "")).strip()
 
+    logger.warning(f"AUTH: Received authentication request for username='{username}'")
+    
     # Spec: if system supports auth, validate; else 501.
     if not username or not password:
+        logger.warning("AUTH: Missing username or password")
         return jsonify({"message": "Missing user or password"}), 400
     if username != _DEFAULT_USER["username"] or password != _DEFAULT_USER["password"]:
+        logger.warning(f"AUTH: Invalid credentials for username='{username}'")
         return jsonify({"message": "The user or password is invalid."}), 401
 
     # Default user is always admin
     is_admin = True
     tok = f"t_{int(time.time()*1000)}"
     _TOKENS[tok] = is_admin
+    logger.warning(f"AUTH: Created token '{tok}' for user '{username}', is_admin={is_admin}")
+    logger.warning(f"AUTH: Current _TOKENS dict has {len(_TOKENS)} tokens: {list(_TOKENS.keys())}")
+    
     try:
         TokenStore().add(tok)
-    except Exception:
-        pass
+        logger.warning(f"AUTH: Added token to TokenStore")
+    except Exception as e:
+        logger.warning(f"AUTH: Failed to add token to TokenStore: {e}")
 
     # Spec's example returns a JSON string of the token with bearer prefix
-    return jsonify(f"bearer {tok}"), 200
+    response = jsonify(f"bearer {tok}")
+    logger.warning(f"AUTH: Returning token response: 'bearer {tok}'")
+    return response, 200
 
 # -------------------- Audit helper --------------------
 
@@ -958,22 +980,50 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
 def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
     
+    # Log initial state
+    logger.warning(f"RESET: Starting reset. Current _STORE has {len(_STORE)} items")
+    logger.warning(f"RESET: Current _RATINGS_CACHE has {len(_RATINGS_CACHE)} items")
+    logger.warning(f"RESET: Current _AUDIT_LOG has {len(_AUDIT_LOG)} items")
+    logger.warning(f"RESET: Current _TOKENS has {len(_TOKENS)} items")
+    logger.warning(f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
+    logger.warning(f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items")
+    
     # Clear in-memory stores (but keep tokens)
-    logger.warning("Resetting in-memory artifact store")
     _STORE.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
     
+    # Also clear the global _ARTIFACT_STORE's memory
+    _ARTIFACT_STORE._memory_store.clear()
+    
+    logger.warning(f"RESET: After clearing in-memory: _STORE={len(_STORE)}, _RATINGS_CACHE={len(_RATINGS_CACHE)}, _AUDIT_LOG={len(_AUDIT_LOG)}")
+    logger.warning(f"RESET: After clearing _ARTIFACT_STORE._memory_store={len(_ARTIFACT_STORE._memory_store)}")
+    
+    # Clear DynamoDB stores
     try:
-        ArtifactStore().clear()
-    except Exception:
-        logger.exception("Failed to clear ArtifactStore (DynamoDB)")
+        logger.warning(f"RESET: Calling _ARTIFACT_STORE.clear() with use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
+        _ARTIFACT_STORE.clear()
+        logger.warning("RESET: _ARTIFACT_STORE.clear() completed successfully")
+        
+        # Verify it's actually cleared
+        all_artifacts = _ARTIFACT_STORE.list_all()
+        logger.warning(f"RESET: After _ARTIFACT_STORE.clear(), list_all() returns {len(all_artifacts)} items")
+        if all_artifacts:
+            logger.error(f"RESET: WARNING - Artifacts still present after clear: {[a.get('metadata', {}).get('id') for a in all_artifacts[:5]]}")
+    except Exception as e:
+        logger.exception(f"RESET: Failed to clear _ARTIFACT_STORE: {e}")
+    
     try:
-        RatingsCache().clear()
-    except Exception:
-        logger.exception("Failed to clear RatingsCache (DynamoDB)")
+        cache = RatingsCache()
+        logger.warning(f"RESET: RatingsCache use_dynamodb={cache.use_dynamodb}")
+        cache.clear()
+        logger.warning("RESET: RatingsCache.clear() completed successfully")
+    except Exception as e:
+        logger.exception(f"RESET: Failed to clear RatingsCache (DynamoDB): {e}")
     
     # Don't clear tokens - keep authentication working
+    logger.warning(f"RESET: Keeping _TOKENS with {len(_TOKENS)} items for authentication")
+    logger.warning("RESET: Reset complete!")
     
     return jsonify({"message": "Registry is reset."}), 200
 
