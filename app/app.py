@@ -4,19 +4,24 @@ from flask import Flask
 # to modules that import configuration during startup. This import is
 # optional and failures are logged — we don't want missing boto3 or
 # IAM perms to prevent the app from starting.
-
 try:
     from app.secrets_loader import load_registry_secrets
+
     load_registry_secrets()
 except Exception:
     import logging
+
     logging.exception("secrets_loader failed - continuing without Secrets Manager")
 
 from app.core import blueprint
+from app.rate_lim import init_rate_limiter
+from app.validation import init_validation
 
 
 def create_app(config=None):
     app = Flask(__name__)
+    init_rate_limiter(app)
+    init_validation(app)
     app.register_blueprint(blueprint)
     if config:
         app.config.update(config)
