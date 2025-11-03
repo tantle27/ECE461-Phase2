@@ -283,10 +283,10 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     auth_hdr = request.headers.get("Authorization", "")
     token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
     
-    logger.warning(f"AUTH_CHECK: X-Authorization='{token_hdr}', Authorization='{auth_hdr}'")
-    logger.warning(f"AUTH_CHECK: Parsed token='{token}', admin_required={admin}")
-    logger.warning(f"AUTH_CHECK: Current _TOKENS has {len(_TOKENS)} tokens: {list(_TOKENS.keys())}")
-    logger.warning(f"AUTH_CHECK: Token in _TOKENS? {token in _TOKENS}")
+    # logger.warning(f"AUTH_CHECK: X-Authorization='{token_hdr}', Authorization='{auth_hdr}'")
+    # logger.warning(f"AUTH_CHECK: Parsed token='{token}', admin_required={admin}")
+    # logger.warning(f"AUTH_CHECK: Current _TOKENS has {len(_TOKENS)} tokens: {list(_TOKENS.keys())}")
+    # logger.warning(f"AUTH_CHECK: Token in _TOKENS? {token in _TOKENS}")
     
     if not token or token not in _TOKENS:
         # spec: 403 for invalid or missing AuthenticationToken

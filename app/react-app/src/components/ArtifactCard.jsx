@@ -24,8 +24,16 @@ export default function ArtifactCard({ artifact }) {
             </span>
           </div>
         </div>
-        <div className="text-xs text-gray-500">
-          <span className="font-mono bg-gray-50 px-2 py-1 rounded">{id}</span>
+        <div className="text-xs text-gray-500 flex items-center gap-2">
+          <span className="font-mono bg-gray-50 px-2 py-1 rounded select-all" title="Artifact ID">{id}</span>
+          <button
+            type="button"
+            onClick={() => { navigator.clipboard?.writeText(String(id)) }}
+            className="inline-flex items-center px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+            title="Copy ID"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z"/></svg>
+          </button>
         </div>
       </header>
 

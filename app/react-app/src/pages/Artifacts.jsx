@@ -22,6 +22,8 @@ export default function ArtifactsPage() {
   const [listType, setListType] = useState('')
   const [listPage, setListPage] = useState(1)
   const [listPageSize, setListPageSize] = useState(10)
+  const [nextOffset, setNextOffset] = useState(null)
+  const [offsetStack, setOffsetStack] = useState([])
 
   async function handleCreate({ type, url }) {
     setError(null)
@@ -128,6 +130,44 @@ export default function ArtifactsPage() {
         name: m.name,
         type: m.type
       })))
+      // save next offset if present
+      const off = resp.headers?.offset || resp.headers?.Offset || resp.headers?.['offset']
+      setNextOffset(off ? String(off) : null)
+      // Reset stack when starting a fresh list
+      if (!e || (e && e.type === 'submit')) setOffsetStack([])
+    } catch (err) { setError(err) } finally { setLoading(false) }
+  }
+
+  async function listNext() {
+    if (!nextOffset) return
+    setError(null); setLoading(true)
+    try {
+      const body = [{ name: '*', artifact_type: listType || undefined, page_size: listPageSize }]
+      const resp = await client.post(`/artifacts?offset=${encodeURIComponent(nextOffset)}`, body)
+      const arr = Array.isArray(resp.data) ? resp.data : []
+      setItems(arr.map(m => ({ 
+        metadata: { id: m.id, name: m.name, type: m.type, version: '1.0.0' }, data: {}, id: m.id, name: m.name, type: m.type 
+      })))
+      const off = resp.headers?.offset || resp.headers?.Offset || resp.headers?.['offset']
+      setOffsetStack(prev => [...prev, String(nextOffset)])
+      setNextOffset(off ? String(off) : null)
+    } catch (err) { setError(err) } finally { setLoading(false) }
+  }
+
+  async function listPrev() {
+    if (offsetStack.length === 0) return
+    const prevOffset = offsetStack[offsetStack.length - 1]
+    setError(null); setLoading(true)
+    try {
+      const body = [{ name: '*', artifact_type: listType || undefined, page_size: listPageSize }]
+      const resp = await client.post(`/artifacts?offset=${encodeURIComponent(prevOffset)}`, body)
+      const arr = Array.isArray(resp.data) ? resp.data : []
+      setItems(arr.map(m => ({ 
+        metadata: { id: m.id, name: m.name, type: m.type, version: '1.0.0' }, data: {}, id: m.id, name: m.name, type: m.type 
+      })))
+      const off = resp.headers?.offset || resp.headers?.Offset || resp.headers?.['offset']
+      setOffsetStack(stack => stack.slice(0, -1))
+      setNextOffset(off ? String(off) : null)
     } catch (err) { setError(err) } finally { setLoading(false) }
   }
 
@@ -229,7 +269,13 @@ export default function ArtifactsPage() {
           </div>
         </form>
         {items.length > 0 ? (
-          <ArtifactList items={items} />
+          <>
+            <ArtifactList items={items} />
+            <div className="mt-4 flex items-center justify-between">
+              <button type="button" onClick={listPrev} disabled={offsetStack.length === 0} className="px-3 py-2 rounded bg-gray-100 disabled:opacity-50">Previous</button>
+              <button type="button" onClick={listNext} disabled={!nextOffset} className="px-3 py-2 rounded bg-gray-100 disabled:opacity-50">Next</button>
+            </div>
+          </>
         ) : (
           <div className="text-center py-8 text-gray-500">No artifacts listed yet. Click "List All" to browse.</div>
         )}
