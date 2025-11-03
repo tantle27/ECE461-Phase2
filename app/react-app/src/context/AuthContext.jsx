@@ -8,13 +8,18 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
 
   const signIn = useCallback(async (username, password) => {
-    // call backend authenticate
+    // call backend authenticate - backend expects user and secret objects
     try {
-      const resp = await apiClient.put('/authenticate', { username, password }, { skipAuth: true })
-      const tkn = resp.data?.token
+      const resp = await apiClient.put('/authenticate', { 
+        user: { name: username },
+        secret: { password: password }
+      }, { skipAuth: true })
+      
+      // Backend returns token as a JSON string like "bearer t_123456789"
+      const tkn = resp.data
       if (!tkn) throw new Error('No token returned')
+      
       setToken(tkn)
-      // Optionally fetch user info
       setUser({ username })
       return { ok: true }
     } catch (err) {

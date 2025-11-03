@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 
 # Load registry secrets early so GH_TOKEN / GENAI_API_KEY are available
 # to modules that import configuration during startup. This import is
@@ -17,6 +18,18 @@ from app.core import blueprint
 
 def create_app(config=None):
     app = Flask(__name__)
+    
+    # Enable CORS for React frontend
+    CORS(app, resources={
+        r"/*": {
+            "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Authorization"],
+            "expose_headers": ["offset"],
+            "supports_credentials": True
+        }
+    })
+    
     app.register_blueprint(blueprint)
     if config:
         app.config.update(config)

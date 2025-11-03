@@ -1,6 +1,10 @@
 import axios from 'axios'
 
-const DEFAULT_BASE = import.meta.env.VITE_API_URL || ''
+// Use environment variable for API base URL
+// Production (Amplify): /api prefix routes to backend via _redirects
+// Development (local): empty string routes to localhost via vite proxy
+const isDevelopment = import.meta.env.MODE === 'development'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isDevelopment ? '' : '/api')
 
 function mapError(err) {
   if (!err || !err.response) return { status: 0, message: err?.message || 'Unknown error' }
@@ -20,7 +24,7 @@ function mapError(err) {
   return { status, message, data }
 }
 
-const baseClient = axios.create({ baseURL: DEFAULT_BASE, timeout: 20000 })
+const baseClient = axios.create({ baseURL: API_BASE_URL, timeout: 20000 })
 
 // request interceptor to add X-Authorization if token present
 function attachToken(instance, token) {
@@ -36,7 +40,7 @@ function attachToken(instance, token) {
 
 // create a new axios instance bound to a token
 function createInstance(token) {
-  const inst = axios.create({ baseURL: DEFAULT_BASE, timeout: 20000 })
+  const inst = axios.create({ baseURL: API_BASE_URL, timeout: 20000 })
   attachToken(inst, token)
   return inst
 }
