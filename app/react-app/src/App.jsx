@@ -24,7 +24,8 @@ export default function App() {
             <div className="flex gap-4 items-center">
               <NavLink to="/" className={({isActive}) => (isActive ? `${linkBase} font-bold` : `${linkBase} text-sm text-gray-700`)} aria-current={({isActive}) => isActive ? 'page' : undefined}>Home</NavLink>
               <NavLink to="/artifacts" className={({isActive}) => (isActive ? `${linkBase} font-bold` : `${linkBase} text-sm text-gray-700`)} >Artifacts</NavLink>
-              <NavLink to="/info/tracks" className={({isActive}) => (isActive ? `${linkBase} font-bold` : `${linkBase} text-sm text-gray-700`)} >Info</NavLink>
+              <NavLink to="/search" className={({isActive}) => (isActive ? `${linkBase} font-bold` : `${linkBase} text-sm text-gray-700`)} >Search</NavLink>
+              <NavLink to="/upload" className={({isActive}) => (isActive ? `${linkBase} font-bold` : `${linkBase} text-sm text-gray-700`)} >Upload</NavLink>
             </div>
 
             <div className="flex gap-3 items-center">
