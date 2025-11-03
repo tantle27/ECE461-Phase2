@@ -1,0 +1,64 @@
+name: Deploy to AWS Amplify
+
+on:
+  push:
+    branches:
+      - main
+      - front-dev
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: app/react-app/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: app/react-app
+        run: npm ci
+      
+      - name: Build React app
+        working-directory: app/react-app
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+        run: npm run build
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-build
+          path: app/react-app/dist
+          retention-days: 7
+
+  # Optional: Add backend tests
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+# Note: AWS Amplify will automatically deploy from the connected branch
+# This workflow is for validation and testing before Amplify deployment

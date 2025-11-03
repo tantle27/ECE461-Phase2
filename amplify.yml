@@ -1,0 +1,23 @@
+version: 1
+# AWS Amplify build configuration for React frontend + Flask backend
+# This deploys the React app to Amplify and connects to your existing Lambda backend
+
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd app/react-app
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: app/react-app/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - app/react-app/node_modules/**/*
+
+# Environment variables to set in Amplify Console:
+# VITE_API_BASE_URL - Your API Gateway/Lambda endpoint URL (e.g., https://your-api.execute-api.us-east-1.amazonaws.com)
