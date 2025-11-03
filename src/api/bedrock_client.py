@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import re
-from typing import Any
 
 import boto3
 
@@ -48,7 +47,9 @@ class BedrockClient:
             raise ValueError("No Bedrock model id configured (BEDROCK_MODEL_ID)")
         payload = json.dumps({"input": message})
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, self._invoke_sync, model_id, payload.encode("utf-8"))
+        return await loop.run_in_executor(
+            None, self._invoke_sync, model_id, payload.encode("utf-8")
+        )
 
     async def get_performance_claims(self, readme_text: str) -> dict:
         prompt = "Extract performance claims as JSON from the following README:\n\n" + readme_text

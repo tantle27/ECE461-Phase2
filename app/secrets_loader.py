@@ -8,6 +8,7 @@ The loader is intentionally non-fatal: failure to read secrets will be
 logged but will not stop the application from starting (useful for local
 development where Secrets Manager isn't available).
 """
+
 from __future__ import annotations
 
 import json
@@ -46,6 +47,7 @@ def load_registry_secrets() -> None:
 
     try:
         data = json.loads(secret_string)
+        logging.info("Loaded secrets from %s", secret_arn)
     except json.JSONDecodeError:
         logging.exception("Secret %s is not valid JSON", secret_arn)
         return

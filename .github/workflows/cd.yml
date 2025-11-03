@@ -1,10 +1,8 @@
 name: Deploy to AWS Lambda
 
-
 on:
   push:
     branches: [ main ]
-
 
 jobs:
   build-and-deploy:
@@ -13,62 +11,49 @@ jobs:
       contents: read
       id-token: write
 
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@v5
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push Lambda image to ECR
         env:
-          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }} # e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }} # repository name
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build Docker image for Lambda
           docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-          # Tag for ECR with the commit SHA
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # Also tag as :latest
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          # Push both tags
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
 
       - name: Update Lambda function with new image
         env:
           ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
-          LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }} # Lambda function name
+          LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
         run: |
-          # Update Lambda function to use the new image
           aws lambda update-function-code \
-            --function-name $LAMBDA_FUNCTION_NAME \
-            --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --image-uri "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
       - name: Wait for Lambda function update to complete
         env:
           LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
         run: |
-          # Wait for the function update to finish
-          aws lambda wait function-updated \
-            --function-name $LAMBDA_FUNCTION_NAME
+          aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME"
 
       - name: Update Lambda environment variables
         env:
@@ -76,33 +61,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GENAI_API_KEY: ${{ secrets.GENAI_API_KEY }}
         run: |
-          # Get current environment variables
           CURRENT_VARS=$(aws lambda get-function-configuration \
             --function-name "$LAMBDA_FUNCTION_NAME" \
             --query 'Environment.Variables' \
             --output json)
 
-          # Merge with tokens conditionally (only if provided)
           UPDATED_VARS=$(echo "$CURRENT_VARS" | jq -c \
-            --arg gh "$GH_TOKEN" \
-            --arg genai "$GENAI_API_KEY" \
+            --arg gh "${GH_TOKEN:-}" \
+            --arg genai "${GENAI_API_KEY:-}" \
             '. as $e
-            | (if ($gh|length) > 0 then $e + {GH_TOKEN: $gh} else $e end)
-            | (if ($genai|length) > 0 then . + {GENAI_API_KEY: $genai} else . end)')
+            | (if (($gh // "") | length) > 0 then $e + {GH_TOKEN: $gh} else $e end)
+            | (if (($genai // "") | length) > 0 then . + {GENAI_API_KEY: $genai} else . end)')
 
-          # Write payload to file to avoid CLI quoting issues
           ENV_FILE=$(mktemp)
           echo "{\"Variables\": $UPDATED_VARS}" > "$ENV_FILE"
 
-          # Update Lambda configuration using file:// JSON
           aws lambda update-function-configuration \
             --function-name "$LAMBDA_FUNCTION_NAME" \
             --environment file://"$ENV_FILE" \
             --output json > /dev/null
 
-          # Wait for update
           aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION_NAME"
-
           echo "✓ Environment variables updated (GH_TOKEN/GENAI_API_KEY applied if provided)"
 
       - name: Notify deployment
