@@ -352,7 +352,6 @@ def authenticate_route() -> tuple[Response, int] | Response:
     user = (body.get("user") or {}) if isinstance(body, dict) else {}
     secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
     username = str(user.get("name", "")).strip()
-    is_admin = bool(user.get("is_admin", False))
     password = str(secret.get("password", "")).strip()
 
     # Spec: if system supports auth, validate; else 501.
@@ -361,6 +360,8 @@ def authenticate_route() -> tuple[Response, int] | Response:
     if username != _DEFAULT_USER["username"] or password != _DEFAULT_USER["password"]:
         return jsonify({"message": "The user or password is invalid."}), 401
 
+    # Default user is always admin
+    is_admin = True
     tok = f"t_{int(time.time()*1000)}"
     _TOKENS[tok] = is_admin
     try:
@@ -368,7 +369,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     except Exception:
         pass
 
-    # Spec's example returns a JSON string of the token, not an object
+    # Spec's example returns a JSON string of the token with bearer prefix
     return jsonify(f"bearer {tok}"), 200
 
 # -------------------- Audit helper --------------------
@@ -957,12 +958,7 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
 def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
     
-    # Get current admin token before reset
-    token_hdr = request.headers.get("X-Authorization", "")
-    auth_hdr = request.headers.get("Authorization", "")
-    current_token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
-    
-    # Clear in-memory stores but NOT tokens yet
+    # Clear in-memory stores (but keep tokens)
     logger.warning("Resetting in-memory artifact store")
     _STORE.clear()
     _RATINGS_CACHE.clear()
@@ -973,22 +969,11 @@ def reset_route() -> tuple[Response, int] | Response:
     except Exception:
         logger.exception("Failed to clear ArtifactStore (DynamoDB)")
     try:
-        TokenStore().clear()
-    except Exception:
-        logger.exception("Failed to clear TokenStore (DynamoDB)")
-    try:
         RatingsCache().clear()
     except Exception:
         logger.exception("Failed to clear RatingsCache (DynamoDB)")
     
-    # Now clear tokens and restore the admin token that was used for reset
-    _TOKENS.clear()
-    if current_token:
-        _TOKENS[current_token] = True
-        try:
-            TokenStore().add(current_token)
-        except Exception:
-            pass
+    # Don't clear tokens - keep authentication working
     
     return jsonify({"message": "Registry is reset."}), 200
 
