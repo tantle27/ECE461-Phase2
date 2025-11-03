@@ -399,14 +399,13 @@ class TestFileOperations:
         """Test file operations with mocking."""
         mock_content = "test file content"
         
-        with mock.mock_open(read_data=mock_content) as mock_file:
-            with patch('builtins.open', mock_file):
-                try:
-                    with open('test_file.txt', 'r') as f:
-                        content = f.read()
-                        assert content == mock_content
-                except Exception:
-                    pass
+        with patch('builtins.open', mock.mock_open(read_data=mock_content)):
+            try:
+                with open('test_file.txt', 'r') as f:
+                    content = f.read()
+                    assert content == mock_content
+            except Exception:
+                pass
 
     def test_file_not_found_handling(self):
         """Test FileNotFoundError handling."""
