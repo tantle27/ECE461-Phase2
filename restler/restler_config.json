@@ -1,0 +1,46 @@
+{
+  "RestlerRootDirPath": "./restler",
+  "SwaggerSpecFilePath": ["../openapi.yaml"],
+  "TargetEndpoint": "http://localhost:5000",
+  "MaxDurationHours": 1,
+  "MaxSequenceLength": 10,
+  "CheckerOptions": {
+    "Enable404Check": true,
+    "Enable500Check": true,
+    "EnablePayloadBodyCheck": true,
+    "EnableExamplesCheck": true,
+    "EnableResourceHierarchyCheck": true,
+    "EnableUseAfterFreeCheck": true,
+    "EnableLeakageRuleCheck": true,
+    "EnableInvalidDynamicObjectCheck": true
+  },
+  "EngineSettings": {
+    "FuzzingMode": "directed-smoke-test",
+    "JsonPropertyMaxDepth": 10,
+    "JsonArrayMaxElements": 20,
+    "MaxRequestsPerHour": 1000,
+    "MaxConcurrentRequests": 1,
+    "DelayBetweenRequests": 0.1
+  },
+  "AuthenticationOptions": {
+    "AuthConfigFilePath": "./restler_auth_config.json"
+  },
+  "CustomMutations": {
+    "MutationsSeed": 12345,
+    "CustomPayloadFilePath": "./custom_payloads.json"
+  },
+  "GrammarOutputDirectoryPath": "./grammar",
+  "ResultsOutputDirectoryPath": "./results",
+  "LogFilePath": "./logs/restler.log",
+  "TelemetryOptOut": true,
+  "IncludeUserAgent": true,
+  "GlobalProducerTimingDelaySeconds": 1,
+  "ReplayLogFilePath": "./logs/replay.log",
+  "NoSsl": true,
+  "Host": "localhost",
+  "TargetPort": 5000,
+  "BasePath": "",
+  "IncludeOptionalParameters": true,
+  "UseRefreshableToken": true,
+  "WaitForAsyncResourceCreation": true
+}
