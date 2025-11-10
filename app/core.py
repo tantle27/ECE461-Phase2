@@ -336,6 +336,21 @@ def _parse_query(payload: dict[str, Any]) -> ArtifactQuery:
         page_size=page_size if 1 <= page_size <= 100 else 25,
     )
 
+
+def _parse_query_args(args: dict[str, str]) -> ArtifactQuery:
+    """Parse query arguments from request args (GET parameters)."""
+    page = _safe_int(args.get("page", "1"), 1)
+    page_size = _safe_int(args.get("page_size", "25"), 25)
+    types_raw = args.get("types", "")
+    types_list = [t.strip() for t in types_raw.split(",")] if types_raw else []
+    return ArtifactQuery(
+        artifact_type=args.get("artifact_type"),
+        name=args.get("name"),
+        types=types_list,
+        page=page if page > 0 else 1,
+        page_size=page_size if 1 <= page_size <= 100 else 25,
+    )
+
 def raise_error(status: HTTPStatus, message: str) -> None:
     response = jsonify({"message": message})
     response.status_code = status
@@ -343,10 +358,85 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _sanitize_search_pattern(raw_pattern: str) -> str:
-    if len(raw_pattern) > 256:
-        raw_pattern = raw_pattern[:256]
+    if len(raw_pattern) > 128:
+        raw_pattern = raw_pattern[:128]
     allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$]", "", raw_pattern)
     return allowed or ".*"
+
+
+def _prefix_match(text: str, pattern: str) -> bool:
+    """Check if text starts with pattern (case-insensitive)."""
+    return text.lower().startswith(pattern.lower())
+
+
+def _substring_match(text: str, pattern: str) -> bool:
+    """Check if pattern is found in text (case-insensitive)."""
+    return pattern.lower() in text.lower()
+
+
+def _parse_semver(version: str) -> tuple[int, int, int] | None:
+    """Parse semantic version string into (major, minor, patch) tuple."""
+    try:
+        # Remove 'v' prefix if present
+        clean_version = version[1:] if version.startswith('v') else version
+        parts = clean_version.split(".")
+        if len(parts) >= 3:
+            major = int(parts[0])
+            minor = int(parts[1])
+            patch = int(parts[2])
+            return (major, minor, patch)
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def _cmp_ver(v1: tuple[int, int, int], v2: tuple[int, int, int]) -> int:
+    """Compare two version tuples. Returns -1, 0, or 1."""
+    if v1 < v2:
+        return -1
+    elif v1 > v2:
+        return 1
+    else:
+        return 0
+
+
+def _in_version_range(version: str, range_spec: str) -> bool:
+    """Check if version is in the specified range (simple implementation)."""
+    parsed_version = _parse_semver(version)
+    if parsed_version is None:
+        return False
+    
+    # Handle exact match
+    if "^" not in range_spec and "~" not in range_spec and "-" not in range_spec:
+        return version == range_spec
+    
+    # Handle caret range (^1.2.3 allows compatible within major version)
+    if range_spec.startswith("^"):
+        target_version = _parse_semver(range_spec[1:])
+        if target_version is None:
+            return False
+        return (parsed_version[0] == target_version[0] and
+                parsed_version >= target_version)
+    
+    # Handle tilde range (~1.2.3 allows compatible within minor version)
+    if range_spec.startswith("~"):
+        target_version = _parse_semver(range_spec[1:])
+        if target_version is None:
+            return False
+        return (parsed_version[0] == target_version[0] and
+                parsed_version[1] == target_version[1] and
+                parsed_version >= target_version)
+    
+    # Handle hyphen range (1.2.3 - 2.0.0)
+    if " - " in range_spec:
+        parts = range_spec.split(" - ")
+        if len(parts) == 2:
+            lower = _parse_semver(parts[0])
+            upper = _parse_semver(parts[1])
+            if lower and upper:
+                return lower <= parsed_version <= upper
+    
+    return False
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -380,6 +470,38 @@ except Exception:
 def health() -> tuple[Response, int]:
     # Autograder expects a JSON body with ok:true
     return jsonify({"ok": True}), 200
+
+@blueprint.route("/openapi", methods=["GET"])
+def openapi_spec() -> tuple[Response, int]:
+    """Return basic OpenAPI specification."""
+    spec = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Package Registry API",
+            "version": "1.0.0",
+            "description": "A simple package registry API"
+        },
+        "paths": {
+            "/health": {
+                "get": {
+                    "summary": "Health check endpoint",
+                    "responses": {
+                        "200": {"description": "Service is healthy"}
+                    }
+                }
+            },
+            "/authenticate": {
+                "put": {
+                    "summary": "Authenticate user",
+                    "responses": {
+                        "200": {"description": "Authentication successful"}
+                    }
+                }
+            }
+        }
+    }
+    return jsonify(spec), 200
+
 
 @blueprint.route("/health/components", methods=["GET"])
 def health_components_route() -> tuple[Response, int] | Response:

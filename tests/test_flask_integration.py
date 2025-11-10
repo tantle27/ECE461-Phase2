@@ -34,17 +34,19 @@ def client(app):
 def auth_token(client):
     """Get authentication token for API calls."""
     login_data = {
-        "username": "ece30861defaultadminuser",
-        "password": "correcthorsebatterystaple123(!__+@**(A;DROP TABLE packages"
+        "user": {"name": "ece30861defaultadminuser"},
+        "secret": {"password": "correcthorsebatterystaple123(!__+@**(A;DROP TABLE packages"}
     }
     
-    response = client.post('/login',
+    response = client.put('/authenticate',
                            data=json.dumps(login_data),
                            content_type='application/json')
     
     if response.status_code == 200:
-        # API returns access_token, not token
-        return response.get_json().get('access_token')
+        # API returns bearer token as JSON string
+        token_str = response.get_json()
+        if isinstance(token_str, str) and token_str.startswith("bearer "):
+            return token_str.split(" ", 1)[1]
     return None
 
 
@@ -84,32 +86,32 @@ class TestAuthentication:
     """Test authentication endpoints."""
     
     def test_login_success(self, client):
-        """Test successful login."""
+        """Test successful authentication."""
         login_data = {
-            "username": "ece30861defaultadminuser",
-            "password": "correcthorsebatterystaple123(!__+@**(A;DROP TABLE packages"
+            "user": {"name": "ece30861defaultadminuser"},
+            "secret": {"password": "correcthorsebatterystaple123(!__+@**(A;DROP TABLE packages"}
         }
         
-        response = client.post('/login',
-                               data=json.dumps(login_data),
-                               content_type='application/json')
+        response = client.put('/authenticate',
+                              data=json.dumps(login_data),
+                              content_type='application/json')
         
         assert response.status_code == 200
-        data = response.get_json()
-        # API returns access_token, not token
-        assert 'access_token' in data
-        assert data['access_token'] is not None
+        token_str = response.get_json()
+        # API returns bearer token as JSON string
+        assert isinstance(token_str, str)
+        assert token_str.startswith("bearer ")
     
     def test_login_invalid_credentials(self, client):
-        """Test login with invalid credentials."""
+        """Test authentication with invalid credentials."""
         login_data = {
-            "username": "wrong_user",
-            "password": "wrong_password"
+            "user": {"name": "wrong_user"},
+            "secret": {"password": "wrong_password"}
         }
         
-        response = client.post('/login',
-                               data=json.dumps(login_data),
-                               content_type='application/json')
+        response = client.put('/authenticate',
+                              data=json.dumps(login_data),
+                              content_type='application/json')
         
         assert response.status_code == 401
 
@@ -121,15 +123,7 @@ class TestArtifactOperations:
     def test_create_artifact(self, client, auth_headers):
         """Test creating a new artifact."""
         artifact_data = {
-            "metadata": {
-                "name": "test-model",
-                "version": "1.0.0"
-            },
-            "data": {
-                "description": "Test model for integration testing",
-                "model_link": "https://github.com/test/test-model",
-                "tags": ["test", "integration"]
-            }
+            "url": "https://github.com/test/test-model"
         }
         
         response = client.post('/artifact/model',
@@ -139,22 +133,14 @@ class TestArtifactOperations:
         
         assert response.status_code in [200, 201]
         data = response.get_json()
-        assert 'artifact' in data
-        assert 'metadata' in data['artifact']
-        assert 'id' in data['artifact']['metadata']
+        assert 'metadata' in data
+        assert 'id' in data['metadata']
+        assert data['metadata']['type'] == 'model'
         
     def _create_test_artifact(self, client, auth_headers):
         """Helper method to create artifact and return ID."""
         artifact_data = {
-            "metadata": {
-                "name": "test-model",
-                "version": "1.0.0"
-            },
-            "data": {
-                "description": "Test model for integration testing",
-                "model_link": "https://github.com/test/test-model",
-                "tags": ["test", "integration"]
-            }
+            "url": "https://github.com/test/test-model"
         }
         
         response = client.post('/artifact/model',
@@ -164,7 +150,7 @@ class TestArtifactOperations:
         
         assert response.status_code in [200, 201]
         data = response.get_json()
-        return data['artifact']['metadata']['id']
+        return data['metadata']['id']
     
     def test_get_artifact(self, client, auth_headers):
         """Test retrieving an artifact."""
@@ -249,7 +235,8 @@ class TestErrorHandling:
                                data=json.dumps({"name": "test"}),
                                content_type='application/json')
         
-        assert response.status_code == 401
+        # API returns 403 for missing/invalid tokens per spec
+        assert response.status_code == 403
     
     def test_invalid_json(self, client, auth_headers):
         """Test sending invalid JSON."""
@@ -963,24 +950,24 @@ class TestAuthenticationEdgeCases:
             assert response.status_code == 401
     
     def test_login_edge_cases(self, client):
-        """Test login with edge cases."""
+        """Test authentication with edge cases."""
         edge_cases = [
             # Empty credentials
-            {"username": "", "password": ""},
+            {"user": {"name": ""}, "secret": {"password": ""}},
             # Missing username
-            {"password": "test"},
+            {"user": {}, "secret": {"password": "test"}},
             # Missing password  
-            {"username": "test"},
+            {"user": {"name": "test"}, "secret": {}},
             # Null values
-            {"username": None, "password": None},
+            {"user": {"name": None}, "secret": {"password": None}},
             # Very long credentials
-            {"username": "x" * 1000, "password": "y" * 1000},
+            {"user": {"name": "x" * 1000}, "secret": {"password": "y" * 1000}},
         ]
         
         for login_data in edge_cases:
-            response = client.post('/login',
-                                   data=json.dumps(login_data),
-                                   content_type='application/json')
+            response = client.put('/authenticate',
+                                  data=json.dumps(login_data),
+                                  content_type='application/json')
             
             assert response.status_code in [400, 401]
 

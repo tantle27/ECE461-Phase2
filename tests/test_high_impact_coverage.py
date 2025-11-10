@@ -246,7 +246,7 @@ class TestSecretsLoaderBasic:
     def test_import_secrets_loader(self):
         """Test that secrets_loader can be imported."""
         try:
-            from src.core import secrets_loader
+            from app import secrets_loader
             assert secrets_loader is not None
         except ImportError:
             # Module doesn't exist or has import issues (likely boto3 missing)
@@ -255,7 +255,7 @@ class TestSecretsLoaderBasic:
     def test_secrets_loader_basic_functionality(self):
         """Test basic secrets_loader functionality if available."""
         try:
-            from src.core import secrets_loader
+            from app import secrets_loader
             # Test basic attributes exist
             assert hasattr(secrets_loader, '__name__')
         except ImportError:

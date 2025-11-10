@@ -1,10 +1,21 @@
 """Simple Color Contrast Tests for ADA Compliance"""
 
 import pytest
+import requests
+
+
+def check_server_running(url="http://localhost:5000"):
+    """Check if the Flask server is running."""
+    try:
+        response = requests.get(f"{url}/health", timeout=2)
+        return response.status_code == 200
+    except Exception:
+        return False
 
 
 @pytest.mark.ada
 @pytest.mark.contrast
+@pytest.mark.skipif(not check_server_running(), reason="Flask server not running on localhost:5000")
 class TestSimpleColorContrast:
     """Simple color contrast tests."""
     

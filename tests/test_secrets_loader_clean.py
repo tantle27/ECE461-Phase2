@@ -39,7 +39,7 @@ class TestSecretsLoaderConfiguration:
 class TestBoto3DependencyHandling:
     """Test boto3 dependency handling and fallback."""
     
-    @patch('src.core.secrets_loader.boto3', None)
+    @patch('app.secrets_loader.boto3', None)
     def test_load_secrets_no_boto3(self):
         """Test load_registry_secrets when boto3 is not available."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test'
@@ -55,7 +55,7 @@ class TestBoto3DependencyHandling:
 class TestSecretsManagerIntegration:
     """Test AWS Secrets Manager integration."""
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_successful_retrieval(self, mock_boto3):
         """Test successful secret retrieval and environment variable setting."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -86,7 +86,7 @@ class TestSecretsManagerIntegration:
             assert os.environ.get('GH_TOKEN') == 'test-github-token'
             assert os.environ.get('GENAI_API_KEY') == 'test-genai-key'
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_partial_data(self, mock_boto3):
         """Test secret retrieval with only partial data."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -106,7 +106,7 @@ class TestSecretsManagerIntegration:
             assert os.environ.get('GH_TOKEN') == 'only-github-token'
             assert os.environ.get('GENAI_API_KEY') is None
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_preserves_existing_env_vars(self, mock_boto3):
         """Test that existing environment variables are preserved."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -135,7 +135,7 @@ class TestSecretsManagerIntegration:
             assert os.environ.get('GH_TOKEN') == 'existing-github-token'
             assert os.environ.get('GENAI_API_KEY') == 'existing-genai-key'
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_sets_only_missing_env_vars(self, mock_boto3):
         """Test that only missing environment variables are set."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -168,7 +168,7 @@ class TestSecretsManagerIntegration:
 class TestErrorHandling:
     """Test error handling scenarios."""
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_boto_core_error(self, mock_boto3):
         """Test handling of BotoCoreError."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -188,7 +188,7 @@ class TestErrorHandling:
                 call_args = mock_log.call_args[0]
                 assert 'Failed to fetch secret' in call_args[0]
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_client_error(self, mock_boto3):
         """Test handling of ClientError."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -211,7 +211,7 @@ class TestErrorHandling:
                 call_args = mock_log.call_args[0]
                 assert 'Failed to fetch secret' in call_args[0]
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_no_secret_string(self, mock_boto3):
         """Test handling when secret has no SecretString."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -230,7 +230,7 @@ class TestErrorHandling:
                 assert 'has no SecretString' in call_args[0]
                 assert test_arn in call_args
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_empty_secret_string(self, mock_boto3):
         """Test handling when SecretString is empty."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -248,7 +248,7 @@ class TestErrorHandling:
                 call_args = mock_warning.call_args[0]
                 assert 'has no SecretString' in call_args[0]
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_invalid_json(self, mock_boto3):
         """Test handling of invalid JSON in SecretString."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -270,7 +270,7 @@ class TestErrorHandling:
                 assert 'is not valid JSON' in call_args[0]
                 assert test_arn in call_args
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_malformed_json(self, mock_boto3):
         """Test handling of malformed JSON."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -294,7 +294,7 @@ class TestErrorHandling:
 class TestSecretDataProcessing:
     """Test secret data processing and environment variable setting."""
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_empty_secret_data(self, mock_boto3):
         """Test handling of empty secret data."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -313,7 +313,7 @@ class TestSecretDataProcessing:
             assert os.environ.get('GH_TOKEN') is None
             assert os.environ.get('GENAI_API_KEY') is None
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_null_values(self, mock_boto3):
         """Test handling of null values in secret data."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -336,7 +336,7 @@ class TestSecretDataProcessing:
             assert os.environ.get('GH_TOKEN') is None
             assert os.environ.get('GENAI_API_KEY') is None
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_empty_string_values(self, mock_boto3):
         """Test handling of empty string values in secret data."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -359,7 +359,7 @@ class TestSecretDataProcessing:
             assert os.environ.get('GH_TOKEN') is None
             assert os.environ.get('GENAI_API_KEY') is None
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_load_secrets_extra_keys_ignored(self, mock_boto3):
         """Test that extra keys in secret data are ignored."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret'
@@ -396,7 +396,7 @@ class TestImportTimeExecution:
         # The actual import-time execution has already happened, but we can
         # test the function behavior that would occur during import
         
-        with patch('src.core.secrets_loader.load_registry_secrets') as mock_load:
+        with patch('app.secrets_loader.load_registry_secrets') as mock_load:
             mock_load.side_effect = RuntimeError("Unexpected error")
             
             with patch('logging.exception') as mock_log:
@@ -415,7 +415,7 @@ class TestImportTimeExecution:
 class TestIntegrationScenarios:
     """Test integration scenarios and realistic use cases."""
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_production_like_scenario(self, mock_boto3):
         """Test production-like scenario with real secret structure."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:registry-prod-secrets'
@@ -446,7 +446,7 @@ class TestIntegrationScenarios:
             assert os.environ.get('DATABASE_URL') is None
             assert os.environ.get('SECRET_VERSION') is None
     
-    @patch('src.core.secrets_loader.boto3')
+    @patch('app.secrets_loader.boto3')
     def test_development_environment_fallback(self, mock_boto3):
         """Test development environment where secrets are pre-configured."""
         test_arn = 'arn:aws:secretsmanager:us-east-1:123456789012:secret:registry-prod-secrets'
