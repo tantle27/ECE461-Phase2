@@ -66,7 +66,7 @@ _PERSIST_PATH = Path(os.environ.get("REGISTRY_PERSIST_PATH", "/tmp/registry_stor
 _TOKENS: dict[str, bool] = {}
 _DEFAULT_USER = {
     "username": "ece30861defaultadminuser",
-    "password": "correcthorsebatterystaple123(!__+@**(A;DROP TABLE packages",
+    "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
     "role": "admin",
 }
 
