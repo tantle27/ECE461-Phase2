@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from src.adapters.github_fetchers import fetch_commits, fetch_readme, fetch_repo_tree
+from src.api.github_fetchers import fetch_commits, fetch_readme, fetch_repo_tree
 
 InputKey = str
 
