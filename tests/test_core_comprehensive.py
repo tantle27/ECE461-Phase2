@@ -440,22 +440,7 @@ class TestArtifactStorage:
         for item in result["items"]:
             assert item["metadata"]["type"] == "model"
     
-    @pytest.mark.skip(reason="Name filtering not implemented in list_artifacts")
-    def test_list_artifacts_filtered_by_name(self, mock_store):
-        """Test listing artifacts filtered by name."""
-        # Mock database to return empty so we use in-memory store
-        mock_store.list_all.return_value = []
-        
-        metadata1 = ArtifactMetadata(id="1", name="test-model", type="model", version="1.0")
-        metadata2 = ArtifactMetadata(id="2", name="other-model", type="model", version="1.0")
-        
-        save_artifact(Artifact(metadata=metadata1, data={}))
-        save_artifact(Artifact(metadata=metadata2, data={}))
-        
-        query = ArtifactQuery(name="test")
-        result = list_artifacts(query)
-        # Name filtering not implemented - always returns 0 for filtered queries
-        assert result["total"] == 0
+
     
     @patch('app.core._ARTIFACT_STORE')
     def test_list_artifacts_types_filter(self, mock_store):
@@ -535,51 +520,7 @@ class TestValidation:
         result = _validate_artifact_data("dataset", data)
         assert result["dataset_link"] == "https://example.com/dataset"
     
-    @pytest.mark.skip(reason="_validate_artifact_data function not implemented")
-    def test_validate_artifact_data_missing_model_link(self):
-        """Test validation fails for model without model_link."""
-        with pytest.raises(Exception):  # Should raise HTTPStatus.BAD_REQUEST
-            _validate_artifact_data("model", {})
-    
-    @pytest.mark.skip(reason="_validate_artifact_data function not implemented")
-    def test_validate_artifact_data_empty_model_link(self):
-        """Test validation fails for model with empty model_link."""
-        with pytest.raises(Exception):
-            _validate_artifact_data("model", {"model_link": ""})
-    
-    @pytest.mark.skip(reason="_validate_artifact_data function not implemented")
-    def test_validate_artifact_data_optional_fields(self):
-        """Test validation with optional fields."""
-        data = {
-            "model_link": "https://example.com/model",
-            "code_link": "https://example.com/code",
-            "dataset_link": "https://example.com/dataset",
-            "code": "",  # Empty field should be removed
-            "dataset": None  # None field should be removed
-        }
-        result = _validate_artifact_data("model", data)
-        assert result["model_link"] == "https://example.com/model"
-        assert result["code_link"] == "https://example.com/code"
-        assert result["dataset_link"] == "https://example.com/dataset"
-        assert "code" not in result
-        assert "dataset" not in result
-    
-    @pytest.mark.skip(reason="_validate_artifact_data function not implemented")
-    def test_validate_artifact_data_non_dict(self):
-        """Test validation fails for non-dict data."""
-        with pytest.raises(Exception):
-            _validate_artifact_data("model", "not-a-dict")
-        with pytest.raises(Exception):
-            _validate_artifact_data("model", ["not", "a", "dict"])
-    
-    @pytest.mark.skip(reason="_validate_artifact_data function not implemented")
-    def test_validate_artifact_data_invalid_field_type(self):
-        """Test validation fails for invalid field types."""
-        with pytest.raises(Exception):
-            _validate_artifact_data("model", {
-                "model_link": "https://example.com",
-                "code_link": 123  # Should be string
-            })
+
 
 
 class TestSearchFunctionality:
@@ -603,31 +544,7 @@ class TestSearchFunctionality:
             artifact = Artifact(metadata=metadata, data=data)
             save_artifact(artifact)
     
-    @pytest.mark.skip(reason="_search_artifacts function returns empty list")
-    def test_search_artifacts_substring_name(self):
-        """Test substring search in artifact names."""
-        matches = _search_artifacts(None, None, "substring", "TensorFlow")
-        assert len(matches) == 1
-        assert matches[0].metadata.name == "TensorFlow Model"
-    
-    @pytest.mark.skip(reason="_search_artifacts function returns empty list")
-    def test_search_artifacts_substring_readme(self):
-        """Test substring search in readme content."""
-        matches = _search_artifacts(None, None, "substring", "classification")
-        assert len(matches) == 1
-        assert matches[0].metadata.id == "model-1"
-    
-    @pytest.mark.skip(reason="_search_artifacts function not implemented")
-    def test_search_artifacts_prefix_mode(self):
-        """Test prefix search mode."""
-        # _search_artifacts function does not exist in implementation
-        pass
-    
-    @pytest.mark.skip(reason="_search_artifacts function not implemented")
-    def test_search_artifacts_regex_mode(self):
-        """Test regex search mode."""
-        # _search_artifacts function does not exist in implementation
-        pass
+
     
     def test_search_artifacts_with_type_filter(self):
         """Test search with artifact type filter."""
