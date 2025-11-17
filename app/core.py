@@ -222,6 +222,14 @@ def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
 
 def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     logger.info("Listing artifacts page=%s size=%s", query.page, query.page_size)
+    logger.warning(
+        "LIST: artifact_type=%s name=%s types=%s page=%s page_size=%s",
+        query.artifact_type,
+        query.name,
+        query.types,
+        query.page,
+        query.page_size,
+    )
     items: list[Artifact] = []
     used_primary = False
     try:
@@ -250,15 +258,20 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
             for item in store_vals
             if (not query.artifact_type or item.metadata.type == query.artifact_type)
         ]
+        logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
 
     # Filter by types[]
     if query.types:
         items = [item for item in items if item.metadata.type in query.types]
+        logger.warning("LIST: After types filter count=%d", len(items))
 
     # Filter by name
     if query.name and query.name != "*":
         needle = query.name.lower()
         items = [item for item in items if item.metadata.name.lower() == needle]
+        logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
+    elif query.name == "*":
+        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
@@ -531,6 +544,10 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "Invalid artifact_query"}), 400
 
     qd = body[0]
+    logger.warning(
+        "ARTIFACTS: Received enumerate query name=%s types=%s page=%s page_size=%s offset=%s",
+        qd.get("name"), qd.get("types"), qd.get("page"), qd.get("page_size"), request.args.get("offset")
+    )
     # handle offset pagination header semantics
     offset_str = request.args.get("offset")
     if offset_str:
@@ -550,6 +567,10 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     page_size = int(result.get("page_size", 25))
     total = int(result.get("total", 0))
     next_offset = current_page * page_size
+    logger.warning(
+        "ARTIFACTS: Returning page=%s size=%s total=%s next_offset=%s items_on_page=%s",
+        current_page, page_size, total, next_offset, len(result.get("items", []))
+    )
 
     items = result.get("items", [])
     # Per spec, response body is array of ArtifactMetadata (name/id/type)
@@ -573,12 +594,21 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 @_record_timing
 def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     # _require_auth()
+    logger.warning("GET_ARTIFACT: type=%s id=%s", artifact_type, artifact_id)
     art = fetch_artifact(artifact_type, artifact_id)
     if not art:
+        logger.warning("GET_ARTIFACT: Not found")
         return jsonify({"message": "Artifact does not exist."}), 404
     # Spec: returned artifact must include data.url
     if "url" not in (art.data or {}):
+        logger.warning("GET_ARTIFACT: Found but missing data.url")
         return jsonify({"message": "Artifact missing url"}), 400
+    logger.warning(
+        "GET_ARTIFACT: OK name=%s version=%s has_metrics=%s",
+        art.metadata.name,
+        art.metadata.version,
+        isinstance(art.data, dict) and bool((art.data or {}).get("metrics")),
+    )
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return jsonify(artifact_to_dict(art)), 200
 
@@ -775,8 +805,18 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     artifact.data["model_link"] = candidate
                     # Persist the augmented artifact for future reads
                     save_artifact(artifact)
+                    logger.warning("RATE: Derived model_link for %s -> %s", artifact_id, candidate)
+                else:
+                    logger.warning("RATE: No model link derivable for %s; scoring may fail", artifact_id)
 
+        logger.warning("RATE: Scoring start id=%s name=%s", artifact_id, artifact.metadata.name)
         rating = _score_artifact_with_metrics(artifact)
+        logger.warning(
+            "RATE: Scoring done id=%s net=%.3f keys=%s",
+            artifact_id,
+            float((rating.scores or {}).get("net_score", 0.0) or 0.0),
+            sorted(list((rating.scores or {}).keys())),
+        )
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
@@ -786,6 +826,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             save_artifact(artifact)
         _audit_add("model", artifact_id, "RATE", artifact.metadata.name)
     except ValueError as exc:
+        logger.warning("RATE: ValueError for %s: %s", artifact_id, exc)
         return jsonify({"message": str(exc)}), 400
     except Exception:
         logger.exception("Failed to score artifact %s", artifact_id)
@@ -1153,6 +1194,7 @@ def reset_route() -> tuple[Response, int] | Response:
 def by_name_route(name: str) -> tuple[Response, int] | Response:
     _require_auth()
     needle = name.strip().lower()
+    logger.warning("BY_NAME: lookup name='%s' store_size=%d", needle, len(_STORE))
     results = []
     for art in _STORE.values():
         if art.metadata.name.lower() == needle:
@@ -1164,7 +1206,10 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
                 }
             )
     if not results:
+        sample_names = sorted({a.metadata.name for a in _STORE.values()})[:10]
+        logger.warning("BY_NAME: no match for '%s'. sample_names=%s", needle, sample_names)
         return jsonify({"message": "No such artifact"}), 404
+    logger.warning("BY_NAME: matches=%d", len(results))
     return jsonify(results), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
@@ -1178,6 +1223,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
     try:
         sanitized = _sanitize_search_pattern(regex)
         pattern = re.compile(sanitized, re.IGNORECASE)
+        logger.warning("BY_REGEX: raw='%s' sanitized='%s' store_size=%d", regex, sanitized, len(_STORE))
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
     matches = []
@@ -1194,7 +1240,9 @@ def by_regex_route() -> tuple[Response, int] | Response:
                 }
             )
     if not matches:
+        logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
         return jsonify({"message": "No artifact found under this regex"}), 404
+    logger.warning("BY_REGEX: matches=%d for sanitized='%s'", len(matches), sanitized)
     return jsonify(matches), 200
 
 # -------------------- Audit log --------------------
