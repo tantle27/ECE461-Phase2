@@ -60,7 +60,6 @@ selenium>=4.15.0
 webdriver-manager>=4.0.0
 axe-selenium-python>=2.1.6
 pytest-html>=3.1.0
-colorsys  # Built-in for color contrast calculations
 
 # Production WSGI server
 gunicorn==21.2.0
