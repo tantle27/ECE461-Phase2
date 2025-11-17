@@ -60,8 +60,8 @@ _S3 = S3Storage()
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Simple local persistence for dev reloads (tokens + artifacts)
-_PERSIST_PATH = Path(os.environ.get("REGISTRY_PERSIST_PATH", "/tmp/registry_store.json"))
+# S3-based persistence for dev reloads (tokens + artifacts)
+_PERSIST_S3_KEY = os.environ.get("REGISTRY_PERSIST_S3_KEY", "registry/registry_store.json")
 
 # token -> is_admin
 _TOKENS: dict[str, bool] = {}
@@ -80,24 +80,45 @@ _STATS = {"ok": 0, "err": 0}
 ps_start_time = time.time()
 
 def _persist_state() -> None:
-    """Persist tokens and in-memory artifacts to disk for dev reloads."""
+    """Persist tokens and in-memory artifacts to S3 for dev reloads."""
     try:
         data = {
             "tokens": [{"t": t, "admin": admin} for t, admin in _TOKENS.items()],
             "store": [artifact_to_dict(a) for a in _STORE.values()],
         }
-        _PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _PERSIST_PATH.write_text(json.dumps(data))
-        logger.info("Persisted state to %s (artifacts=%d, tokens=%d)", _PERSIST_PATH, len(_STORE), len(_TOKENS))
+        json_data = json.dumps(data)
+        
+        if _S3.enabled:
+            # Use S3 for persistence
+            import io
+            _S3.put_file(
+                io.BytesIO(json_data.encode('utf-8')),
+                _PERSIST_S3_KEY,
+                "application/json"
+            )
+            logger.info("Persisted state to S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
+                       _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
+        else:
+            logger.warning("S3 not enabled, state persistence disabled")
     except Exception:
-        logger.exception("Failed to persist registry state to %s", _PERSIST_PATH)
+        logger.exception("Failed to persist registry state to S3")
 
 def _load_state() -> None:
-    """Load tokens and artifacts from disk if present (best-effort)."""
-    if not _PERSIST_PATH.exists():
+    """Load tokens and artifacts from S3 if present (best-effort)."""
+    if not _S3.enabled:
+        logger.info("S3 not enabled, skipping state load")
         return
     try:
-        data = json.loads(_PERSIST_PATH.read_text()) or {}
+        # Try to fetch from S3
+        body, meta = _S3.get_object(_PERSIST_S3_KEY)
+        content = body.decode('utf-8').strip()
+        
+        if not content:
+            logger.info("S3 persist file s3://%s/%s is empty, skipping load", 
+                       _S3.bucket, _S3._key(_PERSIST_S3_KEY))
+            return
+        
+        data = json.loads(content) or {}
         # Load tokens
         _TOKENS.clear()
         for ent in data.get("tokens", []) or []:
@@ -125,9 +146,10 @@ def _load_state() -> None:
                     _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
                 except Exception:
                     pass
-        logger.warning("Loaded persisted state from %s (artifacts=%d, tokens=%d)", _PERSIST_PATH, len(_STORE), len(_TOKENS))
+        logger.warning("Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
+                      _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
     except Exception:
-        logger.exception("Failed to load persisted registry state from %s", _PERSIST_PATH)
+        logger.exception("Failed to load persisted registry state from S3 (this is normal on first run)")
 
 def _record_timing(f):
     @wraps(f)
