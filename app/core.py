@@ -22,6 +22,15 @@ from app.s3_adapter import S3Storage
 from app.scoring import ModelRating, _score_artifact_with_metrics
 
 logger = logging.getLogger(__name__)
+try:
+    from app.audit_logging import audit_event, security_alert
+except Exception:
+    # fall back to no-op functions if audit logging not available
+    def audit_event(message: str, **fields: Any) -> None:  # type: ignore
+        logger.debug("audit_event noop: %s %s", message, fields)
+
+    def security_alert(message: str, **fields: Any) -> None:  # type: ignore
+        logger.warning("security_alert noop: %s %s", message, fields)
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -282,31 +291,45 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     token_hdr = request.headers.get("X-Authorization", "")
     auth_hdr = request.headers.get("Authorization", "")
     token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
-    
-    # logger.warning(f"AUTH_CHECK: X-Authorization='{token_hdr}', Authorization='{auth_hdr}'")
-    # logger.warning(f"AUTH_CHECK: Parsed token='{token}', admin_required={admin}")
-    # logger.warning(f"AUTH_CHECK: Current _TOKENS has {len(_TOKENS)} tokens: {list(_TOKENS.keys())}")
-    # logger.warning(f"AUTH_CHECK: Token in _TOKENS? {token in _TOKENS}")
-    
+
+    # Record an audit event for the auth check start (mask token)
+    audit_event(
+        "auth_check_started",
+        x_authorization=(token_hdr[:16] + "...") if token_hdr else "",
+        authorization=(auth_hdr[:16] + "...") if auth_hdr else "",
+        parsed_token=(token[:8] + "...") if token else "",
+        admin_required=admin,
+    )
+
     if not token or token not in _TOKENS:
         # spec: 403 for invalid or missing AuthenticationToken
-        logger.warning(f"AUTH_CHECK: FAILED - Token missing or not found in _TOKENS")
+        security_alert(
+            "auth_failed",
+            reason="missing_or_invalid_token",
+            token_present=bool(token),
+            token=(token[:8] + "...") if token else "",
+        )
         response = jsonify({"message": "Authentication failed due to invalid or missing AuthenticationToken."})
         response.status_code = HTTPStatus.FORBIDDEN
         from flask import abort
         abort(response)
+
     is_admin = bool(_TOKENS[token])
-    logger.info(f"AUTH_CHECK: Token valid, is_admin={is_admin}")
-    
+    audit_event("auth_validated", token=(token[:8] + "..."), is_admin=is_admin)
+
     if admin and not is_admin:
         # spec: 401 when you do not have permission to reset
-        logger.warning(f"AUTH_CHECK: FAILED - Admin required but user is not admin")
+        security_alert(
+            "auth_failed",
+            reason="admin_required",
+            token=(token[:8] + "...") if token else "",
+        )
         response = jsonify({"message": "You do not have permission to reset the registry."})
         response.status_code = HTTPStatus.UNAUTHORIZED
         from flask import abort
         abort(response)
-    
-    logger.info(f"AUTH_CHECK: SUCCESS - Token '{token}' authenticated, is_admin={is_admin}")
+
+    audit_event("auth_success", token=(token[:8] + "..."), is_admin=is_admin)
     return token, is_admin
 
 def _json_body() -> dict[str, Any]:

@@ -16,10 +16,19 @@ except Exception:
     logging.exception("secrets_loader failed - continuing without Secrets Manager")
 
 from app.core import blueprint
+from app.audit_logging import init_audit_logging
 
 
 def create_app(config=None):
     app = Flask(__name__)
+    # Initialize structured audit logging (JSON logs). Doing this early
+    # helps ensure subsequent events (auth/db) can be recorded in structured form.
+    try:
+        init_audit_logging(app)
+    except Exception:
+        import logging
+
+        logging.exception("Failed to initialize audit logging; continuing")
     
     # Enable CORS for React frontend (local + Amplify)
     # Allow overriding via env var ALLOWED_ORIGINS (comma-separated)
