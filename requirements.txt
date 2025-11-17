@@ -35,6 +35,8 @@ mypy_extensions==1.1.0
 packaging==25.0
 pluggy==1.6.0
 propcache==0.4.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 pycodestyle==2.12.1
 pycparser==2.23
 pyflakes==3.2.0
