@@ -104,8 +104,7 @@ def validate_and_configure_logging() -> None:
         logging.getLogger().setLevel(logging.CRITICAL + 1)
 
 
-# run validation + logging setup before anything else
-validate_and_configure_logging()
+# Validation and logging setup will be called from main()
 
 
 # ----------------- URL parsing -----------------
@@ -276,6 +275,9 @@ async def process_entries(entries: List[Tuple[Optional[str], Optional[str], str]
 
 
 def main() -> None:
+    # run validation + logging setup before anything else
+    validate_and_configure_logging()
+    
     if len(sys.argv) != 2:
         print("Usage: python -m src.main <URL_FILE>", file=sys.stderr)
         sys.exit(1)
