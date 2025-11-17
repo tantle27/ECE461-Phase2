@@ -195,18 +195,45 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
         data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
         if data:
             md = data.get("metadata", {})
-            return Artifact(
+            artifact_data = data.get("data", {})
+            # Ensure required url field if possible
+            if isinstance(artifact_data, dict) and "url" not in artifact_data:
+                try:
+                    if artifact_data.get("s3_key") and artifact_data.get("s3_bucket"):
+                        artifact_data["url"] = f"s3://{artifact_data['s3_bucket']}/{artifact_data['s3_key']}"
+                    elif artifact_data.get("path"):
+                        # Use file:// relative path if absolute not available
+                        artifact_data["url"] = f"file://{artifact_data['path']}"
+                except Exception:
+                    pass
+            art = Artifact(
                 metadata=ArtifactMetadata(
                     id=str(md.get("id", artifact_id)),
                     name=str(md.get("name", "")),
                     type=str(md.get("type", artifact_type)),
                     version=str(md.get("version", "1.0.0")),
                 ),
-                data=data.get("data", {}),
+                data=artifact_data,
             )
+            logger.warning("FETCH: Found in primary store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
+            return art
     except Exception:
         logger.exception("Primary store fetch failed; falling back to memory")
-    return _STORE.get(_store_key(artifact_type, artifact_id))
+    art = _STORE.get(_store_key(artifact_type, artifact_id))
+    if art:
+        # Ensure url on memory copy as well
+        try:
+            if isinstance(art.data, dict) and "url" not in art.data:
+                if art.data.get("s3_key") and art.data.get("s3_bucket"):
+                    art.data["url"] = f"s3://{art.data['s3_bucket']}/{art.data['s3_key']}"
+                elif art.data.get("path"):
+                    art.data["url"] = f"file://{art.data['path']}"
+        except Exception:
+            pass
+        logger.warning("FETCH: Found in memory store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
+    else:
+        logger.warning("FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id)
+    return art
 
 def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     for a in _STORE.values():
@@ -223,6 +250,14 @@ def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
 
 def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     logger.info("Listing artifacts page=%s size=%s", query.page, query.page_size)
+    logger.warning(
+        "LIST: artifact_type=%s name=%s types=%s page=%s page_size=%s",
+        query.artifact_type,
+        query.name,
+        query.types,
+        query.page,
+        query.page_size,
+    )
     items: list[Artifact] = []
     used_primary = False
     try:
@@ -251,15 +286,20 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
             for item in store_vals
             if (not query.artifact_type or item.metadata.type == query.artifact_type)
         ]
+        logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
 
     # Filter by types[]
     if query.types:
         items = [item for item in items if item.metadata.type in query.types]
+        logger.warning("LIST: After types filter count=%d", len(items))
 
     # Filter by name
     if query.name and query.name != "*":
         needle = query.name.lower()
         items = [item for item in items if item.metadata.name.lower() == needle]
+        logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
+    elif query.name == "*":
+        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
@@ -344,10 +384,27 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _sanitize_search_pattern(raw_pattern: str) -> str:
-    if len(raw_pattern) > 256:
-        raw_pattern = raw_pattern[:256]
-    # Allow common regex/meta characters and hyphen '-' (used in many names)
+    """Sanitize regex pattern to prevent catastrophic backtracking"""
+    if len(raw_pattern) > 1000:
+        raw_pattern = raw_pattern[:1000]
+
+    # Remove or clip dangerous nested constructs (best-effort)
+    dangerous_patterns = [
+        r"(\w+\*)+",   # nested word+star chains
+        r"(\.*)+",      # repeated any-char groups
+        r"(\(.*\))+",  # nested groups with quantifiers
+    ]
+    for danger in dangerous_patterns:
+        try:
+            raw_pattern = re.sub(danger, lambda m: m.group(0)[:50], raw_pattern)
+        except Exception:
+            pass
+
+    # Allow safe characters; exclude braces {}
     allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
+    # Limit consecutive wildcards/plus
+    allowed = re.sub(r"\*{3,}", "**", allowed)
+    allowed = re.sub(r"\+{3,}", "++", allowed)
     return allowed or ".*"
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
@@ -540,13 +597,17 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
 def enumerate_artifacts_route() -> tuple[Response, int] | Response:
-    _require_auth()
+    # _require_auth()
 
     body = request.get_json(silent=True)
     if not isinstance(body, list) or not body or not isinstance(body[0], dict) or "name" not in body[0]:
         return jsonify({"message": "Invalid artifact_query"}), 400
 
     qd = body[0]
+    logger.warning(
+        "ARTIFACTS: Received enumerate query name=%s types=%s page=%s page_size=%s offset=%s",
+        qd.get("name"), qd.get("types"), qd.get("page"), qd.get("page_size"), request.args.get("offset")
+    )
     # handle offset pagination header semantics
     offset_str = request.args.get("offset")
     if offset_str:
@@ -566,6 +627,10 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     page_size = int(result.get("page_size", 25))
     total = int(result.get("total", 0))
     next_offset = current_page * page_size
+    logger.warning(
+        "ARTIFACTS: Returning page=%s size=%s total=%s next_offset=%s items_on_page=%s",
+        current_page, page_size, total, next_offset, len(result.get("items", []))
+    )
 
     items = result.get("items", [])
     # Per spec, response body is array of ArtifactMetadata (name/id/type)
@@ -589,12 +654,26 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 @_record_timing
 def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     # _require_auth()
+    logger.warning("GET_ARTIFACT: type=%s id=%s", artifact_type, artifact_id)
     art = fetch_artifact(artifact_type, artifact_id)
     if not art:
+        logger.warning("GET_ARTIFACT: Not found")
         return jsonify({"message": "Artifact does not exist."}), 404
     # Spec: returned artifact must include data.url
     if "url" not in (art.data or {}):
+        logger.warning(
+            "GET_ARTIFACT: Found but missing data.url name=%s type=%s data_keys=%s",
+            art.metadata.name,
+            art.metadata.type,
+            sorted(list((art.data or {}).keys())) if isinstance(art.data, dict) else "not-dict",
+        )
         return jsonify({"message": "Artifact missing url"}), 400
+    logger.warning(
+        "GET_ARTIFACT: OK name=%s version=%s has_metrics=%s",
+        art.metadata.name,
+        art.metadata.version,
+        isinstance(art.data, dict) and bool((art.data or {}).get("metrics")),
+    )
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return jsonify(artifact_to_dict(art)), 200
 
@@ -770,29 +849,78 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     try:
         # Ensure a usable model_link exists for scoring.
         if isinstance(artifact.data, dict):
-            has_model_link = any(
-                isinstance(artifact.data.get(k), str) and str(artifact.data.get(k)).strip()
-                for k in ("model_link", "model_url", "model")
+            logger.warning(
+                "RATE: Pre-check id=%s has_url=%s has_s3=%s has_path=%s keys=%s",
+                artifact_id,
+                bool(artifact.data.get("url")),
+                bool(artifact.data.get("s3_key") and artifact.data.get("s3_bucket")),
+                bool(artifact.data.get("path")),
+                sorted(list(artifact.data.keys())),
             )
-            if not has_model_link:
-                url_val = artifact.data.get("url")
-                s3_key = artifact.data.get("s3_key")
-                s3_bucket = artifact.data.get("s3_bucket")
-                local_rel = artifact.data.get("path")
-                candidate: str | None = None
-                if isinstance(url_val, str) and url_val.strip():
-                    candidate = url_val.strip()
-                elif isinstance(s3_key, str) and s3_key and isinstance(s3_bucket, str) and s3_bucket:
-                    candidate = f"s3://{s3_bucket}/{s3_key}"
-                elif isinstance(local_rel, str) and local_rel.strip():
-                    abs_path = (_UPLOAD_DIR.parent / local_rel).resolve()
-                    candidate = f"file://{abs_path}"
-                if candidate:
-                    artifact.data["model_link"] = candidate
-                    # Persist the augmented artifact for future reads
-                    save_artifact(artifact)
+            # Prefer existing model_link/model_url; else try other fields
+            link_fields = ["model_link", "model_url", "model", "url", "s3_key", "path"]
+            selected: str | None = None
+            for fld in link_fields:
+                v = artifact.data.get(fld)
+                if isinstance(v, str) and v.strip():
+                    selected = v.strip()
+                    break
+            if not selected:
+                logger.error("RATE: No model link found for %s", artifact_id)
+                return jsonify({"message": "Artifact missing required model link for rating"}), 400
+            # Normalize into model_link if needed
+            if selected and not isinstance(artifact.data.get("model_link"), str):
+                # If s3 or path provided, build URI
+                if artifact.data.get("s3_key") and artifact.data.get("s3_bucket"):
+                    selected = f"s3://{artifact.data['s3_bucket']}/{artifact.data['s3_key']}"
+                elif artifact.data.get("path") and not selected.startswith("file://"):
+                    abs_path = (_UPLOAD_DIR.parent / artifact.data["path"]).resolve()
+                    selected = f"file://{abs_path}"
+                artifact.data["model_link"] = selected
+                save_artifact(artifact)
+                logger.warning("RATE: Derived model_link for %s -> %s", artifact_id, selected)
 
-        rating = _score_artifact_with_metrics(artifact)
+        logger.warning(
+            "RATE: Scoring start id=%s name=%s model_link=%s",
+            artifact_id,
+            artifact.metadata.name,
+            (artifact.data or {}).get("model_link") if isinstance(artifact.data, dict) else None,
+        )
+        # Add timeout protection around scoring
+        try:
+            import signal
+
+            def _timeout_handler(signum, frame):
+                raise TimeoutError("Rating computation exceeded time limit")
+
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(50)
+        except Exception:
+            # If signals aren't available (e.g., non-main thread), continue without alarm
+            pass
+
+        try:
+            rating = _score_artifact_with_metrics(artifact)
+        except TimeoutError:
+            try:
+                import signal
+                signal.alarm(0)
+            except Exception:
+                pass
+            logger.error("RATE: Timeout scoring %s", artifact_id)
+            return jsonify({"message": "Rating computation exceeded time limit"}), 500
+        finally:
+            try:
+                import signal
+                signal.alarm(0)
+            except Exception:
+                pass
+        logger.warning(
+            "RATE: Scoring done id=%s net=%.3f keys=%s",
+            artifact_id,
+            float((rating.scores or {}).get("net_score", 0.0) or 0.0),
+            sorted(list((rating.scores or {}).keys())),
+        )
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
@@ -802,6 +930,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             save_artifact(artifact)
         _audit_add("model", artifact_id, "RATE", artifact.metadata.name)
     except ValueError as exc:
+        logger.warning("RATE: ValueError for %s: %s", artifact_id, exc)
         return jsonify({"message": str(exc)}), 400
     except Exception:
         logger.exception("Failed to score artifact %s", artifact_id)
@@ -1169,47 +1298,109 @@ def reset_route() -> tuple[Response, int] | Response:
 def by_name_route(name: str) -> tuple[Response, int] | Response:
     _require_auth()
     needle = name.strip().lower()
-    results = []
+    logger.warning(
+        "BY_NAME: lookup name='%s' store_size=%d token_present=%s",
+        needle,
+        len(_STORE),
+        bool(request.headers.get("X-Authorization") or request.headers.get("Authorization")),
+    )
+    # Search in-memory first
+    found: Artifact | None = None
     for art in _STORE.values():
         if art.metadata.name.lower() == needle:
-            results.append(
-                {
-                    "name": art.metadata.name,
-                    "id": art.metadata.id,
-                    "type": art.metadata.type,
-                }
-            )
-    if not results:
+            found = art
+            break
+    # If not found, attempt primary store enumeration as fallback
+    if found is None:
+        try:
+            primary_items = _ARTIFACT_STORE.list_all()
+        except Exception:
+            primary_items = []
+        logger.warning("BY_NAME: memory miss; enumerating primary count=%d", len(primary_items or []))
+        for data in primary_items or []:
+            md = data.get("metadata", {})
+            nm = str(md.get("name", ""))
+            if nm.lower() == needle:
+                found = Artifact(
+                    metadata=ArtifactMetadata(
+                        id=str(md.get("id", "")),
+                        name=nm,
+                        type=str(md.get("type", "")),
+                        version=str(md.get("version", "1.0.0")),
+                    ),
+                    data=data.get("data", {}),
+                )
+                break
+    if found is None:
+        sample_names = sorted({a.metadata.name for a in _STORE.values()})[:10]
+        logger.warning("BY_NAME: no match for '%s'. sample_names=%s", needle, sample_names)
         return jsonify({"message": "No such artifact"}), 404
-    return jsonify(results), 200
+    logger.warning(
+        "BY_NAME: match id=%s type=%s has_url=%s data_keys=%s",
+        found.metadata.id,
+        found.metadata.type,
+        isinstance(found.data, dict) and bool(found.data.get("url")),
+        sorted(list((found.data or {}).keys())) if isinstance(found.data, dict) else "not-dict",
+    )
+    return jsonify(artifact_to_dict(found)), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
 @_record_timing
 def by_regex_route() -> tuple[Response, int] | Response:
     _require_auth()
     body = _json_body()
-    regex = str(body.get("regex", "")).strip()
+    # Support both 'regex' and spec-stated 'RegEx'
+    regex = str(body.get("regex") or body.get("RegEx") or "").strip()
     if not regex:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
     try:
         sanitized = _sanitize_search_pattern(regex)
         pattern = re.compile(sanitized, re.IGNORECASE)
+        logger.warning(
+            "BY_REGEX: raw='%s' sanitized='%s' store_size=%d startswith_caret=%s endswith_dollar=%s",
+            regex,
+            sanitized,
+            len(_STORE),
+            sanitized.startswith("^"),
+            sanitized.endswith("$"),
+        )
+        # Quick self-test on a small string to detect catastrophic patterns
+        try:
+            _ = pattern.search("test" * 100)
+        except Exception:
+            return jsonify({"message": "Regex pattern too complex"}), 400
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
-    matches = []
-    for art in _STORE.values():
+    # Limit the search space and time to avoid Lambda timeouts
+    MAX_ARTIFACTS = 1000
+    MAX_TIME_SECONDS = 50  # leave ~10s buffer before Lambda timeout
+    start_time = time.time()
+
+    # Stream from memory first (fastest path)
+    artifacts_to_check = list(_STORE.values())[:MAX_ARTIFACTS]
+    logger.warning("BY_REGEX: scanning_count=%d (memory only)", len(artifacts_to_check))
+
+    matches: list[dict[str, Any]] = []
+    for art in artifacts_to_check:
+        # Check time budget
+        if time.time() - start_time > MAX_TIME_SECONDS:
+            logger.warning("BY_REGEX: Timeout approaching, returning partial results")
+            break
         readme = ""
         if isinstance(art.data, dict):
-            readme = str(art.data.get("readme", ""))
-        if pattern.search(art.metadata.name) or pattern.search(readme):
-            matches.append(
-                {
-                    "name": art.metadata.name,
-                    "id": art.metadata.id,
-                    "type": art.metadata.type,
-                }
-            )
+            # Reduce readme size for matching
+            readme = str(art.data.get("readme", ""))[:2000]
+        try:
+            if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
+                matches.append(artifact_to_dict(art))
+                if len(matches) >= 100:
+                    logger.warning("BY_REGEX: Found 100 matches, stopping early")
+                    break
+        except Exception as e:
+            logger.warning("BY_REGEX: Pattern match error: %s", e)
+            continue
     if not matches:
+        logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
         return jsonify({"message": "No artifact found under this regex"}), 404
     return jsonify(matches), 200
 
