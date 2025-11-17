@@ -1367,6 +1367,7 @@ def tracks_route() -> tuple[Response, int] | Response:
         {
             "plannedTracks": [
                 "Performance track",
+                "Access control track",
             ]
         }
     ), 200
