@@ -358,8 +358,13 @@ def raise_error(status: HTTPStatus, message: str) -> None:
 def _sanitize_search_pattern(raw_pattern: str) -> str:
     if len(raw_pattern) > 256:
         raw_pattern = raw_pattern[:256]
-    # Allow common regex/meta characters and hyphen '-' (used in many names)
-    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
+    # Defensive regex sanitization to avoid catastrophic backtracking:
+    # - allow word chars, whitespace, dot, star, question, pipe, caret, dollar, hyphen
+    # - strip '+', brackets and parentheses which commonly enable nested quantifiers
+    #   and complex grouping leading to timeouts on long texts.
+    allowed = re.sub(r"[^\w\s\.\*\?\|\^\$\-]", "", raw_pattern)
+    # Collapse runs of '*' to at most two to keep patterns reasonable
+    allowed = re.sub(r"\*{3,}", "**", allowed)
     return allowed or ".*"
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
@@ -1231,7 +1236,19 @@ def by_regex_route() -> tuple[Response, int] | Response:
         readme = ""
         if isinstance(art.data, dict):
             readme = str(art.data.get("readme", ""))
-        if pattern.search(art.metadata.name) or pattern.search(readme):
+            # Cap readme length to avoid pathological regex runtimes
+            if len(readme) > 4096:
+                readme = readme[:4096]
+        name = art.metadata.name
+        try:
+            name_match = bool(pattern.search(name))
+        except re.error:
+            name_match = False
+        try:
+            readme_match = bool(pattern.search(readme))
+        except re.error:
+            readme_match = False
+        if name_match or readme_match:
             matches.append(
                 {
                     "name": art.metadata.name,
