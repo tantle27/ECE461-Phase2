@@ -3,24 +3,47 @@ Comprehensive tests for src/metrics.py
 This file tests the main metrics evaluation functionality.
 """
 
-import sys
 import os
+import sys
 from unittest.mock import Mock, patch
 
-# Import from the metrics.py file (not the metrics/ package)
+# Add src to path to import the metrics.py file directly
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.metrics import (
-    InputSpec,
-    MetricSpec,
-    TREE,
-    COMMITS,
-    README,
-    _m_size,
-    _m_busfactor,
-    _m_rampup,
-    METRICS,
-    evaluate_all
-)
+
+# Import everything from src.metrics (the .py file, not the package)
+try:
+    from src.metrics import (
+        InputSpec,
+        MetricSpec,
+        TREE,
+        COMMITS,
+        README,
+        _m_size,
+        _m_busfactor,
+        _m_rampup,
+        METRICS,
+        evaluate_all
+    )
+except ImportError:
+    # Fallback import method
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "metrics_module",
+        os.path.join(os.path.dirname(__file__), "..", "src", "metrics.py")
+    )
+    metrics_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(metrics_module)
+    
+    InputSpec = metrics_module.InputSpec
+    MetricSpec = metrics_module.MetricSpec
+    TREE = metrics_module.TREE
+    COMMITS = metrics_module.COMMITS
+    README = metrics_module.README
+    _m_size = metrics_module._m_size
+    _m_busfactor = metrics_module._m_busfactor
+    _m_rampup = metrics_module._m_rampup
+    METRICS = metrics_module.METRICS
+    evaluate_all = metrics_module.evaluate_all
 
 
 class TestInputSpec:

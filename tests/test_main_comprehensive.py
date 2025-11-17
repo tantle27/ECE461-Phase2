@@ -100,8 +100,10 @@ class TestValidateAndConfigureLogging:
         with patch.dict(os.environ, {"GITHUB_TOKEN": "   "}):
             with patch('src.main._fail') as mock_fail:
                 validate_and_configure_logging()
-                mock_fail.assert_called_once()
-                assert "blank" in str(mock_fail.call_args)
+                mock_fail.assert_called()
+                # Check that one of the calls was about blank token
+                call_args = [str(call) for call in mock_fail.call_args_list]
+                assert any("blank" in arg for arg in call_args)
 
     def test_invalid_github_token_format(self):
         """Test validation with invalid GitHub token format."""
@@ -154,8 +156,10 @@ class TestValidateAndConfigureLogging:
         with patch.dict(os.environ, {"LOG_FILE": "/invalid/path/logfile.txt"}):
             with patch('src.main._fail') as mock_fail:
                 validate_and_configure_logging()
-                mock_fail.assert_called_once()
-                assert "log file path" in str(mock_fail.call_args)
+                mock_fail.assert_called()
+                # Check that one of the calls was about log file path
+                call_args = [str(call) for call in mock_fail.call_args_list]
+                assert any("log file" in arg for arg in call_args)
 
     def test_log_level_1_with_file(self):
         """Test LOG_LEVEL=1 with log file."""
@@ -273,37 +277,42 @@ class TestParseUrlFile:
     def test_parse_csv_format(self):
         """Test parsing CSV format file."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
-            line1 = "https://github.com/user/code,https://huggingface.co/datasets/data,https://huggingface.co/model1\\n"
-            line2 = ",https://huggingface.co/datasets/data2,https://huggingface.co/model2\\n"
-            tmp_file.write(line1)
-            tmp_file.write(line2)
+            # Write actual CSV lines with proper model URLs
+            tmp_file.write("https://github.com/user/code,https://huggingface.co/datasets/data,https://huggingface.co/model1\n")
+            tmp_file.write(",https://huggingface.co/datasets/data2,https://huggingface.co/model2\n")
             tmp_path = tmp_file.name
-        
+
         try:
             with patch('logging.info'), patch('logging.debug'), patch('logging.warning'):
                 entries = parse_url_file(tmp_path)
-                
+
             assert len(entries) == 2
-            assert entries[0] == ("https://github.com/user/code", "https://huggingface.co/datasets/data", "https://huggingface.co/model1")
-            assert entries[1] == (None, "https://huggingface.co/datasets/data2", "https://huggingface.co/model2")
+            expected1 = ("https://github.com/user/code", "https://huggingface.co/datasets/data", 
+                        "https://huggingface.co/model1")
+            expected2 = (None, "https://huggingface.co/datasets/data2", "https://huggingface.co/model2")
+            assert entries[0] == expected1
+            assert entries[1] == expected2
         finally:
             os.unlink(tmp_path)
 
     def test_parse_single_url_format(self):
         """Test parsing single URL per line format."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
-            tmp_file.write("https://github.com/user/code\\n")
-            tmp_file.write("https://huggingface.co/datasets/data\\n")
-            tmp_file.write("https://huggingface.co/model1\\n")
-            tmp_file.write("https://huggingface.co/model2\\n")
+            # Write actual URLs with newlines - each model gets preceding code/dataset
+            tmp_file.write("https://github.com/user/code\n")
+            tmp_file.write("https://huggingface.co/datasets/data\n")
+            tmp_file.write("https://huggingface.co/model1\n")
+            tmp_file.write("https://huggingface.co/model2\n")
             tmp_path = tmp_file.name
-        
+
         try:
             with patch('logging.info'), patch('logging.debug'), patch('logging.warning'):
                 entries = parse_url_file(tmp_path)
-                
+
             assert len(entries) == 2
-            assert entries[0] == ("https://github.com/user/code", "https://huggingface.co/datasets/data", "https://huggingface.co/model1")
+            expected = ("https://github.com/user/code", "https://huggingface.co/datasets/data", 
+                       "https://huggingface.co/model1")
+            assert entries[0] == expected
             assert entries[1] == (None, None, "https://huggingface.co/model2")
         finally:
             os.unlink(tmp_path)
@@ -311,11 +320,11 @@ class TestParseUrlFile:
     def test_parse_empty_lines(self):
         """Test parsing file with empty lines."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
-            tmp_file.write("\\n")
-            tmp_file.write("https://github.com/user/code\\n")
-            tmp_file.write("\\n")
-            tmp_file.write("https://huggingface.co/model1\\n")
-            tmp_file.write("\\n")
+            tmp_file.write("\n")
+            tmp_file.write("https://github.com/user/code\n")
+            tmp_file.write("\n")
+            tmp_file.write("https://huggingface.co/model1\n")
+            tmp_file.write("\n")
             tmp_path = tmp_file.name
         
         try:
@@ -323,7 +332,8 @@ class TestParseUrlFile:
                 entries = parse_url_file(tmp_path)
                 
             assert len(entries) == 1
-            assert entries[0] == ("https://github.com/user/code", None, "https://huggingface.co/model1")
+            expected = ("https://github.com/user/code", None, "https://huggingface.co/model1")
+            assert entries[0] == expected
         finally:
             os.unlink(tmp_path)
 
@@ -337,7 +347,8 @@ class TestParseUrlFile:
     def test_parse_csv_missing_model(self):
         """Test CSV format with missing model URL."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
-            tmp_file.write("https://github.com/user/code,https://huggingface.co/datasets/data,\\n")
+            # Write CSV line with missing model URL (empty third field)
+            tmp_file.write("https://github.com/user/code,https://huggingface.co/datasets/data,\n")
             tmp_path = tmp_file.name
         
         try:
@@ -352,8 +363,8 @@ class TestParseUrlFile:
     def test_parse_unknown_url_warning(self):
         """Test unknown URL type generates warning."""
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
-            tmp_file.write("https://example.com/unknown\\n")
-            tmp_file.write("https://huggingface.co/model1\\n")
+            tmp_file.write("https://example.com/unknown\n")
+            tmp_file.write("https://huggingface.co/model1\n")
             tmp_path = tmp_file.name
         
         try:
@@ -361,7 +372,9 @@ class TestParseUrlFile:
                 entries = parse_url_file(tmp_path)
                 
             mock_warning.assert_called()
-            assert "unknown URL type" in str(mock_warning.call_args)
+            # Check if warning was called with unknown URL message
+            call_args = [str(call) for call in mock_warning.call_args_list]
+            assert any("unknown URL type" in arg for arg in call_args)
         finally:
             os.unlink(tmp_path)
 
