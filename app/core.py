@@ -567,24 +567,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     return response, 200
 
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
-@blueprint.route("/artifacts", methods=["GET"])
-def get_artifact_by_name():
-    name = request.args.get("name")
-    if not name:
-        return jsonify({"message": "name query param required"}), 400
 
-    # case-insensitive exact match
-    match = None
-    for a in _STORE.values():
-        if a.metadata.name.lower() == name.lower():
-            # choose newest version if duplicates
-            if match is None or a.metadata.version > match.metadata.version:
-                match = a
-
-    if not match:
-        return jsonify({"message": "Artifact does not exist."}), 404
-
-    return jsonify({"artifact": artifact_to_dict(match)}), 200
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
 def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
@@ -592,12 +575,12 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
     art = fetch_artifact(artifact_type, artifact_id)
     if not art:
         return jsonify({"message": "Artifact does not exist."}), 404
-    # Require data.url only for model artifacts; allow other types (e.g., code/dataset) to be returned
-    # even if they are represented by local path or S3 metadata.
-    if art.metadata.type == "model" and "url" not in (art.data or {}):
+    # Spec: returned artifact must include data.url
+    if "url" not in (art.data or {}):
         return jsonify({"message": "Artifact missing url"}), 400
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
-    return jsonify({"artifact": artifact_to_dict(art)}), 200
+    return jsonify(artifact_to_dict(art)), 200
+
 # Alias: support singular path for fetching an artifact as well
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
@@ -1146,46 +1129,16 @@ def reset_route() -> tuple[Response, int] | Response:
 def by_name_route(name: str) -> tuple[Response, int] | Response:
     _require_auth()
     needle = name.strip().lower()
-    results: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    # Search in-memory store
+    results = []
     for art in _STORE.values():
         if art.metadata.name.lower() == needle:
-            key = (art.metadata.type, art.metadata.id)
-            if key not in seen:
-                seen.add(key)
-                results.append(
-                    {
-                        "name": art.metadata.name,
-                        "id": art.metadata.id,
-                        "type": art.metadata.type,
-                    }
-                )
-
-    # Also search primary store (DynamoDB) if enabled/available
-    try:
-        primary_items = _ARTIFACT_STORE.list_all()
-        for data in primary_items or []:
-            md = (data.get("metadata") or {})
-            nm = str(md.get("name", ""))
-            if nm.lower() == needle:
-                typ = str(md.get("type", ""))
-                aid = str(md.get("id", ""))
-                key = (typ, aid)
-                if typ and aid and key not in seen:
-                    seen.add(key)
-                    results.append(
-                        {
-                            "name": nm,
-                            "id": aid,
-                            "type": typ,
-                        }
-                    )
-    except Exception:
-        # If primary store fails, ignore and rely on memory results
-        pass
-
+            results.append(
+                {
+                    "name": art.metadata.name,
+                    "id": art.metadata.id,
+                    "type": art.metadata.type,
+                }
+            )
     if not results:
         return jsonify({"message": "No such artifact"}), 404
     return jsonify(results), 200
