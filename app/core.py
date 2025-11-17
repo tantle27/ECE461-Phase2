@@ -356,15 +356,13 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _sanitize_search_pattern(raw_pattern: str) -> str:
-    if len(raw_pattern) > 256:
-        raw_pattern = raw_pattern[:256]
-    # Defensive regex sanitization to avoid catastrophic backtracking:
-    # - allow word chars, whitespace, dot, star, question, pipe, caret, dollar, hyphen
-    # - strip '+', brackets and parentheses which commonly enable nested quantifiers
-    #   and complex grouping leading to timeouts on long texts.
-    allowed = re.sub(r"[^\w\s\.\*\?\|\^\$\-]", "", raw_pattern)
-    # Collapse runs of '*' to at most two to keep patterns reasonable
-    allowed = re.sub(r"\*{3,}", "**", allowed)
+    # Spec allows up to 1000 chars; enforce that limit (was 256)
+    if len(raw_pattern) > 1000:
+        raw_pattern = raw_pattern[:1000]
+    # Allow common regex/meta characters including grouping () and '+' plus hyphen.
+    # Exclude braces {} to avoid nested quantified catastrophes; cap '*' runs.
+    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
+    allowed = re.sub(r"\*{4,}", "***", allowed)
     return allowed or ".*"
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
@@ -1200,29 +1198,46 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
     _require_auth()
     needle = name.strip().lower()
     logger.warning("BY_NAME: lookup name='%s' store_size=%d", needle, len(_STORE))
-    results = []
+    # Search in-memory first
+    found: Artifact | None = None
     for art in _STORE.values():
         if art.metadata.name.lower() == needle:
-            results.append(
-                {
-                    "name": art.metadata.name,
-                    "id": art.metadata.id,
-                    "type": art.metadata.type,
-                }
-            )
-    if not results:
+            found = art
+            break
+    # If not found, attempt primary store enumeration as fallback
+    if found is None:
+        try:
+            primary_items = _ARTIFACT_STORE.list_all()
+        except Exception:
+            primary_items = []
+        for data in primary_items or []:
+            md = data.get("metadata", {})
+            nm = str(md.get("name", ""))
+            if nm.lower() == needle:
+                found = Artifact(
+                    metadata=ArtifactMetadata(
+                        id=str(md.get("id", "")),
+                        name=nm,
+                        type=str(md.get("type", "")),
+                        version=str(md.get("version", "1.0.0")),
+                    ),
+                    data=data.get("data", {}),
+                )
+                break
+    if found is None:
         sample_names = sorted({a.metadata.name for a in _STORE.values()})[:10]
         logger.warning("BY_NAME: no match for '%s'. sample_names=%s", needle, sample_names)
         return jsonify({"message": "No such artifact"}), 404
-    logger.warning("BY_NAME: matches=%d", len(results))
-    return jsonify(results), 200
+    logger.warning("BY_NAME: match id=%s type=%s", found.metadata.id, found.metadata.type)
+    return jsonify(artifact_to_dict(found)), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
 @_record_timing
 def by_regex_route() -> tuple[Response, int] | Response:
     _require_auth()
     body = _json_body()
-    regex = str(body.get("regex", "")).strip()
+    # Support both 'regex' and spec-stated 'RegEx'
+    regex = str(body.get("regex") or body.get("RegEx") or "").strip()
     if not regex:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
     try:
@@ -1231,31 +1246,42 @@ def by_regex_route() -> tuple[Response, int] | Response:
         logger.warning("BY_REGEX: raw='%s' sanitized='%s' store_size=%d", regex, sanitized, len(_STORE))
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
-    matches = []
-    for art in _STORE.values():
+    # Build unified iterable of artifacts from memory + primary (avoid duplicates by key)
+    combined: dict[str, Artifact] = {}
+    for a in _STORE.values():
+        combined[_store_key(a.metadata.type, a.metadata.id)] = a
+    try:
+        primary_items = _ARTIFACT_STORE.list_all() or []
+    except Exception:
+        primary_items = []
+    for data in primary_items:
+        md = data.get("metadata", {})
+        aid = str(md.get("id", ""))
+        atype = str(md.get("type", ""))
+        if aid and atype:
+            k = _store_key(atype, aid)
+            if k not in combined:
+                combined[k] = Artifact(
+                    metadata=ArtifactMetadata(
+                        id=aid,
+                        name=str(md.get("name", "")),
+                        type=atype,
+                        version=str(md.get("version", "1.0.0")),
+                    ),
+                    data=data.get("data", {}),
+                )
+    matches: list[dict[str, Any]] = []
+    for art in combined.values():
         readme = ""
         if isinstance(art.data, dict):
             readme = str(art.data.get("readme", ""))
-            # Cap readme length to avoid pathological regex runtimes
             if len(readme) > 4096:
                 readme = readme[:4096]
-        name = art.metadata.name
         try:
-            name_match = bool(pattern.search(name))
+            if pattern.search(art.metadata.name) or pattern.search(readme):
+                matches.append(artifact_to_dict(art))
         except re.error:
-            name_match = False
-        try:
-            readme_match = bool(pattern.search(readme))
-        except re.error:
-            readme_match = False
-        if name_match or readme_match:
-            matches.append(
-                {
-                    "name": art.metadata.name,
-                    "id": art.metadata.id,
-                    "type": art.metadata.type,
-                }
-            )
+            continue
     if not matches:
         logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
         return jsonify({"message": "No artifact found under this regex"}), 404
@@ -1283,7 +1309,6 @@ def tracks_route() -> tuple[Response, int] | Response:
         {
             "plannedTracks": [
                 "Performance track",
-                "Access control track",
             ]
         }
     ), 200
