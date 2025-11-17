@@ -210,12 +210,7 @@ jobs:
         
         # Coverage status
         if [ -f "coverage-reports/coverage.json" ]; then
-          coverage=$(python -c "
-            import json
-            with open('coverage-reports/coverage.json', 'r') as f:
-                data = json.load(f)
-            print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
-          ")
+          coverage=$(python -c "import json; data = json.load(open('coverage-reports/coverage.json')); print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')")
           
           if (( $(echo "$coverage >= $MIN_COVERAGE" | bc -l) )); then
             echo "[PASS] **Coverage Gate**: PASSED ($coverage% >= $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
@@ -223,7 +218,7 @@ jobs:
             echo "[FAIL] **Coverage Gate**: FAILED ($coverage% < $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
           fi
         else
-          echo "⚠️ **Coverage Gate**: No coverage data available" >> $GITHUB_STEP_SUMMARY
+          echo "[WARN] **Coverage Gate**: No coverage data available" >> $GITHUB_STEP_SUMMARY
         fi
         
         # Security status
@@ -231,9 +226,9 @@ jobs:
         if [ "$security_job_status" = "success" ] && [ -d "security-reports" ]; then
           echo "[PASS] **Security Testing**: COMPLETED" >> $GITHUB_STEP_SUMMARY
         elif [ "$security_job_status" = "skipped" ]; then
-          echo "⏭️ **Security Testing**: SKIPPED (Coverage gate failed)" >> $GITHUB_STEP_SUMMARY
+          echo "[SKIP] **Security Testing**: SKIPPED (Coverage gate failed)" >> $GITHUB_STEP_SUMMARY
         else
-          echo "⚠️ **Security Testing**: Not available" >> $GITHUB_STEP_SUMMARY
+          echo "[WARN] **Security Testing**: Not available" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
