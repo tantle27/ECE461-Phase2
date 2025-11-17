@@ -296,7 +296,7 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
         from flask import abort
         abort(response)
     is_admin = bool(_TOKENS[token])
-    logger.warning(f"AUTH_CHECK: Token valid, is_admin={is_admin}")
+    logger.info(f"AUTH_CHECK: Token valid, is_admin={is_admin}")
     
     if admin and not is_admin:
         # spec: 401 when you do not have permission to reset
@@ -306,7 +306,7 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
         from flask import abort
         abort(response)
     
-    logger.warning(f"AUTH_CHECK: SUCCESS - Token '{token}' authenticated, is_admin={is_admin}")
+    logger.info(f"AUTH_CHECK: SUCCESS - Token '{token}' authenticated, is_admin={is_admin}")
     return token, is_admin
 
 def _json_body() -> dict[str, Any]:
@@ -345,7 +345,8 @@ def raise_error(status: HTTPStatus, message: str) -> None:
 def _sanitize_search_pattern(raw_pattern: str) -> str:
     if len(raw_pattern) > 256:
         raw_pattern = raw_pattern[:256]
-    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$]", "", raw_pattern)
+    # Allow common regex/meta characters and hyphen '-' (used in many names)
+    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
     return allowed or ".*"
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
@@ -751,6 +752,30 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
     try:
+        # Ensure a usable model_link exists for scoring.
+        if isinstance(artifact.data, dict):
+            has_model_link = any(
+                isinstance(artifact.data.get(k), str) and str(artifact.data.get(k)).strip()
+                for k in ("model_link", "model_url", "model")
+            )
+            if not has_model_link:
+                url_val = artifact.data.get("url")
+                s3_key = artifact.data.get("s3_key")
+                s3_bucket = artifact.data.get("s3_bucket")
+                local_rel = artifact.data.get("path")
+                candidate: str | None = None
+                if isinstance(url_val, str) and url_val.strip():
+                    candidate = url_val.strip()
+                elif isinstance(s3_key, str) and s3_key and isinstance(s3_bucket, str) and s3_bucket:
+                    candidate = f"s3://{s3_bucket}/{s3_key}"
+                elif isinstance(local_rel, str) and local_rel.strip():
+                    abs_path = (_UPLOAD_DIR.parent / local_rel).resolve()
+                    candidate = f"file://{abs_path}"
+                if candidate:
+                    artifact.data["model_link"] = candidate
+                    # Persist the augmented artifact for future reads
+                    save_artifact(artifact)
+
         rating = _score_artifact_with_metrics(artifact)
         _RATINGS_CACHE[artifact_id] = rating
 
