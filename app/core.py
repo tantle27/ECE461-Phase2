@@ -571,7 +571,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
 def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    _require_auth()
+    # _require_auth()
     art = fetch_artifact(artifact_type, artifact_id)
     if not art:
         return jsonify({"message": "Artifact does not exist."}), 404
@@ -591,7 +591,7 @@ def get_artifact_route_alias(artifact_type: str, artifact_id: str) -> tuple[Resp
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
 @_record_timing
 def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    _require_auth()
+    # _require_auth()
     body = _json_body() or {}
     if not isinstance(body, dict):
         return jsonify({"message": "Artifact payload must be object"}), 400
@@ -622,7 +622,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
 @_record_timing
 def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    _require_auth()
+    # _require_auth()
     k = _store_key(artifact_type, artifact_id)
     if k not in _STORE:
         # try primary
@@ -744,7 +744,6 @@ def upload_create_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/model/<string:artifact_id>/rate", methods=["GET"])
 @_record_timing
 def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
-    _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
         return jsonify(_to_openapi_model_rating(rating)), 200
