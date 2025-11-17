@@ -78,7 +78,7 @@ jobs:
           --ci
           
     - name: Upload coverage reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       if: always()
       with:
         name: coverage-reports
@@ -171,7 +171,7 @@ jobs:
         fi
         
     - name: Upload security reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       if: always()
       with:
         name: security-reports
