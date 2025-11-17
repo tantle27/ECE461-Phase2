@@ -1376,7 +1376,13 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme = str(art.data.get("readme", ""))[:2000]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(artifact_to_dict(art))
+                matches.append(
+                    {
+                        "name": art.metadata.name,
+                        "id": art.metadata.id,
+                        "type": art.metadata.type,
+                    }
+                )
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
                     break
