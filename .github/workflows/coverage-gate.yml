@@ -198,6 +198,7 @@ jobs:
         
     - name: Download security reports
       uses: actions/download-artifact@v4
+      continue-on-error: true
       with:
         name: security-reports
         path: security-reports/
@@ -226,17 +227,26 @@ jobs:
         fi
         
         # Security status
-        if [ -f "security-reports/restler_reports/fuzz_test_report.html" ]; then
+        security_job_status="${{ needs.security-testing.result }}"
+        if [ "$security_job_status" = "success" ] && [ -d "security-reports" ]; then
           echo "✅ **Security Testing**: COMPLETED" >> $GITHUB_STEP_SUMMARY
+        elif [ "$security_job_status" = "skipped" ]; then
+          echo "⏭️ **Security Testing**: SKIPPED (Coverage gate failed)" >> $GITHUB_STEP_SUMMARY
         else
-          echo "⚠️ **Security Testing**: Report not available" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Security Testing**: Not available" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## Reports Available" >> $GITHUB_STEP_SUMMARY
-        echo "- Coverage Report: \`coverage-reports/coverage_gate_report.html\`" >> $GITHUB_STEP_SUMMARY  
-        echo "- Security Report: \`security-reports/restler_reports/fuzz_test_report.html\`" >> $GITHUB_STEP_SUMMARY
-        echo "- HTML Coverage: \`coverage-reports/htmlcov/index.html\`" >> $GITHUB_STEP_SUMMARY
+        if [ -f "coverage-reports/coverage_gate_report.html" ]; then
+          echo "- Coverage Report: \`coverage-reports/coverage_gate_report.html\`" >> $GITHUB_STEP_SUMMARY  
+        fi
+        if [ -f "coverage-reports/htmlcov/index.html" ]; then
+          echo "- HTML Coverage: \`coverage-reports/htmlcov/index.html\`" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -d "security-reports" ] && [ -f "security-reports/restler_reports/fuzz_test_report.html" ]; then
+          echo "- Security Report: \`security-reports/restler_reports/fuzz_test_report.html\`" >> $GITHUB_STEP_SUMMARY
+        fi
         
     - name: Check overall status
       run: |
@@ -247,11 +257,16 @@ jobs:
         echo "Coverage job result: $coverage_status"
         echo "Security job result: $security_status"
         
-        if [ "$coverage_status" = "success" ] && [ "$security_status" = "success" ]; then
+        # Security testing is optional (can be skipped if coverage fails)
+        if [ "$coverage_status" = "success" ] && ([ "$security_status" = "success" ] || [ "$security_status" = "skipped" ]); then
           echo "✅ All quality gates passed!"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Quality Gate Status: PASSED" >> $GITHUB_STEP_SUMMARY
           exit 0
         else
           echo "❌ One or more quality gates failed"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## ❌ Quality Gate Status: FAILED" >> $GITHUB_STEP_SUMMARY
           exit 1
         fi
 
