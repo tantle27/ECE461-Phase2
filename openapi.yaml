@@ -1,0 +1,715 @@
+openapi: 3.0.3
+info:
+  title: Package Registry API
+  description: RESTful API for package evaluation and registry management
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Development server
+  - url: https://main.d21kdzrr0sslnx.amplifyapp.com
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Authorization
+      
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        code:
+          type: integer
+          
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+          
+    AuthRequest:
+      type: object
+      required:
+        - User
+        - Secret
+      properties:
+        User:
+          type: object
+          properties:
+            name:
+              type: string
+              minLength: 3
+              maxLength: 50
+            isAdmin:
+              type: boolean
+        Secret:
+          type: object
+          properties:
+            password:
+              type: string
+              minLength: 8
+              maxLength: 128
+              
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          type: object
+          properties:
+            name:
+              type: string
+            isAdmin:
+              type: boolean
+              
+    ArtifactMetadata:
+      type: object
+      required:
+        - Name
+        - Version
+        - ID
+      properties:
+        Name:
+          type: string
+          minLength: 1
+          maxLength: 214
+          pattern: '^[a-zA-Z0-9._-]+$'
+        Version:
+          type: string
+          pattern: '^(\d+\.)?(\d+\.)?(\*|\d+)$'
+        ID:
+          type: string
+          minLength: 1
+          maxLength: 100
+          
+    PackageData:
+      type: object
+      properties:
+        Content:
+          type: string
+          format: base64
+        URL:
+          type: string
+          format: uri
+        JSProgram:
+          type: string
+          
+    PackageRequest:
+      type: object
+      required:
+        - metadata
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ArtifactMetadata'
+        data:
+          $ref: '#/components/schemas/PackageData'
+          
+    PackageResponse:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/ArtifactMetadata'
+        data:
+          $ref: '#/components/schemas/PackageData'
+        rating:
+          type: object
+          properties:
+            RampUp:
+              type: number
+              minimum: 0
+              maximum: 1
+            Correctness:
+              type: number
+              minimum: 0
+              maximum: 1
+            BusFactor:
+              type: number
+              minimum: 0
+              maximum: 1
+            ResponsiveMaintainer:
+              type: number
+              minimum: 0
+              maximum: 1
+            LicenseScore:
+              type: number
+              minimum: 0
+              maximum: 1
+            GoodPinningPractice:
+              type: number
+              minimum: 0
+              maximum: 1
+            PullRequest:
+              type: number
+              minimum: 0
+              maximum: 1
+            NetScore:
+              type: number
+              minimum: 0
+              maximum: 1
+              
+    PackageQuery:
+      type: object
+      properties:
+        Name:
+          type: string
+          pattern: '^[a-zA-Z0-9._*-]+$'
+        Version:
+          type: string
+        
+    PackageHistoryEntry:
+      type: object
+      properties:
+        User:
+          type: object
+          properties:
+            name:
+              type: string
+            isAdmin:
+              type: boolean
+        Date:
+          type: string
+          format: date-time
+        PackageMetadata:
+          $ref: '#/components/schemas/ArtifactMetadata'
+        Action:
+          type: string
+          enum: [CREATE, UPDATE, DOWNLOAD, RATE]
+          
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Get API health status
+      description: Returns the current health status of the API
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: API is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /health/components:
+    get:
+      summary: Get detailed component health
+      description: Returns health status of individual API components
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Component health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  database:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  storage:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  external_apis:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                    
+  /authenticate:
+    put:
+      summary: Authenticate user
+      description: Authenticate a user and return a JWT token
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Invalid request format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifact/{artifact_type}:
+    post:
+      summary: Create a new artifact
+      description: Upload a new package to the registry
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [package, model]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageRequest'
+      responses:
+        '201':
+          description: Package created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Package already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifacts:
+    post:
+      summary: Query artifacts
+      description: Search for artifacts matching the given criteria
+      tags:
+        - Artifacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PackageQuery'
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackageResponse'
+          headers:
+            offset:
+              description: Current offset in results
+              schema:
+                type: integer
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifacts/{artifact_type}/{artifact_id}:
+    get:
+      summary: Get artifact by ID
+      description: Retrieve a specific artifact by its ID
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [package, model]
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        '200':
+          description: Artifact found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageResponse'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    put:
+      summary: Update artifact
+      description: Update an existing artifact
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [package, model]
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageRequest'
+      responses:
+        '200':
+          description: Artifact updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageResponse'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    delete:
+      summary: Delete artifact
+      description: Delete an artifact from the registry
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [package, model]
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        '200':
+          description: Artifact deleted successfully
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifact/{artifact_type}/{artifact_id}/cost:
+    get:
+      summary: Get artifact cost
+      description: Calculate the storage cost of an artifact
+      tags:
+        - Artifacts
+      parameters:
+        - name: artifact_type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [package, model]
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cost calculation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  storageCost:
+                    type: number
+                    format: float
+                  bandwidthCost:
+                    type: number
+                    format: float
+                  totalCost:
+                    type: number
+                    format: float
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifact/model/{artifact_id}/rate:
+    get:
+      summary: Get model rating
+      description: Get the quality rating for a model
+      tags:
+        - Models
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model rating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  RampUp:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  Correctness:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  BusFactor:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  ResponsiveMaintainer:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  LicenseScore:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  GoodPinningPractice:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  PullRequest:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+                  NetScore:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifact/model/{artifact_id}/download:
+    get:
+      summary: Download model
+      description: Download a model artifact
+      tags:
+        - Models
+      parameters:
+        - name: artifact_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /reset:
+    delete:
+      summary: Reset registry
+      description: Delete all artifacts from the registry (admin only)
+      tags:
+        - Administration
+      responses:
+        '200':
+          description: Registry reset successfully
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /tracks:
+    get:
+      summary: Get planned tracks
+      description: Get the list of planned artifact tracks
+      tags:
+        - Metadata
+      responses:
+        '200':
+          description: Available tracks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  
+  /artifact/byName/{name}:
+    get:
+      summary: Get artifact by name
+      description: Find artifact by exact name match
+      tags:
+        - Search
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 214
+      responses:
+        '200':
+          description: Artifact found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageResponse'
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /artifact/byRegEx:
+    post:
+      summary: Search by regular expression
+      description: Find artifacts matching a regular expression pattern
+      tags:
+        - Search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - RegEx
+              properties:
+                RegEx:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PackageResponse'
+        '400':
+          description: Invalid regular expression
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

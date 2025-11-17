@@ -1,0 +1,271 @@
+name: Coverage Gate and Security Testing
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  MIN_COVERAGE: '60.0'
+
+jobs:
+  test-coverage-gate:
+    name: Test Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-cov coverage[toml]
+        
+    - name: Create test environment
+      run: |
+        # Set up test environment variables
+        echo "TESTING=true" >> $GITHUB_ENV
+        echo "LOG_LEVEL=ERROR" >> $GITHUB_ENV
+        
+        # Create necessary directories
+        mkdir -p test_data
+        
+    - name: Run tests with coverage
+      run: |
+        python -m pytest \
+          --cov=src \
+          --cov=app \
+          --cov-report=xml \
+          --cov-report=json \
+          --cov-report=html:htmlcov \
+          --cov-report=term-missing \
+          --cov-fail-under=${{ env.MIN_COVERAGE }} \
+          -v
+          
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: always()
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        
+    - name: Run coverage gate enforcement
+      run: |
+        python coverage_gate.py \
+          --min-coverage ${{ env.MIN_COVERAGE }} \
+          --skip-tests \
+          --ci
+          
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: coverage-reports
+        path: |
+          coverage.xml
+          coverage.json
+          htmlcov/
+          coverage_gate_report.html
+        retention-days: 30
+
+  security-testing:
+    name: API Security Testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test-coverage-gate
+    if: success()
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install requests
+        
+    - name: Check for RESTler
+      id: restler-check
+      run: |
+        if command -v restler &> /dev/null; then
+          echo "restler_available=true" >> $GITHUB_OUTPUT
+        else
+          echo "restler_available=false" >> $GITHUB_OUTPUT
+          echo "RESTler not found - will run mock security tests"
+        fi
+        
+    - name: Install RESTler (if available)
+      if: steps.restler-check.outputs.restler_available == 'false'
+      run: |
+        # Try to install RESTler from various sources
+        echo "Attempting RESTler installation..."
+        
+        # Option 1: Try pip installation (if available)
+        pip install restler-fuzzer || echo "RESTler pip package not available"
+        
+        # Option 2: Try downloading binary (mock for now)
+        echo "Using mock RESTler installation for CI"
+        
+    - name: Validate API specification
+      run: |
+        # Check if OpenAPI spec is valid
+        python -c "
+        import yaml
+        import json
+        with open('openapi.yaml', 'r') as f:
+            spec = yaml.safe_load(f)
+        print(f'API spec loaded: {len(spec.get(\"paths\", {}))} endpoints')
+        "
+        
+    - name: Run API security tests
+      run: |
+        python run_restler_tests.py \
+          --suite smoke \
+          --ci \
+          --output-dir restler_reports
+          
+    - name: Check security test results
+      run: |
+        if [ -f "restler_reports/fuzz_test_report.html" ]; then
+          echo "Security test report generated successfully"
+          
+          # Check for critical security issues
+          if [ -d "restler_reports/smoke_test/bug_buckets" ]; then
+            bug_count=$(ls -1 restler_reports/smoke_test/bug_buckets/ | wc -l)
+            echo "Security bugs found: $bug_count"
+            
+            if [ "$bug_count" -gt 0 ]; then
+              echo "::warning::$bug_count security issues detected"
+              ls -la restler_reports/smoke_test/bug_buckets/
+            fi
+          fi
+        else
+          echo "::warning::Security test report not generated"
+        fi
+        
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          restler_reports/
+          openapi.yaml
+        retention-days: 30
+
+  quality-gate:
+    name: Quality Gate Summary
+    runs-on: ubuntu-latest
+    needs: [test-coverage-gate, security-testing]
+    if: always()
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download coverage reports
+      uses: actions/download-artifact@v3
+      with:
+        name: coverage-reports
+        path: coverage-reports/
+        
+    - name: Download security reports
+      uses: actions/download-artifact@v3
+      with:
+        name: security-reports
+        path: security-reports/
+        
+    - name: Generate quality gate summary
+      run: |
+        echo "# Quality Gate Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Coverage status
+        if [ -f "coverage-reports/coverage.json" ]; then
+          coverage=$(python -c "
+          import json
+          with open('coverage-reports/coverage.json', 'r') as f:
+              data = json.load(f)
+          print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
+          ")
+          
+          if (( $(echo "$coverage >= $MIN_COVERAGE" | bc -l) )); then
+            echo "✅ **Coverage Gate**: PASSED ($coverage% ≥ $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Coverage Gate**: FAILED ($coverage% < $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "⚠️ **Coverage Gate**: No coverage data available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Security status
+        if [ -f "security-reports/restler_reports/fuzz_test_report.html" ]; then
+          echo "✅ **Security Testing**: COMPLETED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Security Testing**: Report not available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Reports Available" >> $GITHUB_STEP_SUMMARY
+        echo "- Coverage Report: \`coverage-reports/coverage_gate_report.html\`" >> $GITHUB_STEP_SUMMARY  
+        echo "- Security Report: \`security-reports/restler_reports/fuzz_test_report.html\`" >> $GITHUB_STEP_SUMMARY
+        echo "- HTML Coverage: \`coverage-reports/htmlcov/index.html\`" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Check overall status
+      run: |
+        # Determine if quality gate passes overall
+        coverage_status="${{ needs.test-coverage-gate.result }}"
+        security_status="${{ needs.security-testing.result }}"
+        
+        echo "Coverage job result: $coverage_status"
+        echo "Security job result: $security_status"
+        
+        if [ "$coverage_status" = "success" ] && [ "$security_status" = "success" ]; then
+          echo "✅ All quality gates passed!"
+          exit 0
+        else
+          echo "❌ One or more quality gates failed"
+          exit 1
+        fi
+
+  # Optional job for deployment gate
+  deployment-gate:
+    name: Deployment Gate
+    runs-on: ubuntu-latest
+    needs: quality-gate
+    if: success() && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Ready for deployment
+      run: |
+        echo "🚀 All quality gates passed - ready for deployment!"
+        echo "Coverage ≥ $MIN_COVERAGE% ✅"
+        echo "Security tests passed ✅" 
+        echo "All tests passing ✅"

@@ -8,7 +8,7 @@ ignore = ["E203"]
 
 [tool.pytest.ini_options]
 addopts = "-q --cov=src --cov=app --cov-report=term-missing"
-asyncio_mode = "auto"
+asyncio_mode = "strict"
 markers = [
     "asyncio: mark test as async",
     "integration: mark test as integration test",
@@ -18,11 +18,16 @@ markers = [
     "backend: mark test as backend test",
     "frontend: mark test as frontend test",
     "aws: mark test as AWS integration test",
-    "security: mark test as security-related test"
+    "security: mark test as security-related test",
+    "ada: mark test as ADA/accessibility compliance test",
+    "keyboard: mark test as keyboard navigation test",
+    "contrast: mark test as color contrast test",
+    "accessibility: mark test as general accessibility test"
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
-    "ignore::PendingDeprecationWarning"
+    "ignore::PendingDeprecationWarning",
+    "ignore::RuntimeWarning"
 ]
 
 [tool.mypy]

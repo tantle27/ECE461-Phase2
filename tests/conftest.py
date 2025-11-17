@@ -5,7 +5,6 @@ This file contains common fixtures used across all test modules,
 including database setup, API clients, authentication, and test data.
 """
 
-import asyncio
 import os
 import tempfile
 from collections.abc import Generator
@@ -24,13 +23,7 @@ from src.metrics.metrics_calculator import MetricsCalculator
 
 # ==================== ASYNC EVENT LOOP FIXTURES ====================
 
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Removed conflicting event_loop fixture - pytest-asyncio handles this automatically
 
 
 # ==================== DIRECTORY AND FILE FIXTURES ====================

@@ -321,6 +321,38 @@ except Exception:
 def health():
     return jsonify({"ok": True}), 200
 
+@blueprint.route("/openapi", methods=["GET"])
+def openapi_spec() -> tuple[Response, int]:
+    """Return basic OpenAPI specification."""
+    spec = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Package Registry API",
+            "version": "1.0.0",
+            "description": "A simple package registry API"
+        },
+        "paths": {
+            "/health": {
+                "get": {
+                    "summary": "Health check endpoint",
+                    "responses": {
+                        "200": {"description": "Service is healthy"}
+                    }
+                }
+            },
+            "/authenticate": {
+                "put": {
+                    "summary": "Authenticate user",
+                    "responses": {
+                        "200": {"description": "Authentication successful"}
+                    }
+                }
+            }
+        }
+    }
+    return jsonify(spec), 200
+
+
 @blueprint.route("/health/components", methods=["GET"])
 def health_components():
     wm = request.args.get("windowMinutes", "60")

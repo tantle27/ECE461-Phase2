@@ -1,0 +1,48 @@
+{
+  "token_authentication": {
+    "type": "bearer_token",
+    "token_location": "header",
+    "token_name": "Authorization",
+    "token_prefix": "Bearer",
+    "token_refresh_endpoint": "/authenticate",
+    "token_refresh_data": {
+      "User": {
+        "name": "restler_test_user",
+        "isAdmin": false
+      },
+      "Secret": {
+        "password": "restler_test_password_123"
+      }
+    },
+    "token_refresh_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "api_key_authentication": {
+    "type": "api_key",
+    "api_key_location": "header", 
+    "api_key_name": "X-Authorization",
+    "api_key_value": "restler_test_api_key_xyz789"
+  },
+  "test_users": {
+    "admin_user": {
+      "username": "admin",
+      "password": "admin_password_456",
+      "is_admin": true
+    },
+    "regular_user": {
+      "username": "user", 
+      "password": "user_password_789",
+      "is_admin": false
+    },
+    "test_user": {
+      "username": "restler_test_user",
+      "password": "restler_test_password_123", 
+      "is_admin": false
+    }
+  },
+  "authentication_method": "token_authentication",
+  "token_cache_enabled": true,
+  "token_cache_duration_minutes": 30,
+  "refresh_token_before_expiry_seconds": 60
+}
