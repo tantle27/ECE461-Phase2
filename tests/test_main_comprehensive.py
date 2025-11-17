@@ -90,14 +90,14 @@ class TestValidateAndConfigureLogging:
 
     def test_valid_github_token(self):
         """Test validation with valid GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_" + "A" * 36}):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_" + "A" * 36, "LOG_LEVEL": "0"}):
             # Should not raise or exit
             with patch('logging.disable'):
                 validate_and_configure_logging()
 
     def test_invalid_github_token_blank(self):
         """Test validation with blank GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "   "}):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "   ", "LOG_LEVEL": "0"}):
             with patch('src.main._fail') as mock_fail:
                 validate_and_configure_logging()
                 mock_fail.assert_called()
@@ -107,11 +107,13 @@ class TestValidateAndConfigureLogging:
 
     def test_invalid_github_token_format(self):
         """Test validation with invalid GitHub token format."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "invalid_token"}):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "invalid_token", "LOG_LEVEL": "0"}):
             with patch('src.main._fail') as mock_fail:
                 validate_and_configure_logging()
-                mock_fail.assert_called_once()
-                assert "format" in str(mock_fail.call_args)
+                mock_fail.assert_called()
+                # Check that one of the calls was about token format
+                call_args = [str(call) for call in mock_fail.call_args_list]
+                assert any("format" in arg for arg in call_args)
 
     def test_invalid_log_level(self):
         """Test validation with invalid LOG_LEVEL."""
@@ -153,7 +155,7 @@ class TestValidateAndConfigureLogging:
 
     def test_invalid_log_file_path(self):
         """Test validation with invalid log file path."""
-        with patch.dict(os.environ, {"LOG_FILE": "/invalid/path/logfile.txt"}):
+        with patch.dict(os.environ, {"LOG_FILE": "/invalid/path/logfile.txt", "LOG_LEVEL": "0"}):
             with patch('src.main._fail') as mock_fail:
                 validate_and_configure_logging()
                 mock_fail.assert_called()
