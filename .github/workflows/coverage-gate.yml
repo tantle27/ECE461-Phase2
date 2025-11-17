@@ -211,11 +211,11 @@ jobs:
         # Coverage status
         if [ -f "coverage-reports/coverage.json" ]; then
           coverage=$(python -c "
-          import json
-          with open('coverage-reports/coverage.json', 'r') as f:
-              data = json.load(f)
-          print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
-          ")
+import json
+with open('coverage-reports/coverage.json', 'r') as f:
+    data = json.load(f)
+print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
+")
           
           if (( $(echo "$coverage >= $MIN_COVERAGE" | bc -l) )); then
             echo "✅ **Coverage Gate**: PASSED ($coverage% ≥ $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
