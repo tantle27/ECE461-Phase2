@@ -8,10 +8,22 @@ for local development.
 import json
 import logging
 import os
+import time
 from decimal import Decimal
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# import audit helpers lazily to avoid import cycles during app startup
+try:
+    from app.audit_logging import db_audit, security_alert  # type: ignore
+except Exception:
+    # fallback no-op implementations
+    def db_audit(operation: str, **fields: Any) -> None:  # type: ignore
+        logger.debug("db_audit noop: %s %s", operation, fields)
+
+    def security_alert(message: str, **fields: Any) -> None:  # type: ignore
+        logger.warning("security_alert noop: %s %s", message, fields)
 
 # Environment variable to enable DynamoDB (set to "true" in Lambda)
 USE_DYNAMODB = os.environ.get("USE_DYNAMODB", "false").lower() == "true"
@@ -52,6 +64,7 @@ class ArtifactStore:
 
     def save(self, artifact_type: str, artifact_id: str, artifact_data: dict[str, Any]) -> None:
         """Save an artifact with metrics and scores."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 metadata = artifact_data.get("metadata", {})
@@ -94,17 +107,34 @@ class ArtifactStore:
                 if data.get("license"):
                     item["license"] = data["license"]
                 dynamodb_table.put_item(Item=item)
+                duration_ms = int((time.time() - start) * 1000)
+                db_audit(
+                    "dynamodb_put_item",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    trust_score=trust_score,
+                    duration_ms=duration_ms,
+                )
                 logger.info(
                     f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})"
                 )
             except Exception as e:
                 logger.error(f"DynamoDB save failed: {e}, falling back to memory")
+                security_alert(
+                    "dynamodb_save_failed",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    error=str(e),
+                )
                 self._memory_store[f"{artifact_type}:{artifact_id}"] = artifact_data
         else:
             self._memory_store[f"{artifact_type}:{artifact_id}"] = artifact_data
 
     def get(self, artifact_type: str, artifact_id: str) -> dict[str, Any] | None:
         """Get a specific artifact."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 # Query by PK, get latest version (or you can specify version)
@@ -116,16 +146,33 @@ class ArtifactStore:
                 )
                 items = response.get("Items", [])
                 if items:
+                    duration_ms = int((time.time() - start) * 1000)
+                    db_audit(
+                        "dynamodb_query",
+                        table=TABLE_NAME,
+                        artifact_type=artifact_type,
+                        artifact_id=artifact_id,
+                        duration_ms=duration_ms,
+                        result_count=len(items),
+                    )
                     return json.loads(items[0]["data"])
                 return None
             except Exception as e:
                 logger.error(f"DynamoDB get failed: {e}, falling back to memory")
+                security_alert(
+                    "dynamodb_get_failed",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    error=str(e),
+                )
                 return self._memory_store.get(f"{artifact_type}:{artifact_id}")
         else:
             return self._memory_store.get(f"{artifact_type}:{artifact_id}")
 
     def list_all(self, artifact_type: str | None = None) -> list[dict[str, Any]]:
         """List all artifacts, optionally filtered by type."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 if artifact_type:
@@ -141,10 +188,24 @@ class ArtifactStore:
 
                 items = response.get("Items", [])
                 results = [json.loads(item["data"]) for item in items]
+                duration_ms = int((time.time() - start) * 1000)
+                db_audit(
+                    "dynamodb_list",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    result_count=len(results),
+                    duration_ms=duration_ms,
+                )
                 logger.info(f"Listed {len(results)} artifacts from DynamoDB")
                 return results
             except Exception as e:
                 logger.error(f"DynamoDB list failed: {e}, falling back to memory")
+                security_alert(
+                    "dynamodb_list_failed",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    error=str(e),
+                )
                 return [
                     v
                     for k, v in self._memory_store.items()
@@ -159,6 +220,7 @@ class ArtifactStore:
 
     def list_by_status(self, status: str, limit: int = 100) -> list[dict[str, Any]]:
         """List artifacts by status (e.g., 'unvetted', 'approved', 'rejected')."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 key_cond = "GSI2PK = :status_key AND " "begins_with(GSI2SK, :status_val)"
@@ -172,9 +234,23 @@ class ArtifactStore:
                     Limit=limit,
                 )
                 items = response.get("Items", [])
+                duration_ms = int((time.time() - start) * 1000)
+                db_audit(
+                    "dynamodb_list_by_status",
+                    table=TABLE_NAME,
+                    status=status,
+                    result_count=len(items),
+                    duration_ms=duration_ms,
+                )
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
                 logger.error(f"DynamoDB list_by_status failed: {e}, falling back to memory")
+                security_alert(
+                    "dynamodb_list_by_status_failed",
+                    table=TABLE_NAME,
+                    status=status,
+                    error=str(e),
+                )
                 return [
                     v
                     for v in self._memory_store.values()
@@ -193,6 +269,7 @@ class ArtifactStore:
         self, min_score: float, artifact_type: str | None = None, limit: int = 100
     ) -> list[dict[str, Any]]:
         """List artifacts with trust_score >= min_score."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 # Scan with filter (convert float to Decimal for DynamoDB comparison)
@@ -209,10 +286,25 @@ class ArtifactStore:
                 items = response.get("Items", [])
                 # Sort by trust_score descending (convert Decimal to float for sorting)
                 items.sort(key=lambda x: float(x.get("trust_score", 0)), reverse=True)
+                duration_ms = int((time.time() - start) * 1000)
+                db_audit(
+                    "dynamodb_list_by_min_trust",
+                    table=TABLE_NAME,
+                    min_score=min_score,
+                    artifact_type=artifact_type,
+                    result_count=len(items),
+                    duration_ms=duration_ms,
+                )
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
                 logger.error(
                     f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory"
+                )
+                security_alert(
+                    "dynamodb_list_by_min_trust_failed",
+                    table=TABLE_NAME,
+                    min_score=min_score,
+                    error=str(e),
                 )
                 results = [
                     v
@@ -240,6 +332,7 @@ class ArtifactStore:
 
     def delete(self, artifact_type: str, artifact_id: str) -> None:
         """Delete an artifact."""
+        start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
                 # Delete all versions (query then batch delete)
@@ -249,9 +342,24 @@ class ArtifactStore:
                 )
                 for item in response.get("Items", []):
                     dynamodb_table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                duration_ms = int((time.time() - start) * 1000)
+                db_audit(
+                    "dynamodb_delete",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    duration_ms=duration_ms,
+                )
                 logger.info(f"Deleted from DynamoDB: {artifact_type}/{artifact_id}")
             except Exception as e:
                 logger.error(f"DynamoDB delete failed: {e}, falling back to memory")
+                security_alert(
+                    "dynamodb_delete_failed",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    artifact_id=artifact_id,
+                    error=str(e),
+                )
                 self._memory_store.pop(f"{artifact_type}:{artifact_id}", None)
         else:
             self._memory_store.pop(f"{artifact_type}:{artifact_id}", None)
