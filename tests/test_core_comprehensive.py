@@ -44,7 +44,7 @@ try:
         return True
         
 except ImportError as e:
-    pytest.skip(f"Cannot import required modules: {e}")
+    pytest.skip(f"Cannot import required modules: {e}", allow_module_level=True)
 
 
 class TestDataClasses:
