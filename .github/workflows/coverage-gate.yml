@@ -2,7 +2,7 @@ name: Coverage Gate and Security Testing
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, Jain_feature ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
