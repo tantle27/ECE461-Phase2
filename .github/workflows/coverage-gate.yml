@@ -211,16 +211,16 @@ jobs:
         # Coverage status
         if [ -f "coverage-reports/coverage.json" ]; then
           coverage=$(python -c "
-import json
-with open('coverage-reports/coverage.json', 'r') as f:
-    data = json.load(f)
-print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
-")
+            import json
+            with open('coverage-reports/coverage.json', 'r') as f:
+                data = json.load(f)
+            print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
+          ")
           
           if (( $(echo "$coverage >= $MIN_COVERAGE" | bc -l) )); then
-            echo "✅ **Coverage Gate**: PASSED ($coverage% ≥ $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
+            echo "[PASS] **Coverage Gate**: PASSED ($coverage% >= $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Coverage Gate**: FAILED ($coverage% < $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
+            echo "[FAIL] **Coverage Gate**: FAILED ($coverage% < $MIN_COVERAGE%)" >> $GITHUB_STEP_SUMMARY
           fi
         else
           echo "⚠️ **Coverage Gate**: No coverage data available" >> $GITHUB_STEP_SUMMARY
@@ -229,7 +229,7 @@ print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
         # Security status
         security_job_status="${{ needs.security-testing.result }}"
         if [ "$security_job_status" = "success" ] && [ -d "security-reports" ]; then
-          echo "✅ **Security Testing**: COMPLETED" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] **Security Testing**: COMPLETED" >> $GITHUB_STEP_SUMMARY
         elif [ "$security_job_status" = "skipped" ]; then
           echo "⏭️ **Security Testing**: SKIPPED (Coverage gate failed)" >> $GITHUB_STEP_SUMMARY
         else
@@ -259,14 +259,14 @@ print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
         
         # Security testing is optional (can be skipped if coverage fails)
         if [ "$coverage_status" = "success" ] && ([ "$security_status" = "success" ] || [ "$security_status" = "skipped" ]); then
-          echo "✅ All quality gates passed!"
+          echo "All quality gates passed!"
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## 🎉 Quality Gate Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "## Quality Gate Status: PASSED" >> $GITHUB_STEP_SUMMARY
           exit 0
         else
-          echo "❌ One or more quality gates failed"
+          echo "One or more quality gates failed"
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## ❌ Quality Gate Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "## Quality Gate Status: FAILED" >> $GITHUB_STEP_SUMMARY
           exit 1
         fi
 
@@ -281,6 +281,6 @@ print(f'{data.get(\"totals\", {}).get(\"percent_covered\", 0):.1f}')
     - name: Ready for deployment
       run: |
         echo "🚀 All quality gates passed - ready for deployment!"
-        echo "Coverage ≥ $MIN_COVERAGE% ✅"
-        echo "Security tests passed ✅" 
-        echo "All tests passing ✅"
+        echo "Coverage >= $MIN_COVERAGE% [PASS]"
+        echo "Security tests passed [PASS]" 
+        echo "All tests passing [PASS]"
