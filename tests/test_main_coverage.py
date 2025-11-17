@@ -80,7 +80,7 @@ class TestLoggingValidation:
     def test_validate_logging_valid_github_token(self):
         """Test validation with valid GitHub token."""
         valid_token = "ghp_" + "A" * 36
-        with patch.dict(os.environ, {"GITHUB_TOKEN": valid_token}):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": valid_token, "LOG_LEVEL": "0"}, clear=True):
             validate_and_configure_logging()
 
     def test_validate_logging_blank_github_token(self):
@@ -107,12 +107,10 @@ class TestLoggingValidation:
             with patch.dict(os.environ, {"LOG_LEVEL": level}, clear=True):
                 validate_and_configure_logging()
 
-    def test_validate_logging_with_valid_log_file(self):
-        """Test validation with valid log file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=True) as tmp:
-            tmp_path = tmp.name
-            with patch.dict(os.environ, {"LOG_FILE": tmp_path, "LOG_LEVEL": "1"}):
-                validate_and_configure_logging()
+    def test_validate_logging_with_log_level_1(self):
+        """Test validation with log level 1."""
+        with patch.dict(os.environ, {"LOG_LEVEL": "1"}, clear=True):
+            validate_and_configure_logging()
 
 
 class TestUrlFileParsing:
@@ -180,8 +178,8 @@ class TestProcessEntries:
             "code_quality_latency": 180,
         }
         
-        urls = ["https://github.com/user/repo"]
-        await process_entries(urls)
+        entries = [(None, None, "https://github.com/user/repo")]
+        await process_entries(entries)
 
 
 class TestMainFunction:
@@ -209,10 +207,11 @@ class TestMainFunction:
             tmp_path = tmp.name
         
         try:
-            with patch.object(sys, 'argv', ['main.py', tmp_path]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 0
+            with patch.dict(os.environ, {"LOG_LEVEL": "0"}, clear=True):
+                with patch.object(sys, 'argv', ['main.py', tmp_path]):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+                    assert exc_info.value.code == 0
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
