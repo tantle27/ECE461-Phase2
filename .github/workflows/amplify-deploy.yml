@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - front-dev
+      - Jain_feature
   pull_request:
     branches:
       - main

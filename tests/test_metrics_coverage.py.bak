@@ -1,0 +1,140 @@
+"""
+Test coverage for src.metrics module.
+Tests core functionality to improve overall coverage.
+"""
+
+import pytest
+from unittest.mock import patch
+
+from src.metrics import (
+    InputSpec,
+    MetricSpec,
+    TREE,
+    COMMITS,
+    README,
+    METRICS,
+    evaluate_all
+)
+
+
+class TestInputSpec:
+    """Test InputSpec dataclass."""
+
+    def test_input_spec_creation(self):
+        """Test creating an InputSpec instance."""
+        def mock_fetch(url, token):
+            return {"data": "test"}
+        
+        spec = InputSpec("test_key", mock_fetch)
+        assert spec.key == "test_key"
+        assert spec.fetch == mock_fetch
+
+    def test_input_spec_frozen(self):
+        """Test that InputSpec is frozen (immutable)."""
+        def mock_fetch(url, token):
+            return {}
+        
+        spec = InputSpec("test", mock_fetch)
+        with pytest.raises(Exception):  # Should be frozen
+            spec.key = "modified"
+
+
+class TestMetricSpec:
+    """Test MetricSpec dataclass."""
+
+    def test_metric_spec_creation(self):
+        """Test creating a MetricSpec instance."""
+        def mock_compute(inputs, url, token):
+            return {"score": 1.0}
+        
+        spec = MetricSpec("test_metric", [TREE], mock_compute)
+        assert spec.name == "test_metric"
+        assert spec.compute == mock_compute
+
+    def test_metric_spec_frozen(self):
+        """Test that MetricSpec is frozen (immutable)."""
+        def mock_compute(inputs, url, token):
+            return {}
+        
+        spec = MetricSpec("test", [], mock_compute)
+        with pytest.raises(Exception):  # Should be frozen
+            spec.name = "modified"
+
+
+class TestPredefinedSpecs:
+    """Test predefined input specifications."""
+
+    def test_tree_spec(self):
+        """Test TREE input spec."""
+        assert TREE.key == "tree"
+        assert callable(TREE.fetch)
+
+    def test_commits_spec(self):
+        """Test COMMITS input spec."""
+        assert COMMITS.key == "commits"
+        assert callable(COMMITS.fetch)
+
+    def test_readme_spec(self):
+        """Test README input spec."""
+        assert README.key == "readme"
+        assert callable(README.fetch)
+
+
+class TestEvaluateAll:
+    """Test evaluate_all function."""
+
+    @patch('src.metrics.TREE.fetch')
+    @patch('src.metrics.COMMITS.fetch')
+    @patch('src.metrics.README.fetch')
+    def test_evaluate_all_success(self, mock_readme, mock_commits, mock_tree):
+        """Test successful evaluation of all metrics."""
+        # Mock successful fetches
+        mock_tree.return_value = {"files": ["test.py"]}
+        mock_commits.return_value = [{"author": "user1"}, {"author": "user2"}]
+        mock_readme.return_value = "Test README content"
+        
+        result = evaluate_all("https://github.com/user/repo")
+        
+        assert isinstance(result, dict)
+        assert "repo" in result
+        assert "metrics" in result
+        assert "elapsed_ms" in result
+        assert isinstance(result["metrics"], list)
+
+    @patch('src.metrics.TREE.fetch')
+    def test_evaluate_all_with_fetch_exception(self, mock_tree):
+        """Test evaluation when fetch raises exception."""
+        mock_tree.side_effect = Exception("Fetch failed")
+        
+        result = evaluate_all("https://github.com/user/repo")
+        
+        assert isinstance(result, dict)
+        assert "repo" in result
+        assert result["repo"] == "https://github.com/user/repo"
+
+    def test_evaluate_all_empty_repo(self):
+        """Test evaluation with empty repo."""
+        result = evaluate_all("")
+        
+        assert isinstance(result, dict)
+        assert "repo" in result
+        assert result["repo"] == ""
+
+    def test_evaluate_all_with_ref(self):
+        """Test evaluation with specific ref."""
+        result = evaluate_all("https://github.com/user/repo", "main")
+        
+        assert isinstance(result, dict)
+        assert "ref" in result
+        assert result["ref"] == "main"
+
+    def test_evaluate_all_custom_metrics(self):
+        """Test evaluation with custom metrics list."""
+        def mock_compute(inputs, repo, ref):
+            return {"score": 1.0}
+        
+        custom_metric = MetricSpec("custom", [], mock_compute)
+        result = evaluate_all("https://github.com/user/repo", metrics=[custom_metric])
+        
+        assert isinstance(result, dict)
+        assert "metrics" in result

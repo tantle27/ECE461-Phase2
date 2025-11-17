@@ -7,6 +7,7 @@ import os
 import re
 import time
 import zipfile
+import yaml
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import wraps
@@ -477,6 +478,21 @@ def health_components_route() -> tuple[Response, int] | Response:
         ),
         200,
     )
+
+
+@blueprint.route("/openapi", methods=["GET"])
+def get_openapi_spec() -> tuple[Response, int]:
+    """Return the OpenAPI specification."""
+    try:
+        # Load the OpenAPI specification from the YAML file
+        openapi_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "openapi.yaml")
+        with open(openapi_path, "r", encoding="utf-8") as f:
+            openapi_spec = yaml.safe_load(f)
+        return jsonify(openapi_spec), 200
+    except Exception as e:
+        logger.error("Failed to load OpenAPI specification: %s", e)
+        return jsonify({"error": "OpenAPI specification not available"}), 500
+
 
 # -------------------- Authentication (per-spec) --------------------
 
