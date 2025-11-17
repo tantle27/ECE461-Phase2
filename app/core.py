@@ -577,7 +577,14 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     if _duplicate_url_exists(artifact_type, url):
         return jsonify({"message": "Artifact exists already."}), 409
 
-    name_guess = secure_filename(url.rstrip("/").split("/")[-1]) or "artifact"
+    # Extract name from URL - try to preserve namespace/org structure
+    url_parts = url.rstrip("/").split("/")
+    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos"):
+        # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
+        name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
+    else:
+        name_guess = url_parts[-1] if url_parts else "artifact"
+    name_guess = secure_filename(name_guess) or "artifact"
     art_id = str(int(time.time() * 1000))
     artifact = Artifact(
         metadata=ArtifactMetadata(
@@ -1365,9 +1372,19 @@ def by_regex_route() -> tuple[Response, int] | Response:
             sanitized.endswith("$"),
         )
         # Quick self-test on a small string to detect catastrophic patterns
+        # Use signal for timeout if available
         try:
-            _ = pattern.search("test" * 100)
-        except Exception:
+            import signal
+            def _test_timeout(signum, frame):
+                raise TimeoutError("Pattern test timeout")
+            signal.signal(signal.SIGALRM, _test_timeout)
+            signal.alarm(1)  # 1 second max for self-test
+            try:
+                _ = pattern.search("a" * 100)
+            finally:
+                signal.alarm(0)
+        except (TimeoutError, Exception):
+            logger.warning("BY_REGEX: Pattern failed self-test, rejecting")
             return jsonify({"message": "Regex pattern too complex"}), 400
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
