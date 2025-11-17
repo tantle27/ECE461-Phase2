@@ -194,6 +194,17 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
         data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
         if data:
             md = data.get("metadata", {})
+            artifact_data = data.get("data", {})
+            # Ensure required url field if possible
+            if isinstance(artifact_data, dict) and "url" not in artifact_data:
+                try:
+                    if artifact_data.get("s3_key") and artifact_data.get("s3_bucket"):
+                        artifact_data["url"] = f"s3://{artifact_data['s3_bucket']}/{artifact_data['s3_key']}"
+                    elif artifact_data.get("path"):
+                        # Use file:// relative path if absolute not available
+                        artifact_data["url"] = f"file://{artifact_data['path']}"
+                except Exception:
+                    pass
             art = Artifact(
                 metadata=ArtifactMetadata(
                     id=str(md.get("id", artifact_id)),
@@ -201,7 +212,7 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
                     type=str(md.get("type", artifact_type)),
                     version=str(md.get("version", "1.0.0")),
                 ),
-                data=data.get("data", {}),
+                data=artifact_data,
             )
             logger.warning("FETCH: Found in primary store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
             return art
@@ -209,6 +220,15 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
         logger.exception("Primary store fetch failed; falling back to memory")
     art = _STORE.get(_store_key(artifact_type, artifact_id))
     if art:
+        # Ensure url on memory copy as well
+        try:
+            if isinstance(art.data, dict) and "url" not in art.data:
+                if art.data.get("s3_key") and art.data.get("s3_bucket"):
+                    art.data["url"] = f"s3://{art.data['s3_bucket']}/{art.data['s3_key']}"
+                elif art.data.get("path"):
+                    art.data["url"] = f"file://{art.data['path']}"
+        except Exception:
+            pass
         logger.warning("FETCH: Found in memory store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
     else:
         logger.warning("FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id)
@@ -363,13 +383,27 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _sanitize_search_pattern(raw_pattern: str) -> str:
-    # Spec allows up to 1000 chars; enforce that limit (was 256)
+    """Sanitize regex pattern to prevent catastrophic backtracking"""
     if len(raw_pattern) > 1000:
         raw_pattern = raw_pattern[:1000]
-    # Allow common regex/meta characters including grouping () and '+' plus hyphen.
-    # Exclude braces {} to avoid nested quantified catastrophes; cap '*' runs.
+
+    # Remove or clip dangerous nested constructs (best-effort)
+    dangerous_patterns = [
+        r"(\w+\*)+",   # nested word+star chains
+        r"(\.*)+",      # repeated any-char groups
+        r"(\(.*\))+",  # nested groups with quantifiers
+    ]
+    for danger in dangerous_patterns:
+        try:
+            raw_pattern = re.sub(danger, lambda m: m.group(0)[:50], raw_pattern)
+        except Exception:
+            pass
+
+    # Allow safe characters; exclude braces {}
     allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
-    allowed = re.sub(r"\*{4,}", "***", allowed)
+    # Limit consecutive wildcards/plus
+    allowed = re.sub(r"\*{3,}", "**", allowed)
+    allowed = re.sub(r"\+{3,}", "++", allowed)
     return allowed or ".*"
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
@@ -807,30 +841,28 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                 bool(artifact.data.get("path")),
                 sorted(list(artifact.data.keys())),
             )
-            has_model_link = any(
-                isinstance(artifact.data.get(k), str) and str(artifact.data.get(k)).strip()
-                for k in ("model_link", "model_url", "model")
-            )
-            if not has_model_link:
-                url_val = artifact.data.get("url")
-                s3_key = artifact.data.get("s3_key")
-                s3_bucket = artifact.data.get("s3_bucket")
-                local_rel = artifact.data.get("path")
-                candidate: str | None = None
-                if isinstance(url_val, str) and url_val.strip():
-                    candidate = url_val.strip()
-                elif isinstance(s3_key, str) and s3_key and isinstance(s3_bucket, str) and s3_bucket:
-                    candidate = f"s3://{s3_bucket}/{s3_key}"
-                elif isinstance(local_rel, str) and local_rel.strip():
-                    abs_path = (_UPLOAD_DIR.parent / local_rel).resolve()
-                    candidate = f"file://{abs_path}"
-                if candidate:
-                    artifact.data["model_link"] = candidate
-                    # Persist the augmented artifact for future reads
-                    save_artifact(artifact)
-                    logger.warning("RATE: Derived model_link for %s -> %s", artifact_id, candidate)
-                else:
-                    logger.warning("RATE: No model link derivable for %s; scoring may fail", artifact_id)
+            # Prefer existing model_link/model_url; else try other fields
+            link_fields = ["model_link", "model_url", "model", "url", "s3_key", "path"]
+            selected: str | None = None
+            for fld in link_fields:
+                v = artifact.data.get(fld)
+                if isinstance(v, str) and v.strip():
+                    selected = v.strip()
+                    break
+            if not selected:
+                logger.error("RATE: No model link found for %s", artifact_id)
+                return jsonify({"message": "Artifact missing required model link for rating"}), 400
+            # Normalize into model_link if needed
+            if selected and not isinstance(artifact.data.get("model_link"), str):
+                # If s3 or path provided, build URI
+                if artifact.data.get("s3_key") and artifact.data.get("s3_bucket"):
+                    selected = f"s3://{artifact.data['s3_bucket']}/{artifact.data['s3_key']}"
+                elif artifact.data.get("path") and not selected.startswith("file://"):
+                    abs_path = (_UPLOAD_DIR.parent / artifact.data["path"]).resolve()
+                    selected = f"file://{abs_path}"
+                artifact.data["model_link"] = selected
+                save_artifact(artifact)
+                logger.warning("RATE: Derived model_link for %s -> %s", artifact_id, selected)
 
         logger.warning(
             "RATE: Scoring start id=%s name=%s model_link=%s",
@@ -838,7 +870,35 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             artifact.metadata.name,
             (artifact.data or {}).get("model_link") if isinstance(artifact.data, dict) else None,
         )
-        rating = _score_artifact_with_metrics(artifact)
+        # Add timeout protection around scoring
+        try:
+            import signal
+
+            def _timeout_handler(signum, frame):
+                raise TimeoutError("Rating computation exceeded time limit")
+
+            signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(50)
+        except Exception:
+            # If signals aren't available (e.g., non-main thread), continue without alarm
+            pass
+
+        try:
+            rating = _score_artifact_with_metrics(artifact)
+        except TimeoutError:
+            try:
+                import signal
+                signal.alarm(0)
+            except Exception:
+                pass
+            logger.error("RATE: Timeout scoring %s", artifact_id)
+            return jsonify({"message": "Rating computation exceeded time limit"}), 500
+        finally:
+            try:
+                import signal
+                signal.alarm(0)
+            except Exception:
+                pass
         logger.warning(
             "RATE: Scoring done id=%s net=%.3f keys=%s",
             artifact_id,
@@ -1288,62 +1348,44 @@ def by_regex_route() -> tuple[Response, int] | Response:
             sanitized.startswith("^"),
             sanitized.endswith("$"),
         )
+        # Quick self-test on a small string to detect catastrophic patterns
+        try:
+            _ = pattern.search("test" * 100)
+        except Exception:
+            return jsonify({"message": "Regex pattern too complex"}), 400
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
-    # Build unified iterable of artifacts from memory + primary (avoid duplicates by key)
-    combined: dict[str, Artifact] = {}
-    for a in _STORE.values():
-        combined[_store_key(a.metadata.type, a.metadata.id)] = a
-    try:
-        primary_items = _ARTIFACT_STORE.list_all() or []
-    except Exception:
-        primary_items = []
-    logger.warning("BY_REGEX: primary_count=%d memory_count=%d", len(primary_items), len(_STORE))
-    for data in primary_items:
-        md = data.get("metadata", {})
-        aid = str(md.get("id", ""))
-        atype = str(md.get("type", ""))
-        if aid and atype:
-            k = _store_key(atype, aid)
-            if k not in combined:
-                combined[k] = Artifact(
-                    metadata=ArtifactMetadata(
-                        id=aid,
-                        name=str(md.get("name", "")),
-                        type=atype,
-                        version=str(md.get("version", "1.0.0")),
-                    ),
-                    data=data.get("data", {}),
-                )
+    # Limit the search space and time to avoid Lambda timeouts
+    MAX_ARTIFACTS = 1000
+    MAX_TIME_SECONDS = 50  # leave ~10s buffer before Lambda timeout
+    start_time = time.time()
+
+    # Stream from memory first (fastest path)
+    artifacts_to_check = list(_STORE.values())[:MAX_ARTIFACTS]
+    logger.warning("BY_REGEX: scanning_count=%d (memory only)", len(artifacts_to_check))
+
     matches: list[dict[str, Any]] = []
-    name_hits = 0
-    readme_hits = 0
-    for art in combined.values():
+    for art in artifacts_to_check:
+        # Check time budget
+        if time.time() - start_time > MAX_TIME_SECONDS:
+            logger.warning("BY_REGEX: Timeout approaching, returning partial results")
+            break
         readme = ""
         if isinstance(art.data, dict):
-            readme = str(art.data.get("readme", ""))
-            if len(readme) > 4096:
-                readme = readme[:4096]
+            # Reduce readme size for matching
+            readme = str(art.data.get("readme", ""))[:2000]
         try:
-            nm_hit = bool(pattern.search(art.metadata.name))
-            rd_hit = bool(pattern.search(readme))
-            if nm_hit or rd_hit:
-                name_hits += int(nm_hit)
-                readme_hits += int(rd_hit)
+            if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
                 matches.append(artifact_to_dict(art))
-        except re.error:
+                if len(matches) >= 100:
+                    logger.warning("BY_REGEX: Found 100 matches, stopping early")
+                    break
+        except Exception as e:
+            logger.warning("BY_REGEX: Pattern match error: %s", e)
             continue
     if not matches:
         logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
         return jsonify({"message": "No artifact found under this regex"}), 404
-    sample = [m.get("metadata", {}).get("name") for m in matches[:5]]
-    logger.warning(
-        "BY_REGEX: matches=%d name_hits=%d readme_hits=%d sample=%s",
-        len(matches),
-        name_hits,
-        readme_hits,
-        sample,
-    )
     return jsonify(matches), 200
 
 # -------------------- Audit log --------------------
