@@ -1,5 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 import re
 
@@ -30,6 +32,12 @@ def create_app(config=None):
 
         logging.exception("Failed to initialize audit logging; continuing")
     
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["500 per minute"]
+    )
+
     # Enable CORS for React frontend (local + Amplify)
     # Allow overriding via env var ALLOWED_ORIGINS (comma-separated)
     allowed_env = os.environ.get("ALLOWED_ORIGINS", "").strip()
@@ -53,7 +61,7 @@ def create_app(config=None):
         supports_credentials=True,
         max_age=600,
     )
-    
+
     app.register_blueprint(blueprint)
     if config:
         app.config.update(config)
