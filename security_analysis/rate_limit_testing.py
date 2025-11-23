@@ -11,8 +11,8 @@ def endpoint_to_use(i, agent_id, headers):
 # BASE_URL = "https://ot47z7sef6wrgsvcw3bmrh752e0hzclv.lambda-url.us-east-2.on.aws/"
 BASE_URL = "http://localhost:5000"
 
-NUM_AGENTS = 1
-UPLOADS_PER_AGENT = 20
+NUM_AGENTS = 20
+UPLOADS_PER_AGENT = 50
 WAIT_BETWEEN_UPLOADS = 0.0  # seconds
 
 RESET_REGISTRY_BEFORE_TEST = True
