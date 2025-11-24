@@ -205,6 +205,9 @@ def _percentile(seq: list[float], p: float) -> float:
 
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     return {
+        "id": artifact.metadata.id,
+        "name": artifact.metadata.name,
+        "type": artifact.metadata.type,
         "metadata": {
             "id": artifact.metadata.id,
             "name": artifact.metadata.name,
