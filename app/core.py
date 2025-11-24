@@ -726,18 +726,8 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         current_page, page_size, total, next_offset, len(result.get("items", []))
     )
 
-    items = result.get("items", [])
-    # Per spec, response body is array of ArtifactMetadata (name/id/type)
-    artifacts_meta = [
-        {
-            "name": (it.get("metadata") or {}).get("name"),
-            "id": (it.get("metadata") or {}).get("id"),
-            "type": (it.get("metadata") or {}).get("type"),
-        }
-        for it in items
-    ]
-
-    response = jsonify(artifacts_meta)
+    response_items = result.get("items", [])
+    response = jsonify(response_items)
     if next_offset < total:
         response.headers["offset"] = str(next_offset)
     return response, 200
