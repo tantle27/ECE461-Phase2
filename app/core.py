@@ -10,6 +10,7 @@ import zipfile
 import yaml
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
@@ -69,6 +70,9 @@ _S3 = S3Storage()
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Cache TTL in seconds for previously computed ratings. Set to 0 to always recompute.
+_RATING_CACHE_TTL_SECONDS = max(0, int(os.environ.get("RATING_CACHE_TTL_SECONDS", "1800")))
+
 # S3-based persistence for dev reloads (tokens + artifacts)
 _PERSIST_S3_KEY = os.environ.get("REGISTRY_PERSIST_S3_KEY", "registry/registry_store.json")
 
@@ -119,7 +123,18 @@ def _load_state() -> None:
         return
     try:
         # Try to fetch from S3
-        body, meta = _S3.get_object(_PERSIST_S3_KEY)
+        try:
+            body, meta = _S3.get_object(_PERSIST_S3_KEY)
+        except Exception as exc:  # gracefully handle missing objects
+            message = str(exc)
+            if "NoSuchKey" in message or "Not Found" in message:
+                logger.info(
+                    "S3 persist key %s missing in bucket %s; continuing with empty state",
+                    _PERSIST_S3_KEY,
+                    _S3.bucket,
+                )
+                return
+            raise
         content = body.decode('utf-8').strip()
         
         if not content:
@@ -354,6 +369,7 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     token_hdr = request.headers.get("X-Authorization", "")
     auth_hdr = request.headers.get("Authorization", "")
     token = _parse_bearer(token_hdr) or _parse_bearer(auth_hdr)
+    token_store = TokenStore()
 
     # Record an audit event for the auth check start (mask token)
     audit_event(
@@ -364,7 +380,17 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
         admin_required=admin,
     )
 
-    if not token or token not in _TOKENS:
+    token_known = bool(token and token in _TOKENS)
+    if token and not token_known:
+        try:
+            if token_store.contains(token):
+                # All issued tokens represent admin user; store for future reuse
+                _TOKENS[token] = True
+                token_known = True
+        except Exception:
+            logger.exception("AUTH: TokenStore check failed")
+
+    if not token or not token_known:
         # spec: 403 for invalid or missing AuthenticationToken
         security_alert(
             "auth_failed",
@@ -660,6 +686,15 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         "ARTIFACTS: Received enumerate query name=%s types=%s page=%s page_size=%s offset=%s",
         qd.get("name"), qd.get("types"), qd.get("page"), qd.get("page_size"), request.args.get("offset")
     )
+    # allow query parameter limit to override requested page_size
+    limit_param = request.args.get("limit")
+    if limit_param is not None:
+        try:
+            limit_value = max(1, min(100, int(limit_param)))
+            qd["page_size"] = limit_value
+        except Exception:
+            logger.warning("ARTIFACTS: Invalid limit parameter=%s", limit_param)
+
     # handle offset pagination header semantics
     offset_str = request.args.get("offset")
     if offset_str:
@@ -898,6 +933,10 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
+    cached_rating = _rating_from_artifact_data(artifact)
+    if cached_rating:
+        _RATINGS_CACHE[artifact_id] = cached_rating
+        return jsonify(_to_openapi_model_rating(cached_rating)), 200
     try:
         # Ensure a usable model_link exists for scoring.
         if isinstance(artifact.data, dict):
@@ -976,7 +1015,8 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
-            artifact.data["metrics"] = rating.scores
+            artifact.data["metrics"] = dict(rating.scores)
+            artifact.data["metrics_latencies"] = dict(rating.latencies)
             artifact.data["trust_score"] = rating.scores.get("net_score", 0.0)
             artifact.data["last_rated"] = rating.generated_at.isoformat() + "Z"
             save_artifact(artifact)
@@ -989,52 +1029,106 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "The artifact rating system encountered an error while computing at least one metric."}), 500
     return jsonify(_to_openapi_model_rating(rating)), 200
 
+
+def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
+    """Rehydrate a ModelRating from stored artifact data if still fresh."""
+    if not isinstance(artifact.data, dict):
+        return None
+    metrics = artifact.data.get("metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return None
+    last_rated_at = _parse_timestamp(artifact.data.get("last_rated"))
+    if (
+        _RATING_CACHE_TTL_SECONDS > 0
+        and last_rated_at
+        and datetime.utcnow() - last_rated_at > timedelta(seconds=_RATING_CACHE_TTL_SECONDS)
+    ):
+        return None
+    latencies_raw = artifact.data.get("metrics_latencies")
+    cleaned_latencies: dict[str, int] = {}
+    if isinstance(latencies_raw, dict):
+        for key, value in latencies_raw.items():
+            try:
+                cleaned_latencies[key] = int(value)
+            except Exception:
+                cleaned_latencies[key] = 0
+    if "net_score" not in cleaned_latencies:
+        cleaned_latencies["net_score"] = 0
+    scores = dict(metrics)
+    if "net_score" not in scores and isinstance(artifact.data.get("trust_score"), (int, float)):
+        scores["net_score"] = float(artifact.data["trust_score"])
+    summary = {
+        "category": artifact.metadata.type.upper(),
+        "name": artifact.metadata.name,
+        "model_link": artifact.data.get("model_link"),
+    }
+    generated_at = last_rated_at or datetime.utcnow()
+    return ModelRating(
+        id=artifact.metadata.id,
+        generated_at=generated_at,
+        scores=scores,
+        latencies=cleaned_latencies,
+        summary=summary,
+    )
+
+
+def _parse_timestamp(raw: Any) -> datetime | None:
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        sanitized = raw.replace("Z", "+00:00") if raw.endswith("Z") else raw
+        return datetime.fromisoformat(sanitized)
+    except Exception:
+        return None
+
 def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     scores = rating.scores or {}
     lat_ms = rating.latencies or {}
 
-    def sec(key: str) -> float:
-        v = lat_ms.get(key, 0)
+    def score(key: str) -> float:
         try:
-            return float(v) / 1000.0
+            return float(scores.get(key, 0.0) or 0.0)
         except Exception:
             return 0.0
 
-    size_score = scores.get("size_score") or {
-        "raspberry_pi": 0.0,
-        "jetson_nano": 0.0,
-        "desktop_pc": 0.0,
-        "aws_server": 0.0,
+    def latency(key: str) -> float:
+        try:
+            return float(lat_ms.get(key, 0) or 0) / 1000.0
+        except Exception:
+            return 0.0
+
+    spec_map = {
+        "RampUp": "ramp_up_time",
+        "Correctness": "code_quality",
+        "BusFactor": "bus_factor",
+        "ResponsiveMaintainer": "reviewedness",
+        "LicenseScore": "license",
+        "GoodPinningPractice": "dataset_and_code_score",
+        "PullRequest": "performance_claims",
+        "NetScore": "net_score",
     }
 
-    return {
+    try:
+        generated_iso = rating.generated_at.isoformat(timespec="seconds")
+    except TypeError:
+        generated_iso = rating.generated_at.isoformat()
+    if not generated_iso.endswith("Z"):
+        generated_iso = generated_iso.replace("+00:00", "Z")
+        if not generated_iso.endswith("Z"):
+            generated_iso = f"{generated_iso}Z"
+
+    response: dict[str, Any] = {
+        "artifact_id": rating.id,
+        "generated_at": generated_iso,
         "name": rating.summary.get("name"),
         "category": rating.summary.get("category"),
-        "net_score": float(scores.get("net_score", 0.0) or 0.0),
-        "net_score_latency": sec("net_score"),
-        "ramp_up_time": float(scores.get("ramp_up_time", 0.0) or 0.0),
-        "ramp_up_time_latency": sec("ramp_up_time"),
-        "bus_factor": float(scores.get("bus_factor", 0.0) or 0.0),
-        "bus_factor_latency": sec("bus_factor"),
-        "performance_claims": float(scores.get("performance_claims", 0.0) or 0.0),
-        "performance_claims_latency": sec("performance_claims"),
-        "license": float(scores.get("license", 0.0) or 0.0),
-        "license_latency": sec("license"),
-        "dataset_and_code_score": float(scores.get("dataset_and_code_score", 0.0) or 0.0),
-        "dataset_and_code_score_latency": sec("dataset_and_code_score"),
-        "dataset_quality": float(scores.get("dataset_quality", 0.0) or 0.0),
-        "dataset_quality_latency": sec("dataset_quality"),
-        "code_quality": float(scores.get("code_quality", 0.0) or 0.0),
-        "code_quality_latency": sec("code_quality"),
-        "reproducibility": float(scores.get("reproducibility", 0.0) or 0.0),
-        "reproducibility_latency": sec("reproducibility"),
-        "reviewedness": float(scores.get("reviewedness", 0.0) or 0.0),
-        "reviewedness_latency": sec("reviewedness"),
-        "tree_score": float(scores.get("tree_score", 0.0) or 0.0),
-        "tree_score_latency": sec("tree_score"),
-        "size_score": size_score,
-        "size_score_latency": sec("size_score"),
     }
+
+    for external, internal in spec_map.items():
+        response[external] = score(internal)
+        response[f"{external}Latency"] = latency(internal)
+
+    return response
 
 # -------------------- Download (kept) & size cost --------------------
 
