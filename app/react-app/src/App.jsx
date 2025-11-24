@@ -1,14 +1,16 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import Home from './pages/Home'
-import Upload from './pages/Upload'
-import Search from './pages/Search'
-import Artifacts from './pages/Artifacts'
-import Tracks from './pages/Tracks'
-import Reset from './pages/Reset'
-import SignIn from './pages/SignIn'
+const Home = lazy(() => import('./pages/Home'))
+const Upload = lazy(() => import('./pages/Upload'))
+const Search = lazy(() => import('./pages/Search'))
+const Artifacts = lazy(() => import('./pages/Artifacts'))
+const Tracks = lazy(() => import('./pages/Tracks'))
+const Reset = lazy(() => import('./pages/Reset'))
+const SignIn = lazy(() => import('./pages/SignIn'))
 import { useAuth } from './context/AuthContext'
 import AuthRequired from './components/AuthRequired'
+import Spinner from './components/Spinner'
+import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
   const linkBase = "px-3 py-2 rounded-md transition-colors"
@@ -46,15 +48,19 @@ export default function App() {
       </header>
 
   <main id="main-content" tabIndex={-1} className="max-w-6xl mx-auto p-6">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/upload" element={<AuthRequired><Upload /></AuthRequired>} />
-          <Route path="/search" element={<AuthRequired><Search /></AuthRequired>} />
-          <Route path="/artifacts" element={<AuthRequired><Artifacts /></AuthRequired>} />
-          <Route path="/info/tracks" element={<Tracks />} />
-          <Route path="/info/reset" element={<AuthRequired><Reset /></AuthRequired>} />
-          <Route path="/signin" element={<SignIn />} />
-        </Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<Spinner message="Preparing the page…" />}>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/upload" element={<AuthRequired><Upload /></AuthRequired>} />
+              <Route path="/search" element={<AuthRequired><Search /></AuthRequired>} />
+              <Route path="/artifacts" element={<AuthRequired><Artifacts /></AuthRequired>} />
+              <Route path="/info/tracks" element={<Tracks />} />
+              <Route path="/info/reset" element={<AuthRequired><Reset /></AuthRequired>} />
+              <Route path="/signin" element={<SignIn />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   )
