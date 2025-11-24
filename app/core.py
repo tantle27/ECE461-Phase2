@@ -685,13 +685,39 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
 def enumerate_artifacts_route() -> tuple[Response, int] | Response:
-    # _require_auth()
+    _require_auth()
 
     body = request.get_json(silent=True)
-    if not isinstance(body, list) or not body or not isinstance(body[0], dict) or "name" not in body[0]:
+    if not isinstance(body, list) or not body or not isinstance(body[0], dict):
         return jsonify({"message": "Invalid artifact_query"}), 400
 
-    qd = body[0]
+    qd_raw = body[0]
+    # Accept both spec-style (Name) and lowercase fields
+    name_val = qd_raw.get("name")
+    if name_val is None:
+        name_val = qd_raw.get("Name") or qd_raw.get("artifactName")
+    types_val = qd_raw.get("types")
+    if types_val is None:
+        types_val = qd_raw.get("Types")
+    artifact_type_val = (
+        qd_raw.get("artifact_type")
+        or qd_raw.get("artifactType")
+        or qd_raw.get("type")
+        or qd_raw.get("Type")
+    )
+    page_val = qd_raw.get("page") or qd_raw.get("Page")
+    page_size_val = qd_raw.get("page_size") or qd_raw.get("PageSize")
+
+    if name_val is None:
+        return jsonify({"message": "Invalid artifact_query"}), 400
+
+    qd = {
+        "artifact_type": artifact_type_val,
+        "name": name_val,
+        "types": types_val,
+        "page": page_val,
+        "page_size": page_size_val,
+    }
     logger.warning(
         "ARTIFACTS: Received enumerate query name=%s types=%s page=%s page_size=%s offset=%s",
         qd.get("name"), qd.get("types"), qd.get("page"), qd.get("page_size"), request.args.get("offset")
@@ -730,7 +756,18 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     )
 
     response_items = result.get("items", [])
-    response = jsonify(response_items)
+    metadata_list = []
+    for entry in response_items:
+        meta = (entry.get("metadata") or {}) if isinstance(entry, dict) else {}
+        metadata_list.append(
+            {
+                "name": meta.get("name"),
+                "id": meta.get("id"),
+                "type": meta.get("type"),
+            }
+        )
+
+    response = jsonify(metadata_list)
     if next_offset < total:
         response.headers["offset"] = str(next_offset)
     return response, 200
@@ -740,7 +777,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
 def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()
+    _require_auth()
     logger.warning("GET_ARTIFACT: type=%s id=%s", artifact_type, artifact_id)
     art = fetch_artifact(artifact_type, artifact_id)
     if not art:
@@ -774,7 +811,7 @@ def get_artifact_route_alias(artifact_type: str, artifact_id: str) -> tuple[Resp
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
 @_record_timing
 def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()
+    _require_auth()
     body = _json_body() or {}
     if not isinstance(body, dict):
         return jsonify({"message": "Artifact payload must be object"}), 400
@@ -805,7 +842,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
 @_record_timing
 def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()
+    _require_auth()
     k = _store_key(artifact_type, artifact_id)
     if k not in _STORE:
         # try primary
@@ -927,6 +964,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/model/<string:artifact_id>/rate", methods=["GET"])
 @_record_timing
 def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
+    _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
         return jsonify(_to_openapi_model_rating(rating)), 200
@@ -1473,13 +1511,11 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         bool(request.headers.get("X-Authorization") or request.headers.get("Authorization")),
     )
     # Search in-memory first
-    found: Artifact | None = None
-    for art in _STORE.values():
-        if art.metadata.name.lower() == needle:
-            found = art
-            break
-    # If not found, attempt primary store enumeration as fallback
-    if found is None:
+    found: list[Artifact] = [
+        art for art in _STORE.values() if art.metadata.name.lower() == needle
+    ]
+    # If not found, attempt primary store enumeration as fallback (may include duplicates)
+    if not found:
         try:
             primary_items = _ARTIFACT_STORE.list_all()
         except Exception:
@@ -1489,28 +1525,35 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
             md = data.get("metadata", {})
             nm = str(md.get("name", ""))
             if nm.lower() == needle:
-                found = Artifact(
-                    metadata=ArtifactMetadata(
-                        id=str(md.get("id", "")),
-                        name=nm,
-                        type=str(md.get("type", "")),
-                        version=str(md.get("version", "1.0.0")),
-                    ),
-                    data=data.get("data", {}),
+                found.append(
+                    Artifact(
+                        metadata=ArtifactMetadata(
+                            id=str(md.get("id", "")),
+                            name=nm,
+                            type=str(md.get("type", "")),
+                            version=str(md.get("version", "1.0.0")),
+                        ),
+                        data=data.get("data", {}),
+                    )
                 )
-                break
-    if found is None:
+    if not found:
         sample_names = sorted({a.metadata.name for a in _STORE.values()})[:10]
         logger.warning("BY_NAME: no match for '%s'. sample_names=%s", needle, sample_names)
         return jsonify({"message": "No such artifact"}), 404
-    logger.warning(
-        "BY_NAME: match id=%s type=%s has_url=%s data_keys=%s",
-        found.metadata.id,
-        found.metadata.type,
-        isinstance(found.data, dict) and bool(found.data.get("url")),
-        sorted(list((found.data or {}).keys())) if isinstance(found.data, dict) else "not-dict",
-    )
-    return jsonify(artifact_to_dict(found)), 200
+    entries = []
+    seen_ids: set[str] = set()
+    for art in found:
+        if art.metadata.id in seen_ids:
+            continue
+        seen_ids.add(art.metadata.id)
+        entries.append(
+            {
+                "name": art.metadata.name,
+                "id": art.metadata.id,
+                "type": art.metadata.type,
+            }
+        )
+    return jsonify(entries), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
 @_record_timing
