@@ -351,10 +351,17 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
 
 def reset_storage() -> None:
     logger.warning("Resetting in-memory artifact store")
+    try:
+        _ARTIFACT_STORE.clear()
+    except Exception:
+        logger.exception("Primary artifact store clear failed; continuing with in-memory reset")
     _STORE.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
-    _TOKENS.clear()
+    try:
+        _persist_state()
+    except Exception:
+        logger.exception("Failed to persist state after reset")
 
 def _parse_bearer(header_value: str) -> str:
     if not header_value:
@@ -1085,19 +1092,56 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     scores = rating.scores or {}
     lat_ms = rating.latencies or {}
 
-    def score(key: str) -> float:
+    def _score(key: str) -> float:
         try:
             return float(scores.get(key, 0.0) or 0.0)
         except Exception:
             return 0.0
 
-    def latency(key: str) -> float:
+    def _latency(key: str) -> float:
         try:
             return float(lat_ms.get(key, 0) or 0) / 1000.0
         except Exception:
             return 0.0
 
-    spec_map = {
+    size_score = scores.get("size_score") or {
+        "raspberry_pi": 0.0,
+        "jetson_nano": 0.0,
+        "desktop_pc": 0.0,
+        "aws_server": 0.0,
+    }
+
+    response: dict[str, Any] = {
+        "name": rating.summary.get("name"),
+        "category": rating.summary.get("category"),
+        "net_score": _score("net_score"),
+        "net_score_latency": _latency("net_score"),
+        "ramp_up_time": _score("ramp_up_time"),
+        "ramp_up_time_latency": _latency("ramp_up_time"),
+        "bus_factor": _score("bus_factor"),
+        "bus_factor_latency": _latency("bus_factor"),
+        "performance_claims": _score("performance_claims"),
+        "performance_claims_latency": _latency("performance_claims"),
+        "license": _score("license"),
+        "license_latency": _latency("license"),
+        "dataset_and_code_score": _score("dataset_and_code_score"),
+        "dataset_and_code_score_latency": _latency("dataset_and_code_score"),
+        "dataset_quality": _score("dataset_quality"),
+        "dataset_quality_latency": _latency("dataset_quality"),
+        "code_quality": _score("code_quality"),
+        "code_quality_latency": _latency("code_quality"),
+        "reproducibility": _score("reproducibility"),
+        "reproducibility_latency": _latency("reproducibility"),
+        "reviewedness": _score("reviewedness"),
+        "reviewedness_latency": _latency("reviewedness"),
+        "tree_score": _score("tree_score"),
+        "tree_score_latency": _latency("tree_score"),
+        "size_score": size_score,
+        "size_score_latency": _latency("size_score"),
+    }
+
+    # Provide additional alias fields expected by some clients
+    alias_map = {
         "RampUp": "ramp_up_time",
         "Correctness": "code_quality",
         "BusFactor": "bus_factor",
@@ -1107,26 +1151,11 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
         "PullRequest": "performance_claims",
         "NetScore": "net_score",
     }
-
-    try:
-        generated_iso = rating.generated_at.isoformat(timespec="seconds")
-    except TypeError:
-        generated_iso = rating.generated_at.isoformat()
-    if not generated_iso.endswith("Z"):
-        generated_iso = generated_iso.replace("+00:00", "Z")
-        if not generated_iso.endswith("Z"):
-            generated_iso = f"{generated_iso}Z"
-
-    response: dict[str, Any] = {
-        "artifact_id": rating.id,
-        "generated_at": generated_iso,
-        "name": rating.summary.get("name"),
-        "category": rating.summary.get("category"),
-    }
-
-    for external, internal in spec_map.items():
-        response[external] = score(internal)
-        response[f"{external}Latency"] = latency(internal)
+    for alias, internal in alias_map.items():
+        response[alias] = response.get(internal, _score(internal))
+        response[f"{alias}Latency"] = response.get(
+            f"{internal}_latency", _latency(internal)
+        )
 
     return response
 

@@ -372,6 +372,10 @@ class ArtifactStore:
                 response = dynamodb_table.scan()
                 with dynamodb_table.batch_writer() as batch:
                     for item in response.get("Items", []):
+                        pk = item.get("PK", "")
+                        # Preserve auth tokens and other non-artifact entries
+                        if pk.startswith("TOKEN#"):
+                            continue
                         batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
                 logger.warning("Cleared all items from DynamoDB")
             except Exception as e:
