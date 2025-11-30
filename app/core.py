@@ -1734,7 +1734,7 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         if art.metadata.id in seen_ids:
             continue
         seen_ids.add(art.metadata.id)
-        entries.append(_artifact_metadata_view(artifact_to_dict(art)))
+        entries.append(artifact_to_dict(art))
     return jsonify(entries), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
@@ -1795,7 +1795,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme = str(art.data.get("readme", ""))[:2000]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(_artifact_metadata_view(artifact_to_dict(art)))
+                matches.append(artifact_to_dict(art))
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
                     break
