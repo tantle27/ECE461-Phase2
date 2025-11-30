@@ -522,7 +522,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     except Exception:
         logger.exception("Primary store list failed; falling back to memory")
     if not used_primary:
-        store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
+        store_vals = list(_STORE.values())
         items = [
             item
             for item in store_vals
