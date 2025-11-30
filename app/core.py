@@ -296,7 +296,7 @@ def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
     }
 
 def _artifact_metadata_view(obj: Artifact | Mapping[str, Any]) -> dict[str, Any]:
-    """Create a metadata-only view (with aliases) for registry listings."""
+    """Create a metadata-only view for registry listings (includes nested metadata block)."""
     if isinstance(obj, Artifact):
         meta = obj.metadata
     else:
@@ -307,42 +307,27 @@ def _artifact_metadata_view(obj: Artifact | Mapping[str, Any]) -> dict[str, Any]
         meta = ArtifactMetadata(
             id=str(
                 (mdata or {}).get("id")
-                or (mdata or {}).get("ID")
                 or (obj or {}).get("id")  # type: ignore[attr-defined]
-                or (obj or {}).get("ID")  # type: ignore[attr-defined]
                 or ""
             ),
             name=str(
                 (mdata or {}).get("name")
-                or (mdata or {}).get("Name")
                 or (obj or {}).get("name")  # type: ignore[attr-defined]
-                or (obj or {}).get("Name")  # type: ignore[attr-defined]
                 or ""
             ),
             type=str(
                 (mdata or {}).get("type")
-                or (mdata or {}).get("Type")
                 or (obj or {}).get("type")  # type: ignore[attr-defined]
-                or (obj or {}).get("Type")  # type: ignore[attr-defined]
                 or ""
             ),
-            version=str(
-                (mdata or {}).get("version")
-                or (mdata or {}).get("Version")
-                or "1.0.0"
-            ),
+            version=str((mdata or {}).get("version") or "1.0.0"),
         )
-    aliases = _ensure_metadata_aliases(meta)
-    view = {
-        "name": aliases["name"],
-        "Name": aliases["Name"],
-        "id": aliases["id"],
-        "ID": aliases["ID"],
-        "type": aliases["type"],
-        "Type": aliases["Type"],
-        "metadata": aliases,
+    return {
+        "name": meta.name,
+        "id": meta.id,
+        "type": meta.type,
+        "metadata": _ensure_metadata_aliases(meta),
     }
-    return view
 
 
 def _ensure_data_aliases(
@@ -556,7 +541,13 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         items = [item for item in items if item.metadata.name.lower() == needle]
         logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
     elif query.name == "*":
-        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
+        logger.warning("LIST: Wildcard '*' requested; returning all artifacts without pagination")
+        return {
+            "items": [artifact_to_dict(artifact) for artifact in items],
+            "page": 1,
+            "page_size": len(items),
+            "total": len(items),
+        }
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
