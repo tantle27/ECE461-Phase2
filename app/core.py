@@ -965,7 +965,8 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 
     response_items = [_artifact_metadata_view(item) for item in result.get("items", [])]
     response = jsonify(response_items)
-    response.headers["offset"] = str(next_offset)
+    if next_offset < total:
+        response.headers["offset"] = str(next_offset)
     return response, 200
 
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
