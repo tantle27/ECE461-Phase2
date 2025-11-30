@@ -8,7 +8,7 @@ import re
 import time
 import zipfile
 import yaml
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import wraps
@@ -199,22 +199,198 @@ def _percentile(seq: list[float], p: float) -> float:
     idx = max(0, min(len(s) - 1, int(p * (len(s) - 1))))
     return s[idx]
 
+# Field normalization helpers -------------------------------------------------
+
+_METADATA_SECTION_KEYS = (
+    "metadata",
+    "Metadata",
+    "artifact_metadata",
+    "artifactMetadata",
+    "package_metadata",
+    "packageMetadata",
+)
+_DATA_SECTION_KEYS = (
+    "data",
+    "Data",
+    "artifact_data",
+    "artifactData",
+    "package_data",
+    "packageData",
+)
+_METADATA_FIELD_NAMES = {
+    "name",
+    "Name",
+    "artifact_name",
+    "artifactName",
+    "version",
+    "Version",
+    "id",
+    "ID",
+    "artifact_id",
+    "artifactId",
+    "type",
+    "Type",
+    "artifact_type",
+    "artifactType",
+}
+_TYPE_URL_ALIASES = {
+    "model": ["model_link", "modelLink", "model_url", "modelUrl"],
+    "dataset": ["dataset_link", "datasetLink", "dataset_url", "datasetUrl"],
+    "code": ["code_link", "codeLink", "repo_url", "repoUrl"],
+}
+
+
+def _payload_sections(payload: Mapping[str, Any] | None) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    """Split a payload into metadata/data dicts while always including the root."""
+    metadata_sections: list[Mapping[str, Any]] = []
+    data_sections: list[Mapping[str, Any]] = []
+    if isinstance(payload, Mapping):
+        metadata_sections.append(payload)
+        data_sections.append(payload)
+        for key in _METADATA_SECTION_KEYS:
+            section = payload.get(key)
+            if isinstance(section, Mapping):
+                metadata_sections.append(section)
+        for key in _DATA_SECTION_KEYS:
+            section = payload.get(key)
+            if isinstance(section, Mapping):
+                data_sections.append(section)
+    return metadata_sections, data_sections
+
+
+def _coalesce_str(sections: Sequence[Mapping[str, Any]], keys: Sequence[str]) -> str | None:
+    """Return the first truthy string/int value for the provided keys."""
+    for section in sections:
+        if not isinstance(section, Mapping):
+            continue
+        for key in keys:
+            if key in section:
+                value = section[key]
+                if isinstance(value, (str, int, float)):
+                    text = str(value).strip()
+                    if text:
+                        return text
+    return None
+
+
+def _derive_name_from_url(url: str | None) -> str:
+    """Generate a stable artifact name from a URL when no explicit name is provided."""
+    if not url:
+        return "artifact"
+    candidate = url.rstrip("/").split("/")[-1] if "/" in url else url
+    safe = secure_filename(candidate) or candidate or "artifact"
+    return safe
+
+
+def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
+    """Return metadata dict with spec-style casing aliases."""
+    return {
+        "id": meta.id,
+        "ID": meta.id,
+        "artifact_id": meta.id,
+        "artifactId": meta.id,
+        "name": meta.name,
+        "Name": meta.name,
+        "artifact_name": meta.name,
+        "artifactName": meta.name,
+        "type": meta.type,
+        "Type": meta.type,
+        "artifact_type": meta.type,
+        "artifactType": meta.type,
+        "version": meta.version,
+        "Version": meta.version,
+    }
+
+
+def _ensure_data_aliases(
+    artifact_type: str,
+    data: Mapping[str, Any] | None,
+    preferred_url: str | None = None,
+) -> dict[str, Any]:
+    """Provide consistent url/download/model_link aliases for stored artifact data."""
+    normalized: dict[str, Any] = {}
+    if isinstance(data, Mapping):
+        normalized.update(data)
+    url_keys = ["url", "URL", "link", "download_url", "downloadUrl", "DownloadURL"]
+    url_keys.extend(_TYPE_URL_ALIASES.get(artifact_type, []))
+    url = preferred_url or _coalesce_str([normalized], url_keys)
+    if not url:
+        s3_key = normalized.get("s3_key")
+        s3_bucket = normalized.get("s3_bucket")
+        if isinstance(s3_key, str) and s3_key and isinstance(s3_bucket, str) and s3_bucket:
+            url = f"s3://{s3_bucket}/{s3_key}"
+        else:
+            path = normalized.get("path")
+            if isinstance(path, str) and path:
+                url = f"file://{path}"
+    if url:
+        normalized["url"] = url
+        normalized["URL"] = url
+        normalized.setdefault("link", url)
+        normalized.setdefault("download_url", url)
+        normalized.setdefault("downloadUrl", url)
+        normalized.setdefault("DownloadURL", url)
+        for alias in _TYPE_URL_ALIASES.get(artifact_type, []):
+            normalized.setdefault(alias, url)
+    return normalized
+
+
+def _normalize_artifact_request(
+    artifact_type: str,
+    payload: Mapping[str, Any] | None,
+    enforced_id: str | None = None,
+) -> tuple[ArtifactMetadata, dict[str, Any]]:
+    """Normalize arbitrary artifact payloads into canonical metadata/data."""
+    metadata_sections, data_sections = _payload_sections(payload)
+
+    name = _coalesce_str(metadata_sections, ["name", "Name", "artifact_name", "artifactName"])
+    version = _coalesce_str(metadata_sections, ["version", "Version"]) or "1.0.0"
+    artifact_id = enforced_id or _coalesce_str(metadata_sections, ["id", "ID", "artifact_id", "artifactId"])
+
+    url_keys = ["url", "URL", "link", "download_url", "downloadUrl", "DownloadURL"]
+    url_keys.extend(_TYPE_URL_ALIASES.get(artifact_type, []))
+    url = _coalesce_str(data_sections, url_keys)
+    if not url:
+        url = _coalesce_str(metadata_sections, url_keys)
+
+    merged_data: dict[str, Any] = {}
+    for section in data_sections:
+        if not isinstance(section, Mapping):
+            continue
+        for key, value in section.items():
+            if key in _METADATA_FIELD_NAMES:
+                continue
+            merged_data[key] = value
+
+    if not artifact_id:
+        artifact_id = str(int(time.time() * 1000))
+    if not name:
+        name = _derive_name_from_url(url)
+
+    normalized_data = _ensure_data_aliases(artifact_type, merged_data, url)
+
+    metadata = ArtifactMetadata(
+        id=artifact_id,
+        name=name,
+        type=artifact_type,
+        version=version,
+    )
+    return metadata, normalized_data
+
 # ---------------------------------------------------------------------------
 # Helper utilities
 # ---------------------------------------------------------------------------
 
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
+    metadata_block = _ensure_metadata_aliases(artifact.metadata)
+    data_block = _ensure_data_aliases(artifact.metadata.type, artifact.data)
+    artifact.data = data_block  # keep in-memory copy normalized for future lookups
     return {
         "id": artifact.metadata.id,
         "name": artifact.metadata.name,
         "type": artifact.metadata.type,
-        "metadata": {
-            "id": artifact.metadata.id,
-            "name": artifact.metadata.name,
-            "type": artifact.metadata.type,
-            "version": artifact.metadata.version,
-        },
-        "data": artifact.data,
+        "metadata": metadata_block,
+        "data": data_block,
     }
 
 def _store_key(artifact_type: str, artifact_id: str) -> str:
@@ -222,6 +398,7 @@ def _store_key(artifact_type: str, artifact_id: str) -> str:
 
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
+    artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
     try:
         _ARTIFACT_STORE.save(
             artifact.metadata.type,
@@ -238,47 +415,56 @@ def save_artifact(artifact: Artifact) -> Artifact:
         pass
     return artifact
 
+def _artifact_from_raw(raw: Mapping[str, Any], default_type: str, default_id: str) -> Artifact:
+    """Convert stored dict representation into an Artifact with normalized data."""
+    metadata_dict = raw.get("metadata", {}) if isinstance(raw, Mapping) else {}
+    data_dict = raw.get("data", {}) if isinstance(raw, Mapping) else {}
+    artifact_id = str(
+        metadata_dict.get("id")
+        or metadata_dict.get("ID")
+        or raw.get("id")
+        or raw.get("ID")
+        or default_id
+    )
+    artifact_type = str(
+        metadata_dict.get("type")
+        or metadata_dict.get("Type")
+        or raw.get("type")
+        or raw.get("Type")
+        or default_type
+    )
+    artifact = Artifact(
+        metadata=ArtifactMetadata(
+            id=artifact_id,
+            name=str(metadata_dict.get("name", metadata_dict.get("Name", ""))),
+            type=artifact_type,
+            version=str(metadata_dict.get("version", metadata_dict.get("Version", "1.0.0"))),
+        ),
+        data=data_dict if isinstance(data_dict, dict) else {},
+    )
+    artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
+    if not artifact.metadata.name:
+        artifact.metadata = ArtifactMetadata(
+            id=artifact.metadata.id,
+            name=_derive_name_from_url(artifact.data.get("url")),
+            type=artifact.metadata.type,
+            version=artifact.metadata.version,
+        )
+    return artifact
+
 def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
     logger.info("Fetching artifact %s/%s", artifact_type, artifact_id)
     try:
         data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
         if data:
-            md = data.get("metadata", {})
-            artifact_data = data.get("data", {})
-            # Ensure required url field if possible
-            if isinstance(artifact_data, dict) and "url" not in artifact_data:
-                try:
-                    if artifact_data.get("s3_key") and artifact_data.get("s3_bucket"):
-                        artifact_data["url"] = f"s3://{artifact_data['s3_bucket']}/{artifact_data['s3_key']}"
-                    elif artifact_data.get("path"):
-                        # Use file:// relative path if absolute not available
-                        artifact_data["url"] = f"file://{artifact_data['path']}"
-                except Exception:
-                    pass
-            art = Artifact(
-                metadata=ArtifactMetadata(
-                    id=str(md.get("id", artifact_id)),
-                    name=str(md.get("name", "")),
-                    type=str(md.get("type", artifact_type)),
-                    version=str(md.get("version", "1.0.0")),
-                ),
-                data=artifact_data,
-            )
+            art = _artifact_from_raw(data, artifact_type, artifact_id)
             logger.warning("FETCH: Found in primary store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
             return art
     except Exception:
         logger.exception("Primary store fetch failed; falling back to memory")
     art = _STORE.get(_store_key(artifact_type, artifact_id))
     if art:
-        # Ensure url on memory copy as well
-        try:
-            if isinstance(art.data, dict) and "url" not in art.data:
-                if art.data.get("s3_key") and art.data.get("s3_bucket"):
-                    art.data["url"] = f"s3://{art.data['s3_bucket']}/{art.data['s3_key']}"
-                elif art.data.get("path"):
-                    art.data["url"] = f"file://{art.data['path']}"
-        except Exception:
-            pass
+        art.data = _ensure_data_aliases(art.metadata.type, art.data)
         logger.warning("FETCH: Found in memory store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
     else:
         logger.warning("FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id)
@@ -286,12 +472,30 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
 
 def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     for a in _STORE.values():
-        if a.metadata.type == artifact_type and str((a.data or {}).get("url")) == url:
+        data = a.data or {}
+        existing = (
+            data.get("url")
+            or data.get("URL")
+            or data.get("download_url")
+            or data.get("downloadUrl")
+            or data.get("DownloadURL")
+        )
+        if a.metadata.type == artifact_type and str(existing) == url:
             return True
     try:
         items = _ARTIFACT_STORE.list_all(artifact_type)
         for d in items or []:
-            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (d.get("data", {}) or {}).get("url") == url:
+            data_block = (d.get("data", {}) or {})
+            existing = (
+                data_block.get("url")
+                or data_block.get("URL")
+                or data_block.get("download_url")
+                or data_block.get("downloadUrl")
+                or data_block.get("DownloadURL")
+            )
+            meta = (d.get("metadata", {}) or {})
+            meta_type = meta.get("type") or meta.get("Type")
+            if meta_type == artifact_type and existing == url:
                 return True
     except Exception:
         pass
@@ -313,18 +517,22 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
         if primary_items:
             for data in primary_items:
-                md = data.get("metadata", {})
-                items.append(
-                    Artifact(
-                        metadata=ArtifactMetadata(
-                            id=str(md.get("id", "")),
-                            name=str(md.get("name", "")),
-                            type=str(md.get("type", "")),
-                            version=str(md.get("version", "1.0.0")),
-                        ),
-                        data=data.get("data", {}),
-                    )
+                md = data.get("metadata", {}) if isinstance(data, Mapping) else {}
+                default_type = str(
+                    md.get("type")
+                    or md.get("Type")
+                    or query.artifact_type
+                    or data.get("type")
+                    or ""
                 )
+                default_id = str(
+                    md.get("id")
+                    or md.get("ID")
+                    or data.get("id")
+                    or data.get("ID")
+                    or ""
+                )
+                items.append(_artifact_from_raw(data, default_type or "", default_id or ""))
             used_primary = True
     except Exception:
         logger.exception("Primary store list failed; falling back to memory")
@@ -350,6 +558,14 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     elif query.name == "*":
         logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
 
+    if query.name == "*" and query.page <= 1:
+        logger.warning("LIST: Wildcard request returning %d artifacts without pagination", len(items))
+        return {
+            "items": [artifact_to_dict(artifact) for artifact in items],
+            "page": 1,
+            "page_size": len(items),
+            "total": len(items),
+        }
     return _paginate_artifacts(items, query.page, query.page_size)
 
 def reset_storage() -> None:
@@ -650,34 +866,19 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "invalid artifact_type"}), 400
 
     payload = _json_body()
-    if "url" not in payload or not isinstance(payload["url"], str) or not payload["url"].strip():
+    metadata, normalized_data = _normalize_artifact_request(artifact_type, payload)
+    url_value = normalized_data.get("url")
+    if not isinstance(url_value, str) or not url_value.strip():
         return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
 
-    url = payload["url"].strip()
+    url = url_value.strip()
     # Conflict if same type+url already registered
     if _duplicate_url_exists(artifact_type, url):
         return jsonify({"message": "Artifact exists already."}), 409
 
-    # Extract name from URL - try to preserve namespace/org structure
-    url_parts = url.rstrip("/").split("/")
-    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos"):
-        # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
-        name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
-    else:
-        name_guess = url_parts[-1] if url_parts else "artifact"
-    name_guess = secure_filename(name_guess) or "artifact"
-    art_id = str(int(time.time() * 1000))
-    artifact = Artifact(
-        metadata=ArtifactMetadata(
-            id=art_id,
-            name=name_guess,
-            type=artifact_type,
-            version="1.0.0",
-        ),
-        data={"url": url},
-    )
+    artifact = Artifact(metadata=metadata, data=normalized_data)
     save_artifact(artifact)
-    _audit_add(artifact_type, art_id, "CREATE", name_guess)
+    _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
     return jsonify(artifact_to_dict(artifact)), 201
 
 # -------------------- Enumerate artifacts --------------------
@@ -756,18 +957,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     )
 
     response_items = result.get("items", [])
-    metadata_list = []
-    for entry in response_items:
-        meta = (entry.get("metadata") or {}) if isinstance(entry, dict) else {}
-        metadata_list.append(
-            {
-                "name": meta.get("name"),
-                "id": meta.get("id"),
-                "type": meta.get("type"),
-            }
-        )
-
-    response = jsonify(metadata_list)
+    response = jsonify(response_items)
     if next_offset < total:
         response.headers["offset"] = str(next_offset)
     return response, 200
@@ -815,26 +1005,29 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
     body = _json_body() or {}
     if not isinstance(body, dict):
         return jsonify({"message": "Artifact payload must be object"}), 400
-    md = body.get("metadata") or {}
-    dt = body.get("data") or {}
-    if not isinstance(md, dict) or not isinstance(dt, dict):
-        return jsonify({"message": "Missing metadata or data"}), 400
-    if str(md.get("id", "")) != artifact_id or str(md.get("type", "")) != artifact_type:
+    metadata_sections, data_sections = _payload_sections(body)
+    incoming_id = _coalesce_str(metadata_sections, ["id", "ID", "artifact_id", "artifactId"])
+    incoming_type = _coalesce_str(metadata_sections, ["type", "Type", "artifact_type", "artifactType"])
+    incoming_name = _coalesce_str(metadata_sections, ["name", "Name", "artifact_name", "artifactName"])
+    url_candidate = _coalesce_str(
+        data_sections,
+        ["url", "URL", "link", "download_url", "downloadUrl", "DownloadURL"] + _TYPE_URL_ALIASES.get(artifact_type, []),
+    )
+
+    if incoming_id and incoming_id != artifact_id:
         return jsonify({"message": "metadata.id and metadata.type must match path"}), 400
-    if not md.get("name"):
+    if incoming_type and incoming_type != artifact_type:
+        return jsonify({"message": "metadata.id and metadata.type must match path"}), 400
+    if not incoming_name:
         return jsonify({"message": "metadata.name required"}), 400
-    if "url" not in dt or not isinstance(dt.get("url"), str) or not dt.get("url").strip():
+    if not url_candidate:
         return jsonify({"message": "data.url required"}), 400
 
-    art = Artifact(
-        metadata=ArtifactMetadata(
-            id=artifact_id,
-            name=str(md["name"]),
-            type=artifact_type,
-            version=str(md.get("version", "1.0.0")),
-        ),
-        data={"url": dt["url"].strip()} | {k: v for k, v in dt.items() if k != "url"},
-    )
+    metadata, normalized_data = _normalize_artifact_request(artifact_type, body, enforced_id=artifact_id)
+    if "url" not in normalized_data or not isinstance(normalized_data["url"], str):
+        return jsonify({"message": "data.url required"}), 400
+
+    art = Artifact(metadata=metadata, data=normalized_data)
     save_artifact(art)
     _audit_add(artifact_type, artifact_id, "UPDATE", art.metadata.name)
     return jsonify({"message": "Artifact is updated."}), 200
@@ -946,6 +1139,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
             "content_type": f.mimetype,
             "size": dest.stat().st_size,
         }
+    data = _ensure_data_aliases(artifact_type, data)
     art = Artifact(
         metadata=ArtifactMetadata(
             id=artifact_id,
@@ -1546,13 +1740,7 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         if art.metadata.id in seen_ids:
             continue
         seen_ids.add(art.metadata.id)
-        entries.append(
-            {
-                "name": art.metadata.name,
-                "id": art.metadata.id,
-                "type": art.metadata.type,
-            }
-        )
+        entries.append(artifact_to_dict(art))
     return jsonify(entries), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
