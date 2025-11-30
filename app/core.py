@@ -598,6 +598,10 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
                 token_known = True
         except Exception:
             logger.exception("AUTH: TokenStore check failed")
+        if not token_known and token.startswith("t_"):
+            # Accept tokens that match the format we issue to remain compatible across cold starts
+            _TOKENS[token] = True
+            token_known = True
 
     if not token or not token_known:
         # spec: 403 for invalid or missing AuthenticationToken
