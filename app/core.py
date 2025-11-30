@@ -295,6 +295,55 @@ def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
         "Version": meta.version,
     }
 
+def _artifact_metadata_view(obj: Artifact | Mapping[str, Any]) -> dict[str, Any]:
+    """Create a metadata-only view (with aliases) for registry listings."""
+    if isinstance(obj, Artifact):
+        meta = obj.metadata
+    else:
+        if isinstance(obj, Mapping):
+            mdata = obj.get("metadata", obj)
+        else:
+            mdata = {}
+        meta = ArtifactMetadata(
+            id=str(
+                (mdata or {}).get("id")
+                or (mdata or {}).get("ID")
+                or (obj or {}).get("id")  # type: ignore[attr-defined]
+                or (obj or {}).get("ID")  # type: ignore[attr-defined]
+                or ""
+            ),
+            name=str(
+                (mdata or {}).get("name")
+                or (mdata or {}).get("Name")
+                or (obj or {}).get("name")  # type: ignore[attr-defined]
+                or (obj or {}).get("Name")  # type: ignore[attr-defined]
+                or ""
+            ),
+            type=str(
+                (mdata or {}).get("type")
+                or (mdata or {}).get("Type")
+                or (obj or {}).get("type")  # type: ignore[attr-defined]
+                or (obj or {}).get("Type")  # type: ignore[attr-defined]
+                or ""
+            ),
+            version=str(
+                (mdata or {}).get("version")
+                or (mdata or {}).get("Version")
+                or "1.0.0"
+            ),
+        )
+    aliases = _ensure_metadata_aliases(meta)
+    view = {
+        "name": aliases["name"],
+        "Name": aliases["Name"],
+        "id": aliases["id"],
+        "ID": aliases["ID"],
+        "type": aliases["type"],
+        "Type": aliases["Type"],
+        "metadata": aliases,
+    }
+    return view
+
 
 def _ensure_data_aliases(
     artifact_type: str,
@@ -914,10 +963,9 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         current_page, page_size, total, next_offset, len(result.get("items", []))
     )
 
-    response_items = result.get("items", [])
+    response_items = [_artifact_metadata_view(item) for item in result.get("items", [])]
     response = jsonify(response_items)
-    if next_offset < total:
-        response.headers["offset"] = str(next_offset)
+    response.headers["offset"] = str(next_offset)
     return response, 200
 
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
@@ -1694,7 +1742,7 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         if art.metadata.id in seen_ids:
             continue
         seen_ids.add(art.metadata.id)
-        entries.append(artifact_to_dict(art))
+        entries.append(_artifact_metadata_view(artifact_to_dict(art)))
     return jsonify(entries), 200
 
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
@@ -1755,13 +1803,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme = str(art.data.get("readme", ""))[:2000]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(
-                    {
-                        "name": art.metadata.name,
-                        "id": art.metadata.id,
-                        "type": art.metadata.type,
-                    }
-                )
+                matches.append(_artifact_metadata_view(artifact_to_dict(art)))
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
                     break
