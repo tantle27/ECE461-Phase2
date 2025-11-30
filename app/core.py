@@ -943,7 +943,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         current_page, page_size, total, next_offset, len(result.get("items", []))
     )
 
-    response_items = [_artifact_metadata_view(item) for item in result.get("items", [])]
+    response_items = result.get("items", [])
     response = jsonify(response_items)
     if next_offset < total:
         response.headers["offset"] = str(next_offset)
