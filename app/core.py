@@ -849,34 +849,19 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "invalid artifact_type"}), 400
 
     payload = _json_body()
-    if "url" not in payload or not isinstance(payload["url"], str) or not payload["url"].strip():
+    metadata, normalized_data = _normalize_artifact_request(artifact_type, payload)
+    url_value = normalized_data.get("url")
+    if not isinstance(url_value, str) or not url_value.strip():
         return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
 
-    url = payload["url"].strip()
+    url = url_value.strip()
     # Conflict if same type+url already registered
     if _duplicate_url_exists(artifact_type, url):
         return jsonify({"message": "Artifact exists already."}), 409
 
-    # Extract name from URL - try to preserve namespace/org structure
-    url_parts = url.rstrip("/").split("/")
-    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos"):
-        # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
-        name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
-    else:
-        name_guess = url_parts[-1] if url_parts else "artifact"
-    name_guess = secure_filename(name_guess) or "artifact"
-    art_id = str(int(time.time() * 1000))
-    artifact = Artifact(
-        metadata=ArtifactMetadata(
-            id=art_id,
-            name=name_guess,
-            type=artifact_type,
-            version="1.0.0",
-        ),
-        data={"url": url},
-    )
+    artifact = Artifact(metadata=metadata, data=normalized_data)
     save_artifact(artifact)
-    _audit_add(artifact_type, art_id, "CREATE", name_guess)
+    _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
     return jsonify(artifact_to_dict(artifact)), 201
 
 # -------------------- Enumerate artifacts --------------------
