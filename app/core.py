@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import io
 import json
 import logging
@@ -87,6 +90,7 @@ _DEFAULT_USER = {
     "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
     "role": "admin",
 }
+_AUTH_SECRET = os.environ.get("AUTH_SECRET", _DEFAULT_USER["password"])
 _REGEX_MAX_PATTERN_LENGTH = 500
 _REGEX_MAX_TIME_SECONDS = 2.0
 _REGEX_MAX_ARTIFACTS = 1000
@@ -599,6 +603,29 @@ def _parse_bearer(header_value: str) -> str:
         return v.split(" ", 1)[1].strip()
     return v
 
+def _mint_token(username: str, is_admin: bool) -> str:
+    payload = json.dumps({"u": username, "adm": is_admin, "ts": int(time.time())})
+    sig = hmac.new(_AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    encoded = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{encoded}.{sig}"
+
+def _decode_token(token: str) -> tuple[str, bool] | None:
+    if not token or "." not in token:
+        return None
+    payload_part, sig = token.rsplit(".", 1)
+    padding = "=" * (-len(payload_part) % 4)
+    try:
+        payload_json = base64.urlsafe_b64decode((payload_part + padding).encode("ascii")).decode("utf-8")
+        data = json.loads(payload_json)
+    except Exception:
+        return None
+    expected = hmac.new(_AUTH_SECRET.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, sig):
+        return None
+    username = str(data.get("u", ""))
+    is_admin = bool(data.get("adm"))
+    return username, is_admin
+
 def _require_auth(admin: bool = False) -> tuple[str, bool]:
     # Per spec, use X-Authorization; Authorization required in your system
     token_hdr = request.headers.get("X-Authorization", "")
@@ -624,6 +651,11 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
                 token_known = True
         except Exception:
             logger.exception("AUTH: TokenStore check failed")
+        if not token_known:
+            parsed = _decode_token(token)
+            if parsed:
+                _TOKENS[token] = bool(parsed[1])
+                token_known = True
 
     if not token or not token_known:
         # spec: 403 for invalid or missing AuthenticationToken
@@ -968,7 +1000,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
 
     # Default user is always admin
     is_admin = True
-    tok = f"t_{int(time.time()*1000)}"
+    tok = _mint_token(username, is_admin)
     _TOKENS[tok] = is_admin
     logger.warning(
         f"AUTH: Created token for user '{username}', is_admin={is_admin}, token_count={len(_TOKENS)}"
