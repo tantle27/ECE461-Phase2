@@ -687,21 +687,36 @@ def _sanitize_search_pattern(raw_pattern: str) -> str:
     allowed = re.sub(r"\+{3,}", "++", allowed)
     return allowed or ".*"
 
-def _regex_complexity_reason(pattern: str) -> str | None:
-    """Return reason string if the sanitized regex is considered dangerous."""
+_REGEX_LARGE_QUANTIFIER = re.compile(r"\{(\d+)(?:,(\d+)?)?\}")
+
+def _regex_complexity_reason(raw_pattern: str, sanitized_pattern: str) -> str | None:
+    """Return reason string if the regex is considered dangerous."""
+    # Check curly quantifiers in the raw pattern
+    for match in _REGEX_LARGE_QUANTIFIER.finditer(raw_pattern):
+        lower = int(match.group(1))
+        upper = int(match.group(2)) if match.group(2) else lower
+        if lower > 500 or upper > 500:
+            return "quantifier exceeds 500 repetitions"
+        if upper - lower > 200:
+            return "quantifier span too large"
+
+    # Nested quantified groups like (a+)+ or (foo*)*
+    if re.search(r"\([^)]*[\+\*][^)]*\)[\+\*]", raw_pattern):
+        return "nested quantified group"
+
     for compiled, reason in _REGEX_COMPLEXITY_RULES:
         try:
-            if compiled.search(pattern):
+            if compiled.search(sanitized_pattern):
                 return reason
         except re.error:
             return "regex compilation error during complexity check"
-    if pattern.count("(") > 64:
+    if sanitized_pattern.count("(") > 64:
         return "too many capturing groups"
-    if pattern.count("|") > 64:
+    if sanitized_pattern.count("|") > 64:
         return "too many alternations"
-    if pattern.count("*") > 96 or pattern.count("+") > 96:
+    if sanitized_pattern.count("*") > 96 or sanitized_pattern.count("+") > 96:
         return "too many quantifiers"
-    if pattern.count("?") > 96:
+    if sanitized_pattern.count("?") > 96:
         return "too many lazy quantifiers"
     return None
 
@@ -1768,7 +1783,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
     try:
         sanitized = _sanitize_search_pattern(regex)
-        danger = _regex_complexity_reason(sanitized)
+        danger = _regex_complexity_reason(regex, sanitized)
         if danger:
             logger.warning("BY_REGEX: Rejecting sanitized pattern '%s' reason=%s", sanitized, danger)
             return jsonify({"message": "Regex pattern too complex"}), 400
