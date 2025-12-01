@@ -14,7 +14,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, cast, BinaryIO
+from typing import Any, Callable, cast, BinaryIO
+import threading
 
 from flask import Blueprint, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
@@ -84,15 +85,20 @@ _DEFAULT_USER = {
     "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
     "role": "admin",
 }
-_REGEX_CACHE: dict[str, re.Pattern[str]] = {}
-_REGEX_CACHE_MAX = 16
-_REGEX_COMPLEXITY_RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\((?:[^()]*\.\*){2,}[^)]*\)[\+\*]"), "group with repeated '.*' followed by quantifier"),
-    (re.compile(r"\((?:[^()]*\.\+){2,}[^)]*\)[\+\*]"), "group with repeated '.+' followed by quantifier"),
-    (re.compile(r"\((?:[^()]*[a-zA-Z0-9]\+){3,}[^)]*\)[\+\*]"), "group with multiple literal+ segments"),
-    (re.compile(r"(?:\.\*){3,}"), "contains three or more standalone '.*' segments"),
-    (re.compile(r"(?:\.\+){3,}"), "contains three or more standalone '.+' segments"),
+_REGEX_MAX_PATTERN_LENGTH = 500
+_DANGEROUS_REGEX_SNIPPETS: list[re.Pattern[str]] = [
+    re.compile(r"\((?:[^()\\]|\\.)+\)[*+]\s*[*+]+"),  # nested quantified groups like (.+)+
+    re.compile(r"\(\?:\.\+\)\+"),  # (?:.+)+
+    re.compile(r"\(\?:\.\*\)\+"),  # (?:.*)+
+    re.compile(r"^\((?:[^()\\]|\\.)+\)\+$"),  # ^(a+)+$ style patterns
+    re.compile(r"\([^)]+\+\)\{3,\}"),  # repeated literal+ groups
+    re.compile(r"\([^)]+\+\)\+.*\([^)]+\+\)\+"),  # multiple nested literal+ groups
+    re.compile(r"\([^|)]+\|[^)]+\)[*+]+"),  # (a|aa)* style alternations
+    re.compile(r"\(\?:[^|)]+\|[^)]+\)[*+]+"),  # non-capturing alternation with quantifier
+    re.compile(r"\([^\)]+\{\d+(?:,\d+)?\}[^\)]*\)\s*\{\d+(?:,\d+)?\}"),  # nested counted quantifiers
 ]
+_LARGE_QUANTIFIER_THRESHOLD = 1000
+_LARGE_QUANTIFIER_RE = re.compile(r"\{(\d+)(?:,(\d+))?\}")
 
 # ---------------------------------------------------------------------------
 # Observability helpers
@@ -661,64 +667,89 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     from flask import abort
     abort(response)
 
-def _sanitize_search_pattern(raw_pattern: str) -> str:
-    """Sanitize regex pattern to prevent catastrophic backtracking"""
-    if len(raw_pattern) > 1000:
-        raw_pattern = raw_pattern[:1000]
-
-    # Remove or clip dangerous nested constructs (best-effort)
-    dangerous_patterns = [
-        r"(\w+\*){2,}",   # nested word+star chains
-        r"(\.{1,2}\+)+",
-        r"(\(.*\)\+){2,}",  # nested groups with quantifiers
-        r"\(\?[:!=P<]",  # advanced group prefixes
-    ]
-    for danger in dangerous_patterns:
+def _is_dangerous_regex(raw_pattern: str) -> bool:
+    """Best-effort detector for catastrophic-backtracking patterns."""
+    if not raw_pattern:
+        return False
+    for snippet in _DANGEROUS_REGEX_SNIPPETS:
         try:
-            raw_pattern = re.sub(danger, "", raw_pattern)
-        except Exception:
-            pass
-
-    # Allow safe characters; exclude braces {} and backreferences
-    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
-    allowed = re.sub(r"\\[dDwWsS]", "", allowed)  # remove shorthand classes
-    # Limit consecutive wildcards/plus
-    allowed = re.sub(r"\*{3,}", "**", allowed)
-    allowed = re.sub(r"\+{3,}", "++", allowed)
-    return allowed or ".*"
-
-_REGEX_LARGE_QUANTIFIER = re.compile(r"\{(\d+)(?:,(\d+)?)?\}")
-
-def _regex_complexity_reason(raw_pattern: str, sanitized_pattern: str) -> str | None:
-    """Return reason string if the regex is considered dangerous."""
-    # Check curly quantifiers in the raw pattern
-    for match in _REGEX_LARGE_QUANTIFIER.finditer(raw_pattern):
-        lower = int(match.group(1))
-        upper = int(match.group(2)) if match.group(2) else lower
-        if lower > 500 or upper > 500:
-            return "quantifier exceeds 500 repetitions"
-        if upper - lower > 200:
-            return "quantifier span too large"
-
-    # Nested quantified groups like (a+)+ or (foo*)*
-    if re.search(r"\([^)]*[\+\*][^)]*\)[\+\*]", raw_pattern):
-        return "nested quantified group"
-
-    for compiled, reason in _REGEX_COMPLEXITY_RULES:
-        try:
-            if compiled.search(sanitized_pattern):
-                return reason
+            if snippet.search(raw_pattern):
+                return True
         except re.error:
-            return "regex compilation error during complexity check"
-    if sanitized_pattern.count("(") > 64:
-        return "too many capturing groups"
-    if sanitized_pattern.count("|") > 64:
-        return "too many alternations"
-    if sanitized_pattern.count("*") > 96 or sanitized_pattern.count("+") > 96:
-        return "too many quantifiers"
-    if sanitized_pattern.count("?") > 96:
-        return "too many lazy quantifiers"
-    return None
+            return True
+    for match in _LARGE_QUANTIFIER_RE.finditer(raw_pattern):
+        try:
+            lower = int(match.group(1))
+            upper = int(match.group(2)) if match.group(2) else None
+        except ValueError:
+            continue
+        limits = [lower]
+        if upper is not None:
+            limits.append(upper)
+        if any(limit >= _LARGE_QUANTIFIER_THRESHOLD for limit in limits):
+            return True
+    return False
+
+def _safe_eval_with_timeout(fn: Callable[[], Any], timeout_ms: int) -> tuple[bool, Any | None]:
+    """Execute callable within timeout returning (completed, result)."""
+    result: dict[str, Any] = {}
+    done = threading.Event()
+
+    def _runner() -> None:
+        try:
+            result["value"] = fn()
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join(timeout_ms / 1000.0)
+    if not done.is_set():
+        return False, None
+    return True, result.get("value")
+
+def _safe_name_match(
+    pattern: re.Pattern[str],
+    candidate: str,
+    *,
+    exact_match: bool,
+    raw_pattern: str,
+    context: str,
+) -> bool:
+    """Match helper with timeout + descriptive errors."""
+    if not candidate:
+        return False
+    matcher = pattern.fullmatch if exact_match else pattern.search
+    ok, matched = _safe_eval_with_timeout(lambda: matcher(candidate) is not None, timeout_ms=500)
+    if not ok:
+        logger.warning(
+            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s",
+            raw_pattern,
+            candidate[:120],
+            context,
+        )
+        raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
+    return bool(matched)
+
+def _safe_text_search(
+    pattern: re.Pattern[str],
+    text: str,
+    *,
+    raw_pattern: str,
+    context: str,
+) -> bool:
+    if not text:
+        return False
+    ok, matched = _safe_eval_with_timeout(lambda: pattern.search(text) is not None, timeout_ms=500)
+    if not ok:
+        logger.warning(
+            "REGEX_TIMEOUT: pattern='%s' context=%s text_preview='%s'",
+            raw_pattern,
+            context,
+            text[:120],
+        )
+        raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
+    return bool(matched)
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
