@@ -86,6 +86,13 @@ _DEFAULT_USER = {
 }
 _REGEX_CACHE: dict[str, re.Pattern[str]] = {}
 _REGEX_CACHE_MAX = 16
+_REGEX_COMPLEXITY_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\((?:[^()]*\.\*){2,}[^)]*\)[\+\*]"), "group with repeated '.*' followed by quantifier"),
+    (re.compile(r"\((?:[^()]*\.\+){2,}[^)]*\)[\+\*]"), "group with repeated '.+' followed by quantifier"),
+    (re.compile(r"\((?:[^()]*[a-zA-Z0-9]\+){3,}[^)]*\)[\+\*]"), "group with multiple literal+ segments"),
+    (re.compile(r"(?:\.\*){3,}"), "contains three or more standalone '.*' segments"),
+    (re.compile(r"(?:\.\+){3,}"), "contains three or more standalone '.+' segments"),
+]
 
 # ---------------------------------------------------------------------------
 # Observability helpers
@@ -679,6 +686,24 @@ def _sanitize_search_pattern(raw_pattern: str) -> str:
     allowed = re.sub(r"\*{3,}", "**", allowed)
     allowed = re.sub(r"\+{3,}", "++", allowed)
     return allowed or ".*"
+
+def _regex_complexity_reason(pattern: str) -> str | None:
+    """Return reason string if the sanitized regex is considered dangerous."""
+    for compiled, reason in _REGEX_COMPLEXITY_RULES:
+        try:
+            if compiled.search(pattern):
+                return reason
+        except re.error:
+            return "regex compilation error during complexity check"
+    if pattern.count("(") > 64:
+        return "too many capturing groups"
+    if pattern.count("|") > 64:
+        return "too many alternations"
+    if pattern.count("*") > 96 or pattern.count("+") > 96:
+        return "too many quantifiers"
+    if pattern.count("?") > 96:
+        return "too many lazy quantifiers"
+    return None
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -1743,6 +1768,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
     try:
         sanitized = _sanitize_search_pattern(regex)
+        danger = _regex_complexity_reason(sanitized)
+        if danger:
+            logger.warning("BY_REGEX: Rejecting sanitized pattern '%s' reason=%s", sanitized, danger)
+            return jsonify({"message": "Regex pattern too complex"}), 400
         pattern = _REGEX_CACHE.get(sanitized)
         if pattern is None:
             pattern = re.compile(sanitized, re.IGNORECASE)
@@ -1769,7 +1798,8 @@ def by_regex_route() -> tuple[Response, int] | Response:
             signal.signal(signal.SIGALRM, _test_timeout)
             signal.alarm(1)  # 1 second max for self-test
             try:
-                _ = pattern.search("a" * 100)
+                _ = pattern.search("a" * 1000)
+                _ = pattern.search("ab" * 500)
             finally:
                 signal.alarm(0)
         except (TimeoutError, Exception):
@@ -1788,11 +1818,13 @@ def by_regex_route() -> tuple[Response, int] | Response:
     logger.warning("BY_REGEX: scanning_count=%d (memory only)", len(artifacts_to_check))
 
     matches: list[dict[str, Any]] = []
+    scanned = 0
     for art in artifacts_to_check:
         # Check time budget
         if time.time() > deadline:
             logger.warning("BY_REGEX: Timeout approaching, returning partial results")
             break
+        scanned += 1
         readme = ""
         if isinstance(art.data, dict):
             # Reduce readme size for matching
@@ -1815,6 +1847,12 @@ def by_regex_route() -> tuple[Response, int] | Response:
     if not matches:
         logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
         return jsonify({"message": "No artifact found under this regex"}), 404
+    logger.warning(
+        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs",
+        len(matches),
+        scanned,
+        time.time() - start_time,
+    )
     return jsonify(matches), 200
 
 # -------------------- Audit log --------------------
