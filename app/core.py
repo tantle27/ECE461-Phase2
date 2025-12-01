@@ -91,15 +91,18 @@ _REGEX_MAX_ARTIFACTS = 1000
 _REGEX_MAX_MATCHES = 100
 _REGEX_README_TRUNCATE = 10000
 _DANGEROUS_REGEX_SNIPPETS: list[re.Pattern[str]] = [
-    re.compile(r"\((?:[^()\\]|\\.)+\)[*+]\s*[*+]+"),  # nested quantified groups like (.+)+
-    re.compile(r"\(\?:\.\+\)\+"),  # (?:.+)+
+    re.compile(r"\((?:[^()\\]|\\.)+\)[*+]\s*[*+]+"),  # e.g., (.+)+, (.*)+, (\w+)+
+    re.compile(r"\(\?:\.\+\)\+"),  # (?:.+)+ (explicit non-capturing)
     re.compile(r"\(\?:\.\*\)\+"),  # (?:.*)+
-    re.compile(r"^\((?:[^()\\]|\\.)+\)\+$"),  # ^(a+)+$ style patterns
-    re.compile(r"\([^)]+\+\)\{3,\}"),  # repeated literal+ groups
-    re.compile(r"\([^)]+\+\)\+.*\([^)]+\+\)\+"),  # multiple nested literal+ groups
-    re.compile(r"\([^|)]+\|[^)]+\)[*+]+"),  # (a|aa)* style alternations
-    re.compile(r"\(\?:[^|)]+\|[^)]+\)[*+]+"),  # non-capturing alternation with quantifier
-    re.compile(r"\([^\)]+\{\d+(?:,\d+)?\}[^\)]*\)\s*\{\d+(?:,\d+)?\}"),  # nested counted quantifiers
+    re.compile(r"^\((?:[^()\\]|\\.)+\)\+$"),  # ^(a+)+$-like
+    re.compile(r"\([^)]+\+\)\{3,\}"),  # Three or more (something+)
+    re.compile(r"\([^)]+\+\)\+.*\([^)]+\+\)\+"),  # Multiple nested quantifier groups
+    re.compile(r"\([^|)]+\|[^)]+\)[*+]+"),  # (a|aa)*, (a|ab)+, etc.
+    re.compile(r"\([^|)]+\|[^)]+\)\*$"),  # (a|aa)*$ anchored
+    re.compile(r"\(\?:[^|)]+\|[^)]+\)[*+]+"),  # Non-capturing alternation loops
+    re.compile(r"\(\?:[^|)]+\|[^)]+\)\*$"),  # Non-capturing alternation anchored
+    # Nested counted quantifiers: (a{1,99999}){1,99999}
+    re.compile(r"\([^\)]+\{\d+(?:,\d+)?\}[^\)]*\)\s*\{\d+(?:,\d+)?\}"),
 ]
 _LARGE_QUANTIFIER_THRESHOLD = 1000
 _LARGE_QUANTIFIER_RE = re.compile(r"\{(\d+)(?:,(\d+))?\}")
@@ -676,25 +679,30 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _is_dangerous_regex(raw_pattern: str) -> bool:
-    """Best-effort detector for catastrophic-backtracking patterns."""
-    if not raw_pattern:
+    """
+    Heuristic detector for catastrophic-backtracking-prone patterns.
+    We prefer to fail fast with HTTP 400 than risk Lambda timeouts.
+    """
+    text = (raw_pattern or "").strip()
+    if not text:
         return False
-    for snippet in _DANGEROUS_REGEX_SNIPPETS:
-        try:
-            if snippet.search(raw_pattern):
-                return True
-        except re.error:
+    # Very long patterns are already rejected elsewhere; here detect nested quantifiers
+    for bomb in _DANGEROUS_REGEX_SNIPPETS:
+        if bomb.search(text):
             return True
-    for match in _LARGE_QUANTIFIER_RE.finditer(raw_pattern):
+
+    # Also reject patterns that contain very large quantifier ranges (catastrophic even without nesting)
+    for match in _LARGE_QUANTIFIER_RE.finditer(text):
         try:
             lower = int(match.group(1))
-            upper = int(match.group(2)) if match.group(2) else None
+            upper_str = match.group(2)
+            upper = int(upper_str) if upper_str else None
         except ValueError:
             continue
-        limits = [lower]
+        numbers = [lower]
         if upper is not None:
-            limits.append(upper)
-        if any(limit >= _LARGE_QUANTIFIER_THRESHOLD for limit in limits):
+            numbers.append(upper)
+        if any(num >= _LARGE_QUANTIFIER_THRESHOLD for num in numbers):
             return True
     return False
 
