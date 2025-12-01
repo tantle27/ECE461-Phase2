@@ -71,6 +71,8 @@ _AUDIT_LOG: dict[str, list[dict[str, Any]]] = {}
 _S3 = S3Storage()
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_LOCAL_PERSIST_PATH = Path(os.environ.get("REGISTRY_PERSIST_FILE", "/tmp/registry_state.json"))
+_LOCAL_PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Cache TTL in seconds for previously computed ratings. Set to 0 to always recompute.
 _RATING_CACHE_TTL_SECONDS = max(0, int(os.environ.get("RATING_CACHE_TTL_SECONDS", "1800")))
@@ -140,34 +142,43 @@ def _persist_state() -> None:
             logger.info("Persisted state to S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
                        _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
         else:
-            logger.warning("S3 not enabled, state persistence disabled")
+            _LOCAL_PERSIST_PATH.write_text(json_data)
+            logger.info(
+                "Persisted state locally to %s (artifacts=%d, tokens=%d)",
+                _LOCAL_PERSIST_PATH,
+                len(_STORE),
+                len(_TOKENS),
+            )
     except Exception:
         logger.exception("Failed to persist registry state to S3")
 
 def _load_state() -> None:
     """Load tokens and artifacts from S3 if present (best-effort)."""
-    if not _S3.enabled:
-        logger.info("S3 not enabled, skipping state load")
-        return
     try:
-        # Try to fetch from S3
-        try:
-            body, meta = _S3.get_object(_PERSIST_S3_KEY)
-        except Exception as exc:  # gracefully handle missing objects
-            message = str(exc)
-            if "NoSuchKey" in message or "Not Found" in message:
-                logger.info(
-                    "S3 persist key %s missing in bucket %s; continuing with empty state",
-                    _PERSIST_S3_KEY,
-                    _S3.bucket,
-                )
+        if _S3.enabled:
+            try:
+                body, meta = _S3.get_object(_PERSIST_S3_KEY)
+            except Exception as exc:  # gracefully handle missing objects
+                message = str(exc)
+                if "NoSuchKey" in message or "Not Found" in message:
+                    logger.info(
+                        "S3 persist key %s missing in bucket %s; continuing with empty state",
+                        _PERSIST_S3_KEY,
+                        _S3.bucket,
+                    )
+                    return
+                raise
+            content = body.decode('utf-8').strip()
+            source_desc = f"s3://{_S3.bucket}/{_S3._key(_PERSIST_S3_KEY)}"
+        else:
+            if not _LOCAL_PERSIST_PATH.exists():
+                logger.info("Local persist file %s missing; starting with empty state", _LOCAL_PERSIST_PATH)
                 return
-            raise
-        content = body.decode('utf-8').strip()
+            content = _LOCAL_PERSIST_PATH.read_text().strip()
+            source_desc = str(_LOCAL_PERSIST_PATH)
         
         if not content:
-            logger.info("S3 persist file s3://%s/%s is empty, skipping load", 
-                       _S3.bucket, _S3._key(_PERSIST_S3_KEY))
+            logger.info("Persist file %s is empty, skipping load", source_desc)
             return
         
         data = json.loads(content) or {}
@@ -206,10 +217,10 @@ def _load_state() -> None:
                     pass
         if not _ARTIFACT_ORDER:
             _ARTIFACT_ORDER.extend(list(_STORE.keys()))
-        logger.warning("Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
-                      _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
+        logger.warning("Loaded persisted state from %s (artifacts=%d, tokens=%d)", 
+                      source_desc, len(_STORE), len(_TOKENS))
     except Exception:
-        logger.exception("Failed to load persisted registry state from S3 (this is normal on first run)")
+        logger.exception("Failed to load persisted registry state (this is normal on first run)")
 
 def _record_timing(f):
     @wraps(f)
