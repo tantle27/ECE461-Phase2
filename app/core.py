@@ -679,19 +679,12 @@ def raise_error(status: HTTPStatus, message: str) -> None:
     abort(response)
 
 def _is_dangerous_regex(raw_pattern: str) -> bool:
-    """
-    Heuristic detector for catastrophic-backtracking-prone patterns.
-    We prefer to fail fast with HTTP 400 than risk Lambda timeouts.
-    """
     text = (raw_pattern or "").strip()
     if not text:
         return False
-    # Very long patterns are already rejected elsewhere; here detect nested quantifiers
     for bomb in _DANGEROUS_REGEX_SNIPPETS:
         if bomb.search(text):
             return True
-
-    # Also reject patterns that contain very large quantifier ranges (catastrophic even without nesting)
     for match in _LARGE_QUANTIFIER_RE.finditer(text):
         try:
             lower = int(match.group(1))
@@ -1905,7 +1898,8 @@ def by_regex_route() -> tuple[Response, int] | Response:
 
     name_only = raw_pattern.startswith("^") and raw_pattern.endswith("$")
     try:
-        flags = 0 if name_only else re.IGNORECASE
+        # Apply case-insensitive matching by default; callers can force sensitivity via inline flags.
+        flags = re.IGNORECASE
         pattern = re.compile(raw_pattern, flags)
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
