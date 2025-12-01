@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import io
 import json
 import logging
@@ -13,7 +16,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, BinaryIO, cast
+from typing import Any, Callable, cast, BinaryIO
+import threading
 
 import yaml
 from flask import Blueprint, Response, jsonify, request, send_file
@@ -69,11 +73,14 @@ class ArtifactQuery:
 
 _ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
+_ARTIFACT_ORDER: list[str] = []
 _RATINGS_CACHE: dict[str, ModelRating] = {}
 _AUDIT_LOG: dict[str, list[dict[str, Any]]] = {}
 _S3 = S3Storage()
 _UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/uploads"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_LOCAL_PERSIST_PATH = Path(os.environ.get("REGISTRY_PERSIST_FILE", "/tmp/registry_state.json"))
+_LOCAL_PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # Cache TTL in seconds for previously computed ratings. Set to 0 to always recompute.
 _RATING_CACHE_TTL_SECONDS = max(0, int(os.environ.get("RATING_CACHE_TTL_SECONDS", "1800")))
@@ -88,6 +95,32 @@ _DEFAULT_USER = {
     "password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;""",
     "role": "admin",
 }
+_AUTH_SECRET = os.environ.get("AUTH_SECRET", _DEFAULT_USER["password"])
+_REGEX_MAX_PATTERN_LENGTH = 500
+_REGEX_MAX_TIME_SECONDS = 2.0
+_REGEX_MAX_ARTIFACTS = 1000
+_REGEX_MAX_MATCHES = 100
+_REGEX_README_TRUNCATE = 10000
+_DANGEROUS_REGEX_SNIPPETS: list[re.Pattern[str]] = [
+    re.compile(r"\((?:[^()\\]|\\.)+\)[*+]\s*[*+]+"),  # e.g., (.+)+, (.*)+, (\w+)+
+    re.compile(r"\(\?:\.\+\)\+"),  # (?:.+)+ (explicit non-capturing)
+    re.compile(r"\(\?:\.\*\)\+"),  # (?:.*)+
+    re.compile(r"^\((?:[^()\\]|\\.)+\)\+$"),  # ^(a+)+$-like
+    re.compile(r"\([^)]+\+\)\{3,\}"),  # Three or more (something+)
+    re.compile(r"\([^)]+\+\)\+.*\([^)]+\+\)\+"),  # Multiple nested quantifier groups
+    re.compile(r"\([^|)]+\|[^)]+\)[*+]+"),  # (a|aa)*, (a|ab)+, etc.
+    re.compile(r"\([^|)]+\|[^)]+\)\*$"),  # (a|aa)*$ anchored
+    re.compile(r"\(\?:[^|)]+\|[^)]+\)[*+]+"),  # Non-capturing alternation loops
+    re.compile(r"\(\?:[^|)]+\|[^)]+\)\*$"),  # Non-capturing alternation anchored
+    # Nested counted quantifiers: (a{1,99999}){1,99999}
+    re.compile(r"\([^\)]+\{\d+(?:,\d+)?\}[^\)]*\)\s*\{\d+(?:,\d+)?\}"),
+]
+_LARGE_QUANTIFIER_THRESHOLD = 1000
+_LARGE_QUANTIFIER_RE = re.compile(r"\{(\d+)(?:,(\d+))?\}")
+
+_REGEX_MAX_README_CHARS = 4000
+_REGEX_SEGMENT_SIZE = 1500
+_SAFE_REGEX_TIMEOUT_MS = 200
 
 # ---------------------------------------------------------------------------
 # Observability helpers
@@ -104,6 +137,7 @@ def _persist_state() -> None:
         data = {
             "tokens": [{"t": t, "admin": admin} for t, admin in _TOKENS.items()],
             "store": [artifact_to_dict(a) for a in _STORE.values()],
+            "order": list(_ARTIFACT_ORDER),
         }
         json_data = json.dumps(data)
 
@@ -120,34 +154,44 @@ def _persist_state() -> None:
                 len(_TOKENS),
             )
         else:
-            logger.warning("S3 not enabled, state persistence disabled")
+            _LOCAL_PERSIST_PATH.write_text(json_data)
+            logger.info(
+                "Persisted state locally to %s (artifacts=%d, tokens=%d)",
+                _LOCAL_PERSIST_PATH,
+                len(_STORE),
+                len(_TOKENS),
+            )
     except Exception:
         logger.exception("Failed to persist registry state to S3")
 
 
 def _load_state() -> None:
     """Load tokens and artifacts from S3 if present (best-effort)."""
-    if not _S3.enabled:
-        logger.info("S3 not enabled, skipping state load")
-        return
     try:
-        # Try to fetch from S3
-        try:
-            body, meta = _S3.get_object(_PERSIST_S3_KEY)
-        except Exception as exc:  # gracefully handle missing objects
-            message = str(exc)
-            if "NoSuchKey" in message or "Not Found" in message:
-                logger.info(
-                    "S3 persist key %s missing in bucket %s; continuing with empty state", _PERSIST_S3_KEY, _S3.bucket,
-                )
+        if _S3.enabled:
+            try:
+                body, meta = _S3.get_object(_PERSIST_S3_KEY)
+            except Exception as exc:  # gracefully handle missing objects
+                message = str(exc)
+                if "NoSuchKey" in message or "Not Found" in message:
+                    logger.info(
+                        "S3 persist key %s missing in bucket %s; continuing with empty state",
+                        _PERSIST_S3_KEY,
+                        _S3.bucket,
+                    )
+                    return
+                raise
+            content = body.decode('utf-8').strip()
+            source_desc = f"s3://{_S3.bucket}/{_S3._key(_PERSIST_S3_KEY)}"
+        else:
+            if not _LOCAL_PERSIST_PATH.exists():
+                logger.info("Local persist file %s missing; starting with empty state", _LOCAL_PERSIST_PATH)
                 return
-            raise
-        content = body.decode("utf-8").strip()
-
+            content = _LOCAL_PERSIST_PATH.read_text().strip()
+            source_desc = str(_LOCAL_PERSIST_PATH)
+        
         if not content:
-            logger.info(
-                "S3 persist file s3://%s/%s is empty, skipping load", _S3.bucket, _S3._key(_PERSIST_S3_KEY),
-            )
+            logger.info("Persist file %s is empty, skipping load", source_desc)
             return
 
         data = json.loads(content) or {}
@@ -160,6 +204,9 @@ def _load_state() -> None:
                 _TOKENS[t] = admin
         # Load artifacts
         _STORE.clear()
+        order_hint = data.get("order")
+        if isinstance(order_hint, list):
+            _ARTIFACT_ORDER.extend([key for key in order_hint if isinstance(key, str)])
         for it in data.get("store", []) or []:
             md = it.get("metadata") or {}
             art = Artifact(
@@ -172,22 +219,21 @@ def _load_state() -> None:
                 data=it.get("data", {}),
             )
             if art.metadata.id and art.metadata.type:
-                _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
+                store_key = _store_key(art.metadata.type, art.metadata.id)
+                _STORE[store_key] = art
+                if store_key not in _ARTIFACT_ORDER:
+                    _ARTIFACT_ORDER.append(store_key)
                 # Keep adapter's memory store in sync for list/get fallbacks
                 try:
                     _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
                 except Exception:
                     pass
-        logger.warning(
-            "Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)",
-            _S3.bucket,
-            _S3._key(_PERSIST_S3_KEY),
-            len(_STORE),
-            len(_TOKENS),
-        )
+        if not _ARTIFACT_ORDER:
+            _ARTIFACT_ORDER.extend(list(_STORE.keys()))
+        logger.warning("Loaded persisted state from %s (artifacts=%d, tokens=%d)", 
+                      source_desc, len(_STORE), len(_TOKENS))
     except Exception:
-        logger.exception("Failed to load persisted registry state from S3 (this is normal on first run)")
-
+        logger.exception("Failed to load persisted registry state (this is normal on first run)")
 
 def _record_timing(f):
     @wraps(f)
@@ -413,7 +459,10 @@ def save_artifact(artifact: Artifact) -> Artifact:
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
-    _STORE[_store_key(artifact.metadata.type, artifact.metadata.id)] = artifact
+    store_key = _store_key(artifact.metadata.type, artifact.metadata.id)
+    _STORE[store_key] = artifact
+    if store_key not in _ARTIFACT_ORDER:
+        _ARTIFACT_ORDER.append(store_key)
     # Persist new state for dev reload resiliency
     try:
         _persist_state()
@@ -494,29 +543,45 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     )
     items: list[Artifact] = []
     used_primary = False
-    try:
-        primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
-        if primary_items:
-            for data in primary_items:
-                md = data.get("metadata", {})
-                items.append(
-                    Artifact(
-                        metadata=ArtifactMetadata(
-                            id=str(md.get("id", "")),
-                            name=str(md.get("name", "")),
-                            type=str(md.get("type", "")),
-                            version=str(md.get("version", "1.0.0")),
-                        ),
-                        data=data.get("data", {}),
-                    )
-                )
-            used_primary = True
-    except Exception:
-        logger.exception("Primary store list failed; falling back to memory")
-    if not used_primary:
-        store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
-        items = [item for item in store_vals if (not query.artifact_type or item.metadata.type == query.artifact_type)]
-        logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
+    def _from_order(artifact_type: str | None) -> list[Artifact]:
+        ordered: list[Artifact] = []
+        for key in _ARTIFACT_ORDER:
+            art = _STORE.get(key)
+            if not art:
+                continue
+            if artifact_type and art.metadata.type != artifact_type:
+                continue
+            ordered.append(art)
+        if not ordered:
+            for art in _STORE.values():
+                if artifact_type and art.metadata.type != artifact_type:
+                    continue
+                ordered.append(art)
+        return ordered
+
+    items = _from_order(query.artifact_type)
+    if not items:
+        try:
+            primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
+        except Exception:
+            primary_items = []
+            logger.exception("Primary store list failed; falling back to memory only")
+        for data in primary_items or []:
+            md = data.get("metadata", {})
+            art = Artifact(
+                metadata=ArtifactMetadata(
+                    id=str(md.get("id", "")),
+                    name=str(md.get("name", "")),
+                    type=str(md.get("type", "")),
+                    version=str(md.get("version", "1.0.0")),
+                ),
+                data=data.get("data", {}),
+            )
+            items.append(art)
+            store_key = _store_key(art.metadata.type, art.metadata.id)
+            _STORE.setdefault(store_key, art)
+            if store_key not in _ARTIFACT_ORDER:
+                _ARTIFACT_ORDER.append(store_key)
 
     # Filter by types[]
     if query.types:
@@ -529,7 +594,10 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         items = [item for item in items if item.metadata.name.lower() == needle]
         logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
     elif query.name == "*":
-        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
+        logger.warning("LIST: Wildcard '*' requested; forcing single-page response")
+        query.page = 1
+        desired_size = len(items) or query.page_size or 25
+        query.page_size = max(query.page_size, desired_size)
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
@@ -541,6 +609,7 @@ def reset_storage() -> None:
     except Exception:
         logger.exception("Primary artifact store clear failed; continuing with in-memory reset")
     _STORE.clear()
+    _ARTIFACT_ORDER.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
     try:
@@ -557,6 +626,28 @@ def _parse_bearer(header_value: str) -> str:
         return v.split(" ", 1)[1].strip()
     return v
 
+def _mint_token(username: str, is_admin: bool) -> str:
+    payload = json.dumps({"u": username, "adm": is_admin, "ts": int(time.time())})
+    sig = hmac.new(_AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    encoded = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{encoded}.{sig}"
+
+def _decode_token(token: str) -> tuple[str, bool] | None:
+    if not token or "." not in token:
+        return None
+    payload_part, sig = token.rsplit(".", 1)
+    padding = "=" * (-len(payload_part) % 4)
+    try:
+        payload_json = base64.urlsafe_b64decode((payload_part + padding).encode("ascii")).decode("utf-8")
+        data = json.loads(payload_json)
+    except Exception:
+        return None
+    expected = hmac.new(_AUTH_SECRET.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, sig):
+        return None
+    username = str(data.get("u", ""))
+    is_admin = bool(data.get("adm"))
+    return username, is_admin
 
 def _require_auth(admin: bool = False) -> tuple[str, bool]:
     # Per spec, use X-Authorization; Authorization required in your system
@@ -583,6 +674,11 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
                 token_known = True
         except Exception:
             logger.exception("AUTH: TokenStore check failed")
+        if not token_known:
+            parsed = _decode_token(token)
+            if parsed:
+                _TOKENS[token] = bool(parsed[1])
+                token_known = True
 
     if not token or not token_known:
         # spec: 403 for invalid or missing AuthenticationToken
@@ -653,31 +749,166 @@ def raise_error(status: HTTPStatus, message: str) -> None:
 
     abort(response)
 
-
-def _sanitize_search_pattern(raw_pattern: str) -> str:
-    """Sanitize regex pattern to prevent catastrophic backtracking"""
-    if len(raw_pattern) > 1000:
-        raw_pattern = raw_pattern[:1000]
-
-    # Remove or clip dangerous nested constructs (best-effort)
-    dangerous_patterns = [
-        r"(\w+\*)+",  # nested word+star chains
-        r"(\.*)+",  # repeated any-char groups
-        r"(\(.*\))+",  # nested groups with quantifiers
-    ]
-    for danger in dangerous_patterns:
+def _is_dangerous_regex(raw_pattern: str) -> bool:
+    text = (raw_pattern or "").strip()
+    if not text:
+        return False
+    for bomb in _DANGEROUS_REGEX_SNIPPETS:
+        if bomb.search(text):
+            return True
+    for match in _LARGE_QUANTIFIER_RE.finditer(text):
         try:
-            raw_pattern = re.sub(danger, lambda m: m.group(0)[:50], raw_pattern)
+            lower = int(match.group(1))
+            upper_str = match.group(2)
+            upper = int(upper_str) if upper_str else None
+        except ValueError:
+            continue
+        numbers = [lower]
+        if upper is not None:
+            numbers.append(upper)
+        if any(num >= _LARGE_QUANTIFIER_THRESHOLD for num in numbers):
+            return True
+    return False
+
+def _safe_eval_with_timeout(fn: Callable[[], Any], timeout_ms: int) -> tuple[bool, Any | None]:
+    """Execute callable within timeout returning (completed, result)."""
+    result: dict[str, Any] = {}
+    done = threading.Event()
+
+    def _runner() -> None:
+        try:
+            result["value"] = fn()
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join(timeout_ms / 1000.0)
+    if not done.is_set():
+        return False, None
+    return True, result.get("value")
+
+def _safe_name_match(
+    pattern: re.Pattern[str],
+    candidate: str,
+    *,
+    exact_match: bool,
+    raw_pattern: str,
+    context: str,
+) -> bool:
+    """Match helper with timeout + descriptive errors."""
+    if not candidate:
+        return False
+    matcher = pattern.fullmatch if exact_match else pattern.search
+    ok, matched = _safe_eval_with_timeout(lambda: matcher(candidate) is not None, timeout_ms=500)
+    if not ok:
+        logger.warning(
+            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s",
+            raw_pattern,
+            candidate[:120],
+            context,
+        )
+        raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
+    return bool(matched)
+
+def _safe_text_search(
+    pattern: re.Pattern[str],
+    text: str,
+    *,
+    raw_pattern: str,
+    context: str,
+) -> bool:
+    if not text:
+        return False
+    segments = _regex_segments(text)
+    if not segments:
+        return False
+    for idx, segment in enumerate(segments):
+        ok, matched = _safe_eval_with_timeout(
+            lambda: pattern.search(segment) is not None, timeout_ms=_SAFE_REGEX_TIMEOUT_MS
+        )
+        if not ok:
+            logger.warning(
+                "REGEX_TIMEOUT: pattern='%s' context=%s segment_idx=%d segment_preview='%s'",
+                raw_pattern,
+                context,
+                idx,
+                segment[:120],
+            )
+            raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
+        if matched:
+            return True
+    return False
+
+
+def _coerce_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8", errors="ignore")
         except Exception:
-            pass
+            return ""
+    return ""
 
-    # Allow safe characters; exclude braces {}
-    allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
-    # Limit consecutive wildcards/plus
-    allowed = re.sub(r"\*{3,}", "**", allowed)
-    allowed = re.sub(r"\+{3,}", "++", allowed)
-    return allowed or ".*"
 
+def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
+    if not isinstance(data, Mapping):
+        return ""
+    for key in ("readme", "readme_text", "README", "README_text"):
+        candidate = _coerce_text(data.get(key))
+        if candidate:
+            return candidate
+
+    hf_entries: list[Any] = []
+    hf_data = data.get("hf_data")
+    if isinstance(hf_data, list):
+        hf_entries = hf_data
+    elif isinstance(hf_data, str):
+        try:
+            parsed = json.loads(hf_data)
+            if isinstance(parsed, list):
+                hf_entries = parsed
+            elif isinstance(parsed, Mapping):
+                hf_entries = [parsed]
+        except Exception:
+            hf_entries = []
+
+    for entry in hf_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        candidate = _coerce_text(entry.get("readme_text") or entry.get("readme"))
+        if candidate:
+            return candidate
+        card_data = entry.get("card_data") or entry.get("cardData")
+        if isinstance(card_data, Mapping):
+            candidate = _coerce_text(card_data.get("readme_text") or card_data.get("readme"))
+            if candidate:
+                return candidate
+    return ""
+
+
+_REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
+
+def _regex_segments(text: str) -> list[str]:
+    if not text:
+        return []
+    trimmed = text[:_REGEX_MAX_README_CHARS]
+    segments: list[str] = []
+    for start in range(0, len(trimmed), _REGEX_SEGMENT_SIZE):
+        segment = trimmed[start : start + _REGEX_SEGMENT_SIZE]
+        if segment:
+            segments.append(segment)
+    return segments
+
+def _is_plain_name_pattern(raw_pattern: str) -> bool:
+    """Return True for regex patterns that are simple ^literal$ without operators."""
+    if not raw_pattern.startswith("^") or not raw_pattern.endswith("$"):
+        return False
+    body = raw_pattern[1:-1]
+    if not body:
+        return False
+    return _REGEX_META_CHAR_RE.search(body) is None
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -792,7 +1023,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
 
     # Default user is always admin
     is_admin = True
-    tok = f"t_{int(time.time()*1000)}"
+    tok = _mint_token(username, is_admin)
     _TOKENS[tok] = is_admin
     logger.warning(
         "AUTH: Created token for user %s, is_admin=%s, token_count=%d", username, is_admin, len(_TOKENS),
@@ -840,35 +1071,22 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "invalid artifact_type"}), 400
 
     payload = _json_body()
-    if "url" not in payload or not isinstance(payload["url"], str) or not payload["url"].strip():
-        return (
-            jsonify(
-                {
-                    "message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."
-                }
-            ),
-            400,
-        )
+    if not isinstance(payload, Mapping):
+        return jsonify({"message": "artifact_data must be an object"}), 400
 
-    url = payload["url"].strip()
+    metadata, data = _normalize_artifact_request(artifact_type, payload)
+    url_value = _coerce_text(data.get("url"))
+    if not url_value:
+        return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
+    data["url"] = url_value
+
     # Conflict if same type+url already registered
-    if _duplicate_url_exists(artifact_type, url):
+    if _duplicate_url_exists(artifact_type, url_value):
         return jsonify({"message": "Artifact exists already."}), 409
 
-    # Extract name from URL - try to preserve namespace/org structure
-    url_parts = url.rstrip("/").split("/")
-    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos",):
-        # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
-        name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
-    else:
-        name_guess = url_parts[-1] if url_parts else "artifact"
-    name_guess = secure_filename(name_guess) or "artifact"
-    art_id = str(int(time.time() * 1000))
-    artifact = Artifact(
-        metadata=ArtifactMetadata(id=art_id, name=name_guess, type=artifact_type, version="1.0.0",), data={"url": url},
-    )
+    artifact = Artifact(metadata=metadata, data=data)
     save_artifact(artifact)
-    _audit_add(artifact_type, art_id, "CREATE", name_guess)
+    _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
     return jsonify(artifact_to_dict(artifact)), 201
 
 
@@ -1054,6 +1272,8 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
     except Exception:
         logger.exception("Primary delete failed; removing from memory only")
     _STORE.pop(k, None)
+    if k in _ARTIFACT_ORDER:
+        _ARTIFACT_ORDER.remove(k)
     _audit_add(artifact_type, artifact_id, "UPDATE", "")
     try:
         _persist_state()
@@ -1088,11 +1308,13 @@ def upload_create_route() -> tuple[Response, int] | Response:
     if not f or f.filename is None or f.filename.strip() == "":
         return jsonify({"message": "Empty filename"}), 400
 
-    safe_name = secure_filename(f.filename)
+    original_name = f.filename
+    safe_name = secure_filename(original_name)
     if not safe_name:
         return jsonify({"message": "Invalid filename"}), 400
 
-    artifact_name = request.form.get("name", safe_name)
+    requested_name = request.form.get("name")
+    artifact_name = (requested_name or original_name or safe_name).strip() or safe_name
     artifact_type = request.form.get("artifact_type", "file")
     artifact_id = request.form.get("id", str(int(time.time() * 1000)))
 
@@ -1742,75 +1964,97 @@ def by_regex_route() -> tuple[Response, int] | Response:
     _require_auth()
     body = _json_body()
     # Support both 'regex' and spec-stated 'RegEx'
-    regex = str(body.get("regex") or body.get("RegEx") or "").strip()
-    if not regex:
-        return (
-            jsonify(
-                {"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}
-            ),
-            400,
-        )
+    raw_pattern = str(body.get("regex") or body.get("RegEx") or "").strip()
+    if not raw_pattern:
+        return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
+    if len(raw_pattern) > _REGEX_MAX_PATTERN_LENGTH:
+        logger.warning("BY_REGEX: Rejecting pattern exceeding length limit (%d chars)", len(raw_pattern))
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+    if _is_dangerous_regex(raw_pattern):
+        logger.warning("BY_REGEX: Rejecting pattern '%s' due to dangerous structure", raw_pattern)
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+
+    name_only = _is_plain_name_pattern(raw_pattern)
     try:
-        sanitized = _sanitize_search_pattern(regex)
-        pattern = re.compile(sanitized, re.IGNORECASE)
-        logger.warning(
-            "BY_REGEX: raw='%s' sanitized='%s' store_size=%d startswith_caret=%s endswith_dollar=%s",
-            regex,
-            sanitized,
-            len(_STORE),
-            sanitized.startswith("^"),
-            sanitized.endswith("$"),
-        )
-        # Quick self-test on a small string to detect catastrophic patterns
-        # Use signal for timeout if available
-        try:
-            import signal
-
-            def _test_timeout(signum, frame):
-                raise TimeoutError("Pattern test timeout")
-
-            signal.signal(signal.SIGALRM, _test_timeout)
-            signal.alarm(1)  # 1 second max for self-test
-            try:
-                _ = pattern.search("a" * 100)
-            finally:
-                signal.alarm(0)
-        except (TimeoutError, Exception):
-            logger.warning("BY_REGEX: Pattern failed self-test, rejecting")
-            return jsonify({"message": "Regex pattern too complex"}), 400
+        # Apply case-insensitive matching by default; callers can force sensitivity via inline flags.
+        flags = re.IGNORECASE
+        pattern = re.compile(raw_pattern, flags)
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
-    # Limit the search space and time to avoid Lambda timeouts
-    MAX_ARTIFACTS = 1000
-    MAX_TIME_SECONDS = 50  # leave ~10s buffer before Lambda timeout
+
+    # Runtime bomb test using timeout-protected evaluation
+    test_candidate = "a" * 100 + "b"
+    match_fn = pattern.fullmatch if name_only else pattern.search
+    ok, _ = _safe_eval_with_timeout(lambda: match_fn(test_candidate) is not None, timeout_ms=1000)
+    if not ok:
+        logger.warning("BY_REGEX: Pattern '%s' failed runtime ReDoS test", raw_pattern)
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+
     start_time = time.time()
-
-    # Stream from memory first (fastest path)
-    artifacts_to_check = list(_STORE.values())[:MAX_ARTIFACTS]
-    logger.warning("BY_REGEX: scanning_count=%d (memory only)", len(artifacts_to_check))
-
+    deadline = start_time + _REGEX_MAX_TIME_SECONDS
     matches: list[dict[str, Any]] = []
-    for art in artifacts_to_check:
-        # Check time budget
-        if time.time() - start_time > MAX_TIME_SECONDS:
-            logger.warning("BY_REGEX: Timeout approaching, returning partial results")
+    scanned = 0
+
+    logger.warning(
+        "BY_REGEX: raw='%s' store_size=%d exact_match=%s",
+        raw_pattern,
+        len(_STORE),
+        name_only,
+    )
+
+    for art in _STORE.values():
+        if scanned >= _REGEX_MAX_ARTIFACTS or time.time() > deadline:
+            logger.warning("BY_REGEX: Stopping scan early (scanned=%d, matches=%d)", scanned, len(matches))
             break
-        readme = ""
-        if isinstance(art.data, dict):
-            # Reduce readme size for matching
-            readme = str(art.data.get("readme", ""))[:2000]
+        scanned += 1
+
+        name_match = False
         try:
-            if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append({"name": art.metadata.name, "id": art.metadata.id, "type": art.metadata.type})
-                if len(matches) >= 100:
-                    logger.warning("BY_REGEX: Found 100 matches, stopping early")
-                    break
-        except Exception as e:
-            logger.warning("BY_REGEX: Pattern match error: %s", e)
-            continue
+            name_match = _safe_name_match(
+                pattern,
+                art.metadata.name,
+                exact_match=name_only,
+                raw_pattern=raw_pattern,
+                context="artifact metadata name",
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("BY_REGEX: Name match error for id=%s: %s", art.metadata.id, exc)
+
+        readme_match = False
+        if not name_only:
+            readme_source = art.data if isinstance(art.data, Mapping) else None
+            readme = _extract_readme_snippet(readme_source)
+            if readme:
+                try:
+                    readme_match = _safe_text_search(
+                        pattern,
+                        readme,
+                        raw_pattern=raw_pattern,
+                        context="artifact readme",
+                    )
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.warning("BY_REGEX: README match error for id=%s: %s", art.metadata.id, exc)
+
+        if name_match or readme_match:
+            matches.append(artifact_to_dict(art))
+            if len(matches) >= _REGEX_MAX_MATCHES:
+                logger.warning("BY_REGEX: Collected %d matches, stopping early", len(matches))
+                break
+
     if not matches:
-        logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
+        logger.warning("BY_REGEX: no matches for pattern '%s'", raw_pattern)
         return jsonify({"message": "No artifact found under this regex"}), 404
+
+    logger.warning(
+        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs",
+        len(matches),
+        scanned,
+        time.time() - start_time,
+    )
     return jsonify(matches), 200
 
 
