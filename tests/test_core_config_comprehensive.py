@@ -14,11 +14,12 @@ class TestSettings:
 
     def test_default_settings(self):
         """Test that default settings are correctly initialized."""
-        s = Settings()
-        assert s.env == "dev"
-        assert s.GH_TOKEN is None
-        assert s.request_timeout_s == 15.0
-        assert s.http_retries == 3
+        with patch.dict(os.environ, {}, clear=True):
+            s = Settings()
+            assert s.env == "dev"
+            assert s.GH_TOKEN is None
+            assert s.request_timeout_s == 15.0
+            assert s.http_retries == 3
 
     def test_env_variable_loading(self):
         """Test that environment variables are correctly loaded."""
@@ -72,14 +73,15 @@ class TestSettings:
 
     def test_field_default_values(self):
         """Test that Field defaults work correctly."""
-        s = Settings()
-        # GH_TOKEN should use Field default (None)
-        assert s.GH_TOKEN is None
+        with patch.dict(os.environ, {}, clear=True):
+            s = Settings()
+            # GH_TOKEN should use Field default (None)
+            assert s.GH_TOKEN is None
 
-        # Other fields should use their class defaults
-        assert s.env == "dev"
-        assert s.request_timeout_s == 15.0
-        assert s.http_retries == 3
+            # Other fields should use their class defaults
+            assert s.env == "dev"
+            assert s.request_timeout_s == 15.0
+            assert s.http_retries == 3
 
     def test_config_class_settings(self):
         """Test that Config class settings are applied."""
