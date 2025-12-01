@@ -1950,14 +1950,8 @@ def by_regex_route() -> tuple[Response, int] | Response:
                     logger.warning("BY_REGEX: README match error for id=%s: %s", art.metadata.id, exc)
 
         if name_match or readme_match:
-            matches.append(
-                {
-                    "name": art.metadata.name,
-                    "id": art.metadata.id,
-                    "type": art.metadata.type,
-                }
-            )
-            if len(matches) >= /_REGEX_MAX_MATCHES:
+            matches.append(artifact_to_dict(art))
+            if len(matches) >= _REGEX_MAX_MATCHES:
                 logger.warning("BY_REGEX: Collected %d matches, stopping early", len(matches))
                 break
 
