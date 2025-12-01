@@ -104,6 +104,10 @@ _DANGEROUS_REGEX_SNIPPETS: list[re.Pattern[str]] = [
 _LARGE_QUANTIFIER_THRESHOLD = 1000
 _LARGE_QUANTIFIER_RE = re.compile(r"\{(\d+)(?:,(\d+))?\}")
 
+_REGEX_MAX_README_CHARS = 4000
+_REGEX_SEGMENT_SIZE = 1500
+_SAFE_REGEX_TIMEOUT_MS = 200
+
 # ---------------------------------------------------------------------------
 # Observability helpers
 # ---------------------------------------------------------------------------
@@ -744,16 +748,25 @@ def _safe_text_search(
 ) -> bool:
     if not text:
         return False
-    ok, matched = _safe_eval_with_timeout(lambda: pattern.search(text) is not None, timeout_ms=500)
-    if not ok:
-        logger.warning(
-            "REGEX_TIMEOUT: pattern='%s' context=%s text_preview='%s'",
-            raw_pattern,
-            context,
-            text[:120],
+    segments = _regex_segments(text)
+    if not segments:
+        return False
+    for idx, segment in enumerate(segments):
+        ok, matched = _safe_eval_with_timeout(
+            lambda: pattern.search(segment) is not None, timeout_ms=_SAFE_REGEX_TIMEOUT_MS
         )
-        raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
-    return bool(matched)
+        if not ok:
+            logger.warning(
+                "REGEX_TIMEOUT: pattern='%s' context=%s segment_idx=%d segment_preview='%s'",
+                raw_pattern,
+                context,
+                idx,
+                segment[:120],
+            )
+            raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
+        if matched:
+            return True
+    return False
 
 
 def _coerce_text(value: Any) -> str:
@@ -801,6 +814,18 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
             if candidate:
                 return candidate
     return ""
+
+
+def _regex_segments(text: str) -> list[str]:
+    if not text:
+        return []
+    trimmed = text[:_REGEX_MAX_README_CHARS]
+    segments: list[str] = []
+    for start in range(0, len(trimmed), _REGEX_SEGMENT_SIZE):
+        segment = trimmed[start : start + _REGEX_SEGMENT_SIZE]
+        if segment:
+            segments.append(segment)
+    return segments
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -1922,19 +1947,17 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme_source = art.data if isinstance(art.data, Mapping) else None
             readme = _extract_readme_snippet(readme_source)
             if readme:
-                snippet = readme[:_REGEX_README_TRUNCATE]
-                if snippet:
-                    try:
-                        readme_match = _safe_text_search(
-                            pattern,
-                            snippet,
-                            raw_pattern=raw_pattern,
-                            context="artifact readme",
-                        )
-                    except HTTPException:
-                        raise
-                    except Exception as exc:
-                        logger.warning("BY_REGEX: README match error for id=%s: %s", art.metadata.id, exc)
+                try:
+                    readme_match = _safe_text_search(
+                        pattern,
+                        readme,
+                        raw_pattern=raw_pattern,
+                        context="artifact readme",
+                    )
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.warning("BY_REGEX: README match error for id=%s: %s", art.metadata.id, exc)
 
         if name_match or readme_match:
             matches.append(
