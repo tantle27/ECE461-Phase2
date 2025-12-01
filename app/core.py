@@ -8,16 +8,16 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Callable, cast, BinaryIO
-import threading
+from typing import Any, BinaryIO, cast
 
 import yaml
 from flask import Blueprint, Response, jsonify, request, send_file
@@ -181,7 +181,7 @@ def _load_state() -> None:
                     )
                     return
                 raise
-            content = body.decode('utf-8').strip()
+            content = body.decode("utf-8").strip()
             source_desc = f"s3://{_S3.bucket}/{_S3._key(_PERSIST_S3_KEY)}"
         else:
             if not _LOCAL_PERSIST_PATH.exists():
@@ -189,7 +189,7 @@ def _load_state() -> None:
                 return
             content = _LOCAL_PERSIST_PATH.read_text().strip()
             source_desc = str(_LOCAL_PERSIST_PATH)
-        
+
         if not content:
             logger.info("Persist file %s is empty, skipping load", source_desc)
             return
@@ -230,10 +230,12 @@ def _load_state() -> None:
                     pass
         if not _ARTIFACT_ORDER:
             _ARTIFACT_ORDER.extend(list(_STORE.keys()))
-        logger.warning("Loaded persisted state from %s (artifacts=%d, tokens=%d)", 
-                      source_desc, len(_STORE), len(_TOKENS))
+        logger.warning(
+            "Loaded persisted state from %s (artifacts=%d, tokens=%d)", source_desc, len(_STORE), len(_TOKENS)
+        )
     except Exception:
         logger.exception("Failed to load persisted registry state (this is normal on first run)")
+
 
 def _record_timing(f):
     @wraps(f)
@@ -542,7 +544,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         query.page_size,
     )
     items: list[Artifact] = []
-    used_primary = False
+
     def _from_order(artifact_type: str | None) -> list[Artifact]:
         ordered: list[Artifact] = []
         for key in _ARTIFACT_ORDER:
@@ -626,11 +628,13 @@ def _parse_bearer(header_value: str) -> str:
         return v.split(" ", 1)[1].strip()
     return v
 
+
 def _mint_token(username: str, is_admin: bool) -> str:
     payload = json.dumps({"u": username, "adm": is_admin, "ts": int(time.time())})
     sig = hmac.new(_AUTH_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
     encoded = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
     return f"{encoded}.{sig}"
+
 
 def _decode_token(token: str) -> tuple[str, bool] | None:
     if not token or "." not in token:
@@ -648,6 +652,7 @@ def _decode_token(token: str) -> tuple[str, bool] | None:
     username = str(data.get("u", ""))
     is_admin = bool(data.get("adm"))
     return username, is_admin
+
 
 def _require_auth(admin: bool = False) -> tuple[str, bool]:
     # Per spec, use X-Authorization; Authorization required in your system
@@ -749,6 +754,7 @@ def raise_error(status: HTTPStatus, message: str) -> None:
 
     abort(response)
 
+
 def _is_dangerous_regex(raw_pattern: str) -> bool:
     text = (raw_pattern or "").strip()
     if not text:
@@ -770,6 +776,7 @@ def _is_dangerous_regex(raw_pattern: str) -> bool:
             return True
     return False
 
+
 def _safe_eval_with_timeout(fn: Callable[[], Any], timeout_ms: int) -> tuple[bool, Any | None]:
     """Execute callable within timeout returning (completed, result)."""
     result: dict[str, Any] = {}
@@ -788,13 +795,9 @@ def _safe_eval_with_timeout(fn: Callable[[], Any], timeout_ms: int) -> tuple[boo
         return False, None
     return True, result.get("value")
 
+
 def _safe_name_match(
-    pattern: re.Pattern[str],
-    candidate: str,
-    *,
-    exact_match: bool,
-    raw_pattern: str,
-    context: str,
+    pattern: re.Pattern[str], candidate: str, *, exact_match: bool, raw_pattern: str, context: str,
 ) -> bool:
     """Match helper with timeout + descriptive errors."""
     if not candidate:
@@ -803,21 +806,13 @@ def _safe_name_match(
     ok, matched = _safe_eval_with_timeout(lambda: matcher(candidate) is not None, timeout_ms=500)
     if not ok:
         logger.warning(
-            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s",
-            raw_pattern,
-            candidate[:120],
-            context,
+            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s", raw_pattern, candidate[:120], context,
         )
         raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
     return bool(matched)
 
-def _safe_text_search(
-    pattern: re.Pattern[str],
-    text: str,
-    *,
-    raw_pattern: str,
-    context: str,
-) -> bool:
+
+def _safe_text_search(pattern: re.Pattern[str], text: str, *, raw_pattern: str, context: str,) -> bool:
     if not text:
         return False
     segments = _regex_segments(text)
@@ -890,6 +885,7 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
 
 _REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
 
+
 def _regex_segments(text: str) -> list[str]:
     if not text:
         return []
@@ -901,6 +897,7 @@ def _regex_segments(text: str) -> list[str]:
             segments.append(segment)
     return segments
 
+
 def _is_plain_name_pattern(raw_pattern: str) -> bool:
     """Return True for regex patterns that are simple ^literal$ without operators."""
     if not raw_pattern.startswith("^") or not raw_pattern.endswith("$"):
@@ -909,6 +906,7 @@ def _is_plain_name_pattern(raw_pattern: str) -> bool:
     if not body:
         return False
     return _REGEX_META_CHAR_RE.search(body) is None
+
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -1077,7 +1075,14 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     metadata, data = _normalize_artifact_request(artifact_type, payload)
     url_value = _coerce_text(data.get("url"))
     if not url_value:
-        return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
+        return (
+            jsonify(
+                {
+                    "message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."
+                }
+            ),
+            400,
+        )
     data["url"] = url_value
 
     # Conflict if same type+url already registered
@@ -1966,7 +1971,12 @@ def by_regex_route() -> tuple[Response, int] | Response:
     # Support both 'regex' and spec-stated 'RegEx'
     raw_pattern = str(body.get("regex") or body.get("RegEx") or "").strip()
     if not raw_pattern:
-        return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
+        return (
+            jsonify(
+                {"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}
+            ),
+            400,
+        )
     if len(raw_pattern) > _REGEX_MAX_PATTERN_LENGTH:
         logger.warning("BY_REGEX: Rejecting pattern exceeding length limit (%d chars)", len(raw_pattern))
         return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
@@ -1996,10 +2006,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
     scanned = 0
 
     logger.warning(
-        "BY_REGEX: raw='%s' store_size=%d exact_match=%s",
-        raw_pattern,
-        len(_STORE),
-        name_only,
+        "BY_REGEX: raw='%s' store_size=%d exact_match=%s", raw_pattern, len(_STORE), name_only,
     )
 
     for art in _STORE.values():
@@ -2029,10 +2036,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
             if readme:
                 try:
                     readme_match = _safe_text_search(
-                        pattern,
-                        readme,
-                        raw_pattern=raw_pattern,
-                        context="artifact readme",
+                        pattern, readme, raw_pattern=raw_pattern, context="artifact readme",
                     )
                 except HTTPException:
                     raise
@@ -2050,10 +2054,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "No artifact found under this regex"}), 404
 
     logger.warning(
-        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs",
-        len(matches),
-        scanned,
-        time.time() - start_time,
+        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs", len(matches), scanned, time.time() - start_time,
     )
     return jsonify(matches), 200
 
