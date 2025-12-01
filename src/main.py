@@ -9,7 +9,14 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from src.metrics.metrics_calculator import MetricsCalculator
+try:
+    from app.secrets_loader import load_registry_secrets
 
+    load_registry_secrets()
+except Exception:
+    import logging
+
+    logging.exception("secrets_loader failed - continuing without Secrets Manager")
 # ----------------- helpers -----------------
 
 _GH_TOKEN_PATTERNS = [

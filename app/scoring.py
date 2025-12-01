@@ -7,7 +7,14 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
+try:
+    from app.secrets_loader import load_registry_secrets
 
+    load_registry_secrets()
+except Exception:
+    import logging
+
+    logging.exception("secrets_loader failed - continuing without Secrets Manager")
 from src.metrics.metrics_calculator import MetricsCalculator
 
 logger = logging.getLogger(__name__)
@@ -195,7 +202,7 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         metrics = _generate_lightweight_metrics(artifact, model_link_str)
         total_latency_ms = int((time.time() - start_time) * 1000) or 5
     else:
-
+        logger.info("Using full metrics calculation for artifact %s", artifact.metadata.id)
         async def _collect() -> dict[str, Any]:
             return await _METRICS_CALCULATOR.analyze_entry(code_link, dataset_link, model_link_str, set(),)
 
