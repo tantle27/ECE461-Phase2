@@ -488,7 +488,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     except Exception:
         logger.exception("Primary store list failed; falling back to memory")
     if not used_primary:
-        store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
+        store_vals = list(_STORE.values())
         items = [
             item
             for item in store_vals
@@ -916,8 +916,8 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 
     response_items = result.get("items", [])
     response = jsonify(response_items)
-    if next_offset < total:
-        response.headers["offset"] = str(next_offset)
+    next_header = str(next_offset) if next_offset < total else "0"
+    response.headers["offset"] = next_header
     return response, 200
 
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
