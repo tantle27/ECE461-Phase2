@@ -27,14 +27,7 @@ _FAST_RATING_MODE = os.environ.get("FAST_RATING_MODE", "auto").lower()
 
 def _should_use_lightweight_metrics() -> bool:
     """Determine whether to skip expensive scoring."""
-    if _FAST_RATING_MODE == "never":
-        return False
-    if _FAST_RATING_MODE == "always":
-        return True
-    # default: auto mode prefers fast scoring when no GitHub token present
-    return not os.environ.get("GH_TOKEN")
-
-
+    return False
 def _generate_lightweight_metrics(artifact, model_link: str) -> dict[str, Any]:
     """Produce deterministic pseudo-metrics without network access."""
     base = f"{artifact.metadata.id}:{artifact.metadata.name}:{model_link}"

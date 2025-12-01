@@ -1384,6 +1384,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
+        logger.info("RATE: cache_hit id=%s net=%s", artifact_id, rating.scores.get('net_score'))
         return jsonify(_to_openapi_model_rating(rating)), 200
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
@@ -1391,6 +1392,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     cached_rating = _rating_from_artifact_data(artifact)
     if cached_rating:
         _RATINGS_CACHE[artifact_id] = cached_rating
+        logger.info("RATE: reused_stored_metrics id=%s net=%s", artifact_id, cached_rating.scores.get('net_score'))
         return jsonify(_to_openapi_model_rating(cached_rating)), 200
     try:
         # Ensure a usable model_link exists for scoring.
@@ -1469,6 +1471,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             float((rating.scores or {}).get("net_score", 0.0) or 0.0),
             sorted(list((rating.scores or {}).keys())),
         )
+        logger.info("RATE: computed id=%s net=%s metrics=%s", artifact_id, rating.scores.get('net_score'), sorted((rating.scores or {}).keys()))
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
@@ -1606,6 +1609,15 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     for alias, internal in alias_map.items():
         response[alias] = response.get(internal, _score(internal))
         response[f"{alias}Latency"] = response.get(f"{internal}_latency", _latency(internal))
+
+    required_scores = ["bus_factor", "code_quality", "dataset_quality", "license", "performance_claims", "ramp_up_time", "dataset_and_code_score", "reproducibility", "reviewedness", "tree_score"]
+    missing_scores = [key for key in required_scores if key not in scores]
+    if missing_scores:
+        logger.warning("RATE: missing raw metrics id=%s fields=%s", rating.id, missing_scores)
+
+    zeroed = [key for key in required_scores if scores.get(key) in (None, 0, 0.0)]
+    if zeroed:
+        logger.info("RATE: zero scores id=%s fields=%s", rating.id, zeroed)
 
     return response
 
