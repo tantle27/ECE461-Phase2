@@ -415,7 +415,7 @@ class TestGenAIClientPromptReading:
         with patch("builtins.open", mock.mock_open(read_data=mock_content)) as mock_file:
             result = GenAIClient._read_prompt("test_prompt.txt")
             assert result == mock_content
-            mock_file.assert_called_once_with("test_prompt.txt", "r", encoding="utf-8")
+            mock_file.assert_called_once_with("test_prompt.txt", encoding="utf-8")
 
 
 class TestGenAIClientSSLConfiguration:

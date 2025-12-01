@@ -375,6 +375,7 @@ class TestArtifactScoring:
             assert rating1.summary["model_link"] == "https://example.com/model"
             assert rating2.summary["model_link"] == "https://example.com/model"
 
+    @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
     def test_score_artifact_alternative_link_fields(self):
         """Test scoring artifact with alternative code/dataset link field names."""
         artifact = MockArtifact(
