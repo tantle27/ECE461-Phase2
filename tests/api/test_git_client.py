@@ -134,9 +134,7 @@ class TestMain(unittest.TestCase):
 
         # Make initial commit
         default_author = Actor("DefaultAuthor", "default@test.com")
-        repo.index.add(
-            ["main.py", "README.md", "requirements.txt", "examples/demo.py", "tests/test_main.py"]
-        )
+        repo.index.add(["main.py", "README.md", "requirements.txt", "examples/demo.py", "tests/test_main.py"])
         repo.index.commit("Initial commit", author=default_author)
 
         return self.temp_repo_path

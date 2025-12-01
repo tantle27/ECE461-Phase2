@@ -86,9 +86,7 @@ class TestBedrockClientInitialization(unittest.TestCase):
 
             self.assertEqual(client.model_id, "override-model")
             self.assertEqual(client.region, "override-region")
-            mock_boto_client.assert_called_once_with(
-                "bedrock-runtime", region_name="override-region"
-            )
+            mock_boto_client.assert_called_once_with("bedrock-runtime", region_name="override-region")
 
 
 class TestBedrockClientSyncMethods(unittest.TestCase):
@@ -113,10 +111,7 @@ class TestBedrockClientSyncMethods(unittest.TestCase):
 
         self.assertEqual(result, '{"result": "test response"}')
         mock_client.invoke_model.assert_called_once_with(
-            modelId="test-model",
-            contentType="application/json",
-            accept="application/json",
-            body=b'{"input": "test"}',
+            modelId="test-model", contentType="application/json", accept="application/json", body=b'{"input": "test"}',
         )
 
     @patch("boto3.client")
@@ -202,9 +197,7 @@ class TestBedrockClientAsyncMethods(unittest.TestCase):
         async def run_test():
             with self.assertRaises(ValueError) as context:
                 await client.chat("Hello, world!")
-            self.assertEqual(
-                str(context.exception), "No Bedrock model id configured (BEDROCK_MODEL_ID)"
-            )
+            self.assertEqual(str(context.exception), "No Bedrock model id configured (BEDROCK_MODEL_ID)")
 
         self.loop.run_until_complete(run_test())
 
@@ -252,9 +245,7 @@ class TestBedrockClientPerformanceClaims(unittest.TestCase):
         mock_client = MagicMock()
         mock_boto_client.return_value = mock_client
 
-        json_response = (
-            '{"mentions_benchmarks": 0.8, "has_metrics": 0.9, "claims": ["Fast"], "score": 0.85}'
-        )
+        json_response = '{"mentions_benchmarks": 0.8, "has_metrics": 0.9, "claims": ["Fast"], "score": 0.85}'
         mock_stream = MagicMock()
         mock_stream.read.return_value = json_response.encode()
         mock_client.invoke_model.return_value = {"body": mock_stream}
@@ -282,9 +273,7 @@ class TestBedrockClientPerformanceClaims(unittest.TestCase):
         mock_client = MagicMock()
         mock_boto_client.return_value = mock_client
 
-        response_with_extra = (
-            'Here are the results: {"score": 0.7, "claims": ["Efficient"]} and that\'s it.'
-        )
+        response_with_extra = 'Here are the results: {"score": 0.7, "claims": ["Efficient"]} and that\'s it.'
         mock_stream = MagicMock()
         mock_stream.read.return_value = response_with_extra.encode()
         mock_client.invoke_model.return_value = {"body": mock_stream}

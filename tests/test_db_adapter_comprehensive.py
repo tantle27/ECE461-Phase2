@@ -327,10 +327,7 @@ class TestArtifactStore:
         # Verify GSI2 query
         call_kwargs = mock_table.query.call_args[1]
         assert call_kwargs["IndexName"] == "GSI2"
-        assert (
-            call_kwargs["KeyConditionExpression"]
-            == "GSI2PK = :status_key AND begins_with(GSI2SK, :status_val)"
-        )
+        assert call_kwargs["KeyConditionExpression"] == "GSI2PK = :status_key AND begins_with(GSI2SK, :status_val)"
         assert call_kwargs["ExpressionAttributeValues"][":status_key"] == "STATUS"
         assert call_kwargs["ExpressionAttributeValues"][":status_val"] == "approved"
         assert call_kwargs["Limit"] == 50
@@ -393,10 +390,7 @@ class TestArtifactStore:
 
         # Mock query response
         mock_table.query.return_value = {
-            "Items": [
-                {"PK": "ART#model#test", "SK": "META#1.0.0"},
-                {"PK": "ART#model#test", "SK": "META#1.0.1"},
-            ]
+            "Items": [{"PK": "ART#model#test", "SK": "META#1.0.0"}, {"PK": "ART#model#test", "SK": "META#1.0.1"},]
         }
         mock_table.delete_item = Mock()
 
@@ -428,10 +422,7 @@ class TestArtifactStore:
         self.store.use_dynamodb = True
 
         mock_table.scan.return_value = {
-            "Items": [
-                {"PK": "ART#model#test1", "SK": "META#1.0.0"},
-                {"PK": "ART#model#test2", "SK": "META#1.0.0"},
-            ]
+            "Items": [{"PK": "ART#model#test1", "SK": "META#1.0.0"}, {"PK": "ART#model#test2", "SK": "META#1.0.0"},]
         }
 
         # Mock batch writer
@@ -556,10 +547,7 @@ class TestTokenStore:
         self.store.use_dynamodb = True
 
         mock_table.query.return_value = {
-            "Items": [
-                {"PK": "TOKEN#AUTH", "SK": "TOKEN#token1"},
-                {"PK": "TOKEN#AUTH", "SK": "TOKEN#token2"},
-            ]
+            "Items": [{"PK": "TOKEN#AUTH", "SK": "TOKEN#token1"}, {"PK": "TOKEN#AUTH", "SK": "TOKEN#token2"},]
         }
 
         # Mock batch writer

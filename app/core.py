@@ -138,9 +138,7 @@ def _load_state() -> None:
             message = str(exc)
             if "NoSuchKey" in message or "Not Found" in message:
                 logger.info(
-                    "S3 persist key %s missing in bucket %s; continuing with empty state",
-                    _PERSIST_S3_KEY,
-                    _S3.bucket,
+                    "S3 persist key %s missing in bucket %s; continuing with empty state", _PERSIST_S3_KEY, _S3.bucket,
                 )
                 return
             raise
@@ -148,9 +146,7 @@ def _load_state() -> None:
 
         if not content:
             logger.info(
-                "S3 persist file s3://%s/%s is empty, skipping load",
-                _S3.bucket,
-                _S3._key(_PERSIST_S3_KEY),
+                "S3 persist file s3://%s/%s is empty, skipping load", _S3.bucket, _S3._key(_PERSIST_S3_KEY),
             )
             return
 
@@ -179,9 +175,7 @@ def _load_state() -> None:
                 _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
                 # Keep adapter's memory store in sync for list/get fallbacks
                 try:
-                    _ARTIFACT_STORE._memory_store[
-                        f"{art.metadata.type}:{art.metadata.id}"
-                    ] = artifact_to_dict(art)
+                    _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
                 except Exception:
                     pass
         logger.warning(
@@ -192,9 +186,7 @@ def _load_state() -> None:
             len(_TOKENS),
         )
     except Exception:
-        logger.exception(
-            "Failed to load persisted registry state from S3 (this is normal on first run)"
-        )
+        logger.exception("Failed to load persisted registry state from S3 (this is normal on first run)")
 
 
 def _record_timing(f):
@@ -265,9 +257,7 @@ _TYPE_URL_ALIASES = {
 }
 
 
-def _payload_sections(
-    payload: Mapping[str, Any] | None
-) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+def _payload_sections(payload: Mapping[str, Any] | None) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
     """Split a payload into metadata/data dicts while always including the root."""
     metadata_sections: list[Mapping[str, Any]] = []
     data_sections: list[Mapping[str, Any]] = []
@@ -364,9 +354,7 @@ def _normalize_artifact_request(
 
     name = _coalesce_str(metadata_sections, ["name", "Name", "artifact_name", "artifactName"])
     version = _coalesce_str(metadata_sections, ["version", "Version"]) or "1.0.0"
-    artifact_id = enforced_id or _coalesce_str(
-        metadata_sections, ["id", "ID", "artifact_id", "artifactId"]
-    )
+    artifact_id = enforced_id or _coalesce_str(metadata_sections, ["id", "ID", "artifact_id", "artifactId"])
 
     url_keys = ["url", "URL", "link", "download_url", "downloadUrl", "DownloadURL"]
     url_keys.extend(_TYPE_URL_ALIASES.get(artifact_type, []))
@@ -474,9 +462,7 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
             isinstance(art.data, dict) and bool(art.data.get("url")),
         )
     else:
-        logger.warning(
-            "FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id
-        )
+        logger.warning("FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id)
     return art
 
 
@@ -487,9 +473,9 @@ def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     try:
         items = _ARTIFACT_STORE.list_all(artifact_type)
         for d in items or []:
-            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (
-                d.get("data", {}) or {}
-            ).get("url") == url:
+            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (d.get("data", {}) or {}).get(
+                "url"
+            ) == url:
                 return True
     except Exception:
         pass
@@ -529,11 +515,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         logger.exception("Primary store list failed; falling back to memory")
     if not used_primary:
         store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
-        items = [
-            item
-            for item in store_vals
-            if (not query.artifact_type or item.metadata.type == query.artifact_type)
-        ]
+        items = [item for item in store_vals if (not query.artifact_type or item.metadata.type == query.artifact_type)]
         logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
 
     # Filter by types[]
@@ -610,9 +592,7 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
             token_present=bool(token),
             token=(token[:8] + "...") if token else "",
         )
-        response = jsonify(
-            {"message": "Authentication failed due to invalid or missing AuthenticationToken."}
-        )
+        response = jsonify({"message": "Authentication failed due to invalid or missing AuthenticationToken."})
         response.status_code = HTTPStatus.FORBIDDEN
         from flask import abort
 
@@ -756,17 +736,13 @@ def health_components_route() -> tuple[Response, int] | Response:
             },
             "issues": [],
             "timeline": (
-                [{"bucket": now_iso, "value": len(_REQUEST_TIMES), "unit": "req"}]
-                if include_timeline
-                else []
+                [{"bucket": now_iso, "value": len(_REQUEST_TIMES), "unit": "req"}] if include_timeline else []
             ),
             "logs": [],
         }
     ]
     return (
-        jsonify(
-            {"components": components, "generated_at": now_iso, "window_minutes": window_minutes,}
-        ),
+        jsonify({"components": components, "generated_at": now_iso, "window_minutes": window_minutes}),
         200,
     )
 
@@ -794,9 +770,8 @@ def authenticate_route() -> tuple[Response, int] | Response:
     logger.warning("AUTH: Authentication attempt received")
 
     body = _json_body() or {}
-    logger.warning(
-        f"AUTH: Parsed body type={type(body)}, keys={list(body.keys()) if isinstance(body, dict) else 'not-dict'}"
-    )
+    keys_info = list(body.keys()) if isinstance(body, dict) else "not-dict"
+    logger.warning("AUTH: Parsed body type=%s, keys=%s", type(body), keys_info)
 
     user = (body.get("user") or {}) if isinstance(body, dict) else {}
     secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
@@ -804,7 +779,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     password = str(secret.get("password", "")).strip()
 
     logger.warning(
-        f"AUTH: Received authentication request for username='{username}', has_password={bool(password)}"
+        "AUTH: Received authentication request for username=%s, has_password=%s", username, bool(password),
     )
 
     # Spec: if system supports auth, validate; else 501.
@@ -820,7 +795,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     tok = f"t_{int(time.time()*1000)}"
     _TOKENS[tok] = is_admin
     logger.warning(
-        f"AUTH: Created token for user '{username}', is_admin={is_admin}, token_count={len(_TOKENS)}"
+        "AUTH: Created token for user %s, is_admin=%s, token_count=%d", username, is_admin, len(_TOKENS),
     )
 
     try:
@@ -882,14 +857,7 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
 
     # Extract name from URL - try to preserve namespace/org structure
     url_parts = url.rstrip("/").split("/")
-    if len(url_parts) >= 2 and url_parts[-2] not in (
-        "http:",
-        "https:",
-        "models",
-        "datasets",
-        "code",
-        "repos",
-    ):
+    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos",):
         # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
         name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
     else:
@@ -897,8 +865,7 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     name_guess = secure_filename(name_guess) or "artifact"
     art_id = str(int(time.time() * 1000))
     artifact = Artifact(
-        metadata=ArtifactMetadata(id=art_id, name=name_guess, type=artifact_type, version="1.0.0",),
-        data={"url": url},
+        metadata=ArtifactMetadata(id=art_id, name=name_guess, type=artifact_type, version="1.0.0",), data={"url": url},
     )
     save_artifact(artifact)
     _audit_add(artifact_type, art_id, "CREATE", name_guess)
@@ -926,10 +893,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     if types_val is None:
         types_val = qd_raw.get("Types")
     artifact_type_val = (
-        qd_raw.get("artifact_type")
-        or qd_raw.get("artifactType")
-        or qd_raw.get("type")
-        or qd_raw.get("Type")
+        qd_raw.get("artifact_type") or qd_raw.get("artifactType") or qd_raw.get("type") or qd_raw.get("Type")
     )
     page_val = qd_raw.get("page") or qd_raw.get("Page")
     page_size_val = qd_raw.get("page_size") or qd_raw.get("PageSize")
@@ -966,9 +930,7 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     if offset_str:
         try:
             offset = max(0, int(offset_str))
-            page_size = (
-                int(qd.get("page_size", 25)) if isinstance(qd.get("page_size", 25), int) else 25
-            )
+            page_size = int(qd.get("page_size", 25)) if isinstance(qd.get("page_size", 25), int) else 25
             if page_size <= 0:
                 page_size = 25
             qd["page"] = (offset // page_size) + 1
@@ -1040,9 +1002,7 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
 # Alias: support singular path for fetching an artifact as well
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
-def get_artifact_route_alias(
-    artifact_type: str, artifact_id: str
-) -> tuple[Response, int] | Response:
+def get_artifact_route_alias(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     # Delegate to the primary handler to keep behavior consistent
     return get_artifact_route(artifact_type, artifact_id)
 
@@ -1067,10 +1027,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 
     art = Artifact(
         metadata=ArtifactMetadata(
-            id=artifact_id,
-            name=str(md["name"]),
-            type=artifact_type,
-            version=str(md.get("version", "1.0.0")),
+            id=artifact_id, name=str(md["name"]), type=artifact_type, version=str(md.get("version", "1.0.0")),
         ),
         data={"url": dt["url"].strip()} | {k: v for k, v in dt.items() if k != "url"},
     )
@@ -1116,11 +1073,7 @@ def upload_list_route() -> tuple[Response, int] | Response:
     for p in sorted(_UPLOAD_DIR.glob("**/*")):
         if p.is_file():
             files.append(
-                {
-                    "name": p.name,
-                    "path": str(p.relative_to(_UPLOAD_DIR.parent)),
-                    "size": p.stat().st_size,
-                }
+                {"name": p.name, "path": str(p.relative_to(_UPLOAD_DIR.parent)), "size": p.stat().st_size,}
             )
     return jsonify({"uploads": files}), 200
 
@@ -1147,9 +1100,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
     if _S3.enabled:
         key_rel = f"uploads/{artifact_type}/{artifact_id}/{safe_name}"
         try:
-            meta = _S3.put_file(
-                cast(BinaryIO, f.stream), key_rel, f.mimetype or "application/octet-stream"
-            )
+            meta = _S3.put_file(cast(BinaryIO, f.stream), key_rel, f.mimetype or "application/octet-stream")
             data = {
                 "s3_bucket": meta["bucket"],
                 "s3_key": meta["key"],
@@ -1190,10 +1141,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
             "size": dest.stat().st_size,
         }
     art = Artifact(
-        metadata=ArtifactMetadata(
-            id=artifact_id, name=artifact_name, type=artifact_type, version="1.0.0",
-        ),
-        data=data,
+        metadata=ArtifactMetadata(id=artifact_id, name=artifact_name, type=artifact_type, version="1.0.0",), data=data,
     )
     save_artifact(art)
     _audit_add(artifact_type, artifact_id, "CREATE", artifact_name)
@@ -1310,9 +1258,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         logger.exception("Failed to score artifact %s", artifact_id)
         return (
             jsonify(
-                {
-                    "message": "The artifact rating system encountered an error while computing at least one metric."
-                }
+                {"message": "The artifact rating system encountered an error while computing at least one metric."}
             ),
             500,
         )
@@ -1353,11 +1299,7 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
     }
     generated_at = last_rated_at or datetime.utcnow()
     return ModelRating(
-        id=artifact.metadata.id,
-        generated_at=generated_at,
-        scores=scores,
-        latencies=cleaned_latencies,
-        summary=summary,
+        id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
     )
 
 
@@ -1480,10 +1422,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                                 zout.writestr(info, zin.read(info))
                     buf.seek(0)
                 resp = send_file(
-                    buf,
-                    as_attachment=True,
-                    download_name=f"{artifact_id}-{part}.zip",
-                    mimetype="application/zip",
+                    buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",
                 )
                 resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
                 _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -1502,11 +1441,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     if part == "all":
         resp = send_file(
-            str(zpath),
-            as_attachment=True,
-            download_name=zpath.name,
-            etag=True,
-            mimetype="application/zip",
+            str(zpath), as_attachment=True, download_name=zpath.name, etag=True, mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
         _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -1521,12 +1456,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     zout.writestr(info, zin.read(info))
         buf.seek(0)
 
-    resp = send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"{artifact_id}-{part}.zip",
-        mimetype="application/zip",
-    )
+    resp = send_file(buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",)
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
     _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
@@ -1643,11 +1573,7 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     parents: list[str] = []
     try:
-        zf_ctx = (
-            zipfile.ZipFile(io.BytesIO(zbody), "r")
-            if zbody is not None
-            else zipfile.ZipFile(str(zpath), "r")
-        )
+        zf_ctx = zipfile.ZipFile(io.BytesIO(zbody), "r") if zbody is not None else zipfile.ZipFile(str(zpath), "r")
         with zf_ctx as zf:
             cand = [n for n in zf.namelist() if n.endswith("config.json")]
             for name in cand:
@@ -1664,17 +1590,11 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         pass
     parents = sorted(set(parents))
-    nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "config_json",}]
+    nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "config_json"}]
     for p in parents:
-        nodes.append(
-            {"artifact_id": p, "name": p, "source": "config_json",}
-        )
+        nodes.append({"artifact_id": p, "name": p, "source": "config_json"})
     edges = [
-        {
-            "from_node_artifact_id": p,
-            "to_node_artifact_id": artifact_id,
-            "relationship": "derived_from",
-        }
+        {"from_node_artifact_id": p, "to_node_artifact_id": artifact_id, "relationship": "derived_from",}
         for p in parents
     ]
     return jsonify({"nodes": nodes, "edges": edges}), 200
@@ -1691,11 +1611,7 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
     gh_url = str(body.get("github_url", "")).strip()
     if not gh_url:
         return (
-            jsonify(
-                {
-                    "message": "The license check request is malformed or references an unsupported usage context."
-                }
-            ),
+            jsonify({"message": "The license check request is malformed or references an unsupported usage context."}),
             400,
         )
     # Stub OK result (your adapter could do real checks)
@@ -1717,9 +1633,7 @@ def reset_route() -> tuple[Response, int] | Response:
     logger.warning(
         f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}"
     )
-    logger.warning(
-        f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items"
-    )
+    logger.warning(f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items")
 
     # Clear in-memory stores (but keep tokens)
     _STORE.clear()
@@ -1732,23 +1646,17 @@ def reset_route() -> tuple[Response, int] | Response:
     logger.warning(
         f"RESET: After clearing in-memory: _STORE={len(_STORE)}, _RATINGS_CACHE={len(_RATINGS_CACHE)}, _AUDIT_LOG={len(_AUDIT_LOG)}"
     )
-    logger.warning(
-        f"RESET: After clearing _ARTIFACT_STORE._memory_store={len(_ARTIFACT_STORE._memory_store)}"
-    )
+    logger.warning(f"RESET: After clearing _ARTIFACT_STORE._memory_store={len(_ARTIFACT_STORE._memory_store)}")
 
     # Clear DynamoDB stores
     try:
-        logger.warning(
-            f"RESET: Calling _ARTIFACT_STORE.clear() with use_dynamodb={_ARTIFACT_STORE.use_dynamodb}"
-        )
+        logger.warning(f"RESET: Calling _ARTIFACT_STORE.clear() with use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
         _ARTIFACT_STORE.clear()
         logger.warning("RESET: _ARTIFACT_STORE.clear() completed successfully")
 
         # Verify it's actually cleared
         all_artifacts = _ARTIFACT_STORE.list_all()
-        logger.warning(
-            f"RESET: After _ARTIFACT_STORE.clear(), list_all() returns {len(all_artifacts)} items"
-        )
+        logger.warning(f"RESET: After _ARTIFACT_STORE.clear(), list_all() returns {len(all_artifacts)} items")
         if all_artifacts:
             logger.error(
                 f"RESET: WARNING - Artifacts still present after clear: {[a.get('metadata', {}).get('id') for a in all_artifacts[:5]]}"
@@ -1798,9 +1706,7 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
             primary_items = _ARTIFACT_STORE.list_all()
         except Exception:
             primary_items = []
-        logger.warning(
-            "BY_NAME: memory miss; enumerating primary count=%d", len(primary_items or [])
-        )
+        logger.warning("BY_NAME: memory miss; enumerating primary count=%d", len(primary_items or []))
         for data in primary_items or []:
             md = data.get("metadata", {})
             nm = str(md.get("name", ""))
@@ -1840,9 +1746,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
     if not regex:
         return (
             jsonify(
-                {
-                    "message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"
-                }
+                {"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}
             ),
             400,
         )
@@ -1897,9 +1801,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme = str(art.data.get("readme", ""))[:2000]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(
-                    {"name": art.metadata.name, "id": art.metadata.id, "type": art.metadata.type,}
-                )
+                matches.append({"name": art.metadata.name, "id": art.metadata.id, "type": art.metadata.type})
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
                     break
@@ -1932,4 +1834,4 @@ def audit_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | 
 
 @blueprint.route("/tracks", methods=["GET"])
 def tracks_route() -> tuple[Response, int] | Response:
-    return jsonify({"plannedTracks": ["Performance track", "Access control track",]}), 200
+    return jsonify({"plannedTracks": ["Performance track", "Access control track"]}), 200

@@ -68,9 +68,7 @@ class TestModelRating:
 
     def test_model_rating_fields(self):
         """Test ModelRating has all required fields."""
-        rating = ModelRating(
-            id="test", generated_at=datetime.now(), scores={}, latencies={}, summary={}
-        )
+        rating = ModelRating(id="test", generated_at=datetime.now(), scores={}, latencies={}, summary={})
 
         assert hasattr(rating, "id")
         assert hasattr(rating, "generated_at")
@@ -118,9 +116,7 @@ class TestAsyncEventLoopHandling:
         async def test_coro():
             return "fallback_result"
 
-        with patch("asyncio.new_event_loop") as mock_new_loop, patch(
-            "asyncio.set_event_loop"
-        ) as mock_set_loop:
+        with patch("asyncio.new_event_loop") as mock_new_loop, patch("asyncio.set_event_loop") as mock_set_loop:
 
             mock_loop = Mock()
             mock_loop.run_until_complete.return_value = "fallback_result"
@@ -227,9 +223,7 @@ class TestModelRatingBuilding:
     def setup_method(self):
         """Set up test fixtures."""
         self.artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="test-model", name="Test Model", type="model", version="1.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="test-model", name="Test Model", type="model", version="1.0.0"),
             data={"model_link": "https://example.com/model"},
         )
 
@@ -327,9 +321,7 @@ class TestArtifactScoring:
     def setup_method(self):
         """Set up test fixtures."""
         self.artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="test-model", name="Test Model", type="model", version="1.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="test-model", name="Test Model", type="model", version="1.0.0"),
             data={
                 "model_link": "https://example.com/model",
                 "code_link": "https://github.com/example/repo",
@@ -373,9 +365,7 @@ class TestArtifactScoring:
 
         mock_metrics = {"license": 0.8, "ramp_up_time": 0.6, "license_latency": 100}
 
-        with patch.object(
-            _METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock
-        ) as mock_analyze:
+        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             # Both should work
@@ -398,9 +388,7 @@ class TestArtifactScoring:
 
         mock_metrics = {"license": 0.8}
 
-        with patch.object(
-            _METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock
-        ) as mock_analyze:
+        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             _score_artifact_with_metrics(artifact)
@@ -452,10 +440,7 @@ class TestArtifactScoring:
 
         # Verify analyze_entry was called correctly
         mock_analyze.assert_called_once_with(
-            "https://github.com/example/repo",
-            "https://example.com/dataset",
-            "https://example.com/model",
-            set(),
+            "https://github.com/example/repo", "https://example.com/dataset", "https://example.com/model", set(),
         )
 
     @patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock)
@@ -473,10 +458,7 @@ class TestArtifactScoring:
 
         # Verify analyze_entry was called with None for missing links
         mock_analyze.assert_called_once_with(
-            None,  # code_link
-            None,  # dataset_link
-            "https://example.com/model",  # model_link
-            set(),
+            None, None, "https://example.com/model", set(),  # code_link  # dataset_link  # model_link
         )
 
     @patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock)
@@ -576,9 +558,7 @@ class TestIntegrationScenarios:
             "dataset_quality_latency": 125,
         }
 
-        with patch.object(
-            _METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock
-        ) as mock_analyze:
+        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             rating = _score_artifact_with_metrics(artifact)
@@ -615,15 +595,11 @@ class TestIntegrationScenarios:
     def test_error_recovery_and_logging(self):
         """Test error scenarios are properly handled and logged."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="error-test", name="test", type="model", version="1.0"
-            ),
+            metadata=MockArtifactMetadata(id="error-test", name="test", type="model", version="1.0"),
             data={"model_link": "https://example.com/broken-model"},
         )
 
-        with patch.object(
-            _METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock
-        ) as mock_analyze:
+        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.side_effect = ValueError("Network error")
 
             # The function may catch exceptions and return default values instead of propagating

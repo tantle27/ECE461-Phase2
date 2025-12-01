@@ -127,13 +127,7 @@ class TestAppLogging:
             if formatter:
                 # Test formatting with a mock log record
                 record = logging.LogRecord(
-                    name="test",
-                    level=logging.INFO,
-                    pathname="",
-                    lineno=0,
-                    msg="Test message",
-                    args=(),
-                    exc_info=None,
+                    name="test", level=logging.INFO, pathname="", lineno=0, msg="Test message", args=(), exc_info=None,
                 )
                 formatted = formatter.format(record)
                 assert "Test message" in formatted
@@ -162,8 +156,7 @@ class TestSecretsLoaderImport:
             pytest.skip(f"App creation unavailable: {IMPORT_ERROR}")
         # Mock the import to raise ImportError
         with mock.patch(
-            "app.secrets_loader.load_registry_secrets",
-            side_effect=ImportError("Mocked import error"),
+            "app.secrets_loader.load_registry_secrets", side_effect=ImportError("Mocked import error"),
         ):
             # This should not prevent app creation due to exception handling
             app = create_app()
@@ -173,9 +166,7 @@ class TestSecretsLoaderImport:
         """Test general exception handling in secrets loader import."""
         if not APP_AVAILABLE:
             pytest.skip(f"App creation unavailable: {IMPORT_ERROR}")
-        with mock.patch(
-            "app.secrets_loader.load_registry_secrets", side_effect=Exception("General error")
-        ):
+        with mock.patch("app.secrets_loader.load_registry_secrets", side_effect=Exception("General error")):
             app = create_app()
             assert app is not None
 
@@ -279,8 +270,7 @@ class TestAppWithEnvironment:
     def test_app_with_environment_variables(self):
         """Test app creation with environment variables."""
         with mock.patch.dict(
-            os.environ,
-            {"FLASK_ENV": "development", "FLASK_DEBUG": "1", "SECRET_KEY": "env-secret-key"},
+            os.environ, {"FLASK_ENV": "development", "FLASK_DEBUG": "1", "SECRET_KEY": "env-secret-key"},
         ):
             app = create_app()
             assert app is not None

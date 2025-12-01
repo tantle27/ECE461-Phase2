@@ -179,11 +179,7 @@ class TestDataClasses:
     def test_artifact_query_custom_values(self):
         """Test ArtifactQuery with custom values."""
         query = ArtifactQuery(
-            artifact_type="model",
-            name="test-model",
-            types=["model", "dataset"],
-            page=2,
-            page_size=50,
+            artifact_type="model", name="test-model", types=["model", "dataset"], page=2, page_size=50,
         )
         assert query.artifact_type == "model"
         assert query.name == "test-model"
@@ -502,9 +498,7 @@ class TestArtifactStorage:
 
         # Add test artifacts
         for i in range(5):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}", name=f"model-{i}", type="model", version="1.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=f"model-{i}", type="model", version="1.0")
             artifact = Artifact(metadata=metadata, data={})
             save_artifact(artifact)
 
@@ -525,10 +519,7 @@ class TestArtifactStorage:
         for artifact_type in ["model", "dataset"]:
             for i in range(2):
                 metadata = ArtifactMetadata(
-                    id=f"{artifact_type}-{i}",
-                    name=f"{artifact_type}-{i}",
-                    type=artifact_type,
-                    version="1.0",
+                    id=f"{artifact_type}-{i}", name=f"{artifact_type}-{i}", type=artifact_type, version="1.0",
                 )
                 artifact = Artifact(metadata=metadata, data={})
                 save_artifact(artifact)
@@ -547,9 +538,7 @@ class TestArtifactStorage:
 
         # Add different types
         for artifact_type in ["model", "dataset", "code"]:
-            metadata = ArtifactMetadata(
-                id=artifact_type, name=artifact_type, type=artifact_type, version="1.0"
-            )
+            metadata = ArtifactMetadata(id=artifact_type, name=artifact_type, type=artifact_type, version="1.0")
             save_artifact(Artifact(metadata=metadata, data={}))
 
         query = ArtifactQuery(types=["model", "dataset"])

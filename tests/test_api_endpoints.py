@@ -105,12 +105,7 @@ class TestModelRegistryAPI:
         expected_results = {
             "total": 25,
             "results": [
-                {
-                    "id": "model-123",
-                    "name": "transformer-base",
-                    "score": 0.85,
-                    "tags": ["nlp", "transformer"],
-                },
+                {"id": "model-123", "name": "transformer-base", "score": 0.85, "tags": ["nlp", "transformer"],},
                 {"id": "model-456", "name": "bert-model", "score": 0.78, "tags": ["nlp", "bert"]},
             ],
             "page": 1,
@@ -160,10 +155,7 @@ class TestModelRegistryAPI:
         expected_response = {
             "status": "success",
             "message": "Model deleted successfully",
-            "deleted_files": [
-                "s3://bucket/models/model-123/model.pkl",
-                "s3://bucket/models/model-123/config.json",
-            ],
+            "deleted_files": ["s3://bucket/models/model-123/model.pkl", "s3://bucket/models/model-123/config.json",],
         }
 
         self.api_client.delete.return_value = expected_response

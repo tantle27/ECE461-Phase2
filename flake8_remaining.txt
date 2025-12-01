@@ -1,39 +1,27 @@
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\coverage_gate.py:210:101: E501 line too long (103 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\coverage_gate.py:211:101: E501 line too long (119 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\coverage_gate.py:291:101: E501 line too long (115 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\coverage_gate.py:304:101: E501 line too long (101 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:347:101: E501 line too long (126 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:351:101: E501 line too long (130 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:355:101: E501 line too long (134 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:386:101: E501 line too long (127 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:388:101: E501 line too long (110 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:401:101: E501 line too long (114 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:403:101: E501 line too long (117 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:407:101: E501 line too long (114 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:412:101: E501 line too long (101 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:768:97: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:798:101: E501 line too long (114 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:807:101: E501 line too long (105 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:823:101: E501 line too long (101 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:872:101: E501 line too long (135 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1314:101: E501 line too long (117 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1635:101: E501 line too long (128 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1667:93: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1670:66: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1696:101: E501 line too long (115 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1718:101: E501 line too long (113 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1733:101: E501 line too long (132 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1742:101: E501 line too long (102 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1754:101: E501 line too long (135 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1844:101: E501 line too long (122 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1853:101: E501 line too long (101 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1901:97: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1935:82: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:231:94: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:395:85: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:253:75: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_main_comprehensive.py:283:101: E501 line too long (115 > 100 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:261:100: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:339:121: E501 line too long (126 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:343:121: E501 line too long (130 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:347:121: E501 line too long (134 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:376:121: E501 line too long (127 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:847:121: E501 line too long (135 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1076:106: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1565:121: E501 line too long (128 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1597:104: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1647:121: E501 line too long (132 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1662:121: E501 line too long (135 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:221:94: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:364:85: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\db\dynamodb_setup.py:35:111: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\conftest.py:135:101: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_api_endpoints.py:108:110: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_api_endpoints.py:158:115: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_backend.py:386:105: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:393:113: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:425:115: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:550:109: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:250:75: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:322:106: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:323:106: E231 missing whitespace after ','
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:91:13: F401 'registry' imported but unused
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:92:13: F401 'app.app.create_app' imported but unused
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_secrets_loader_clean.py:410:101: E501 line too long (103 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tools\fix_flake8.py:61:101: E501 line too long (107 > 100 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\metrics\test_bus_factor_metric.py:18:100: E231 missing whitespace after ','

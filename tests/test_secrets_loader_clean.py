@@ -64,9 +64,7 @@ class TestSecretsManagerIntegration:
 
         # Mock successful secret response
         secret_data = {"GH_TOKEN": "test-github-token", "GENAI_API_KEY": "test-genai-key"}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}, clear=True):
             load_registry_secrets()
@@ -90,9 +88,7 @@ class TestSecretsManagerIntegration:
 
         # Mock secret with only one key
         secret_data = {"GH_TOKEN": "only-github-token"}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}, clear=True):
             load_registry_secrets()
@@ -109,9 +105,7 @@ class TestSecretsManagerIntegration:
         mock_boto3.client.return_value = mock_secrets_client
 
         secret_data = {"GH_TOKEN": "secret-github-token", "GENAI_API_KEY": "secret-genai-key"}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         # Set existing environment variables
         existing_env = {
@@ -135,9 +129,7 @@ class TestSecretsManagerIntegration:
         mock_boto3.client.return_value = mock_secrets_client
 
         secret_data = {"GH_TOKEN": "secret-github-token", "GENAI_API_KEY": "secret-genai-key"}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         # Set partial existing environment
         existing_env = {
@@ -188,12 +180,8 @@ class TestErrorHandling:
         # Create a ClientError exception
         from botocore.exceptions import ClientError
 
-        error_response = {
-            "Error": {"Code": "ResourceNotFoundException", "Message": "Secret not found"}
-        }
-        mock_secrets_client.get_secret_value.side_effect = ClientError(
-            error_response, "GetSecretValue"
-        )
+        error_response = {"Error": {"Code": "ResourceNotFoundException", "Message": "Secret not found"}}
+        mock_secrets_client.get_secret_value.side_effect = ClientError(error_response, "GetSecretValue")
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}):
             with patch("logging.exception") as mock_log:
@@ -311,9 +299,7 @@ class TestSecretDataProcessing:
 
         # Mock response with null values
         secret_data = {"GH_TOKEN": None, "GENAI_API_KEY": None}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}, clear=True):
             load_registry_secrets()
@@ -331,9 +317,7 @@ class TestSecretDataProcessing:
 
         # Mock response with empty string values
         secret_data = {"GH_TOKEN": "", "GENAI_API_KEY": ""}
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}, clear=True):
             load_registry_secrets()
@@ -356,9 +340,7 @@ class TestSecretDataProcessing:
             "EXTRA_KEY": "extra-value",
             "ANOTHER_KEY": "another-value",
         }
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         with patch.dict("os.environ", {"REGISTRY_SECRET_ARN": test_arn}, clear=True):
             load_registry_secrets()
@@ -439,9 +421,7 @@ class TestIntegrationScenarios:
             "GH_TOKEN": "production-github-token",
             "GENAI_API_KEY": "production-genai-key",
         }
-        mock_secrets_client.get_secret_value.return_value = {
-            "SecretString": json.dumps(secret_data)
-        }
+        mock_secrets_client.get_secret_value.return_value = {"SecretString": json.dumps(secret_data)}
 
         # Simulate development environment with pre-configured tokens
         dev_env = {

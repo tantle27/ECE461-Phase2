@@ -89,11 +89,7 @@ def validate_and_configure_logging() -> None:
         level_map = {"1": logging.INFO, "2": logging.DEBUG}
         level = level_map[level_str]
         logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(levelname)s] %(message)s",
-            filename=log_file,
-            filemode="a",
-            force=True,
+            level=level, format="%(asctime)s [%(levelname)s] %(message)s", filename=log_file, filemode="a", force=True,
         )
         logging.getLogger().setLevel(level)
         # seed logs so grader can distinguish 1 vs 2
@@ -200,18 +196,14 @@ def calculate_net_score(metrics: dict[str, Any]) -> float:
 
 
 async def analyze_entry(
-    entry: tuple[str | None, str | None, str],
-    process_pool: ThreadPoolExecutor,
-    encountered_datasets: set,
+    entry: tuple[str | None, str | None, str], process_pool: ThreadPoolExecutor, encountered_datasets: set,
 ) -> dict[str, Any]:
     code_link, dataset_link, model_link = entry
     start_time = time.time()
 
     github_token = os.environ.get("GITHUB_TOKEN")
     calculator = MetricsCalculator(process_pool, github_token)
-    local = await calculator.analyze_entry(
-        code_link, dataset_link, model_link, encountered_datasets
-    )
+    local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
     net_score = calculate_net_score(local)
     total_latency_ms = int((time.time() - start_time) * 1000)

@@ -21,9 +21,9 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(
                 readme_text="Excellent README with clear instructions", repo_path="/path/to/repo"
@@ -43,9 +43,7 @@ class TestRampUpTimeMetric:
             assert result == 1.0  # Should be exactly 1.0
 
             # Verify method calls
-            mock_gen_ai_client.get_readme_clarity.assert_called_once_with(
-                "Excellent README with clear instructions"
-            )
+            mock_gen_ai_client.get_readme_clarity.assert_called_once_with("Excellent README with clear instructions")
             mock_git_client.analyze_ramp_up_time.assert_called_once_with("/path/to/repo")
 
     @pytest.mark.asyncio
@@ -63,9 +61,9 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(readme_text="", repo_path="/path/to/empty/repo")
             metric = RampUpTimeMetric()
@@ -92,9 +90,9 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(
                 readme_text="Good README but could be clearer", repo_path="/path/to/partial/repo"
@@ -130,13 +128,12 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Clear README without dependencies or examples",
-                repo_path="/path/to/readme-only/repo",
+                readme_text="Clear README without dependencies or examples", repo_path="/path/to/readme-only/repo",
             )
             metric = RampUpTimeMetric()
 
@@ -164,13 +161,11 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="Poor README", repo_path="/path/to/well-structured/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="Poor README", repo_path="/path/to/well-structured/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -198,9 +193,9 @@ class TestRampUpTimeMetric:
         mock_git_client.analyze_ramp_up_time.return_value = {}
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(
                 readme_text="README with missing repo data", repo_path="/path/to/incomplete/repo"
@@ -230,9 +225,9 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(
                 readme_text="README with partial repo data", repo_path="/path/to/partial/repo"
@@ -306,9 +301,9 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(readme_text="README text", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
@@ -329,9 +324,9 @@ class TestRampUpTimeMetric:
         mock_git_client.analyze_ramp_up_time.side_effect = Exception("Git analysis error")
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
             metric_input = RampUpTimeInput(readme_text="README text", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
@@ -355,13 +350,11 @@ class TestRampUpTimeMetric:
         }
 
         # Patch both clients
-        with patch(
-            "src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client
-        ), patch("src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client):
+        with patch("src.metrics.ramp_up_time_metric.GenAIClient", return_value=mock_gen_ai_client), patch(
+            "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
+        ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="Very poor README", repo_path="/path/to/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="Very poor README", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method

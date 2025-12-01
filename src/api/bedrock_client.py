@@ -26,10 +26,7 @@ class BedrockClient:
     def _invoke_sync(self, model_id: str, payload_bytes: bytes) -> str:
         # Use InvokeModel API
         resp = self._client.invoke_model(
-            modelId=model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=payload_bytes,
+            modelId=model_id, contentType="application/json", accept="application/json", body=payload_bytes,
         )
         body_stream = resp.get("body")
         if body_stream is None:
@@ -47,9 +44,7 @@ class BedrockClient:
             raise ValueError("No Bedrock model id configured (BEDROCK_MODEL_ID)")
         payload = json.dumps({"input": message})
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None, self._invoke_sync, model_id, payload.encode("utf-8")
-        )
+        return await loop.run_in_executor(None, self._invoke_sync, model_id, payload.encode("utf-8"))
 
     async def get_performance_claims(self, readme_text: str) -> dict:
         prompt = "Extract performance claims as JSON from the following README:\n\n" + readme_text

@@ -107,9 +107,7 @@ def _calculate_net_score(metrics: dict[str, Any]) -> float:
     return min(1.0, max(0.0, net))
 
 
-def _build_model_rating(
-    artifact, model_link: str, metrics: dict[str, Any], total_latency_ms: int,
-) -> ModelRating:
+def _build_model_rating(artifact, model_link: str, metrics: dict[str, Any], total_latency_ms: int,) -> ModelRating:
     net_score = round(_calculate_net_score(metrics), 2)
     metric_keys = [
         "bus_factor",
@@ -137,9 +135,7 @@ def _build_model_rating(
         "tree_score_latency": "tree_score",
     }
 
-    scores: dict[str, Any] = {
-        key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None
-    }
+    scores: dict[str, Any] = {key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None}
 
     # Add placeholder scores for OpenAPI spec compliance (if not present)
     if "reproducibility" not in scores:
@@ -176,11 +172,7 @@ def _build_model_rating(
         summary["size_score"] = metrics["size_score"]
 
     return ModelRating(
-        id=artifact.metadata.id,
-        generated_at=datetime.utcnow(),
-        scores=scores,
-        latencies=latencies,
-        summary=summary,
+        id=artifact.metadata.id, generated_at=datetime.utcnow(), scores=scores, latencies=latencies, summary=summary,
     )
 
 
@@ -212,9 +204,7 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     else:
 
         async def _collect() -> dict[str, Any]:
-            return await _METRICS_CALCULATOR.analyze_entry(
-                code_link, dataset_link, model_link_str, set(),
-            )
+            return await _METRICS_CALCULATOR.analyze_entry(code_link, dataset_link, model_link_str, set(),)
 
         metrics = _run_async(_collect())
         total_latency_ms = int((time.time() - start_time) * 1000)
@@ -224,6 +214,4 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
 # Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
 _THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
-_METRICS_CALCULATOR = MetricsCalculator(
-    cast(ProcessPoolExecutor, _THREAD_POOL), os.environ.get("GH_TOKEN")
-)
+_METRICS_CALCULATOR = MetricsCalculator(cast(ProcessPoolExecutor, _THREAD_POOL), os.environ.get("GH_TOKEN"))

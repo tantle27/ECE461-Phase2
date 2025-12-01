@@ -87,10 +87,7 @@ def main() -> int:
             except Exception:
                 continue
             # Remove trailing whitespace on each line
-            lines = [
-                re.sub(r"[ \t]+$", "", line)
-                for line in s.splitlines()
-            ]
+            lines = [re.sub(r"[ \t]+$", "", line) for line in s.splitlines()]
             # Replace lines that contain only spaces/tabs with empty line
             # (already handled by strip above)
             new = "\n".join(lines) + "\n"
@@ -168,9 +165,7 @@ def main() -> int:
     # Finally run flake8 and capture output
     try:
         print("Running flake8 to capture remaining issues...")
-        result = subprocess.run(
-            ["flake8", "--max-line-length=100", str(ROOT)], capture_output=True, text=True
-        )
+        result = subprocess.run(["flake8", "--max-line-length=120", str(ROOT)], capture_output=True, text=True)
         out = result.stdout or result.stderr
         REMAINING.write_text(out)
         if out.strip():

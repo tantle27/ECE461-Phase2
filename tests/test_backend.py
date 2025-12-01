@@ -244,9 +244,7 @@ class TestFileOperations:
 
         # Test file download from S3
         mock_s3_client.download_file.return_value = True
-        success = self._download_from_s3(
-            mock_s3_client, test_bucket, test_key, "/tmp/downloaded.zip"
-        )
+        success = self._download_from_s3(mock_s3_client, test_bucket, test_key, "/tmp/downloaded.zip")
         assert success is True
 
         # Test file listing
@@ -385,12 +383,7 @@ class TestAPIEndpoints:
         return {
             "status": "healthy",
             "timestamp": "2025-10-20T12:00:00Z",
-            "services": {
-                "database": "healthy",
-                "s3": "healthy",
-                "auth": "healthy",
-                "metrics": "healthy",
-            },
+            "services": {"database": "healthy", "s3": "healthy", "auth": "healthy", "metrics": "healthy",},
         }
 
     def test_model_search_endpoint(self):
@@ -410,9 +403,7 @@ class TestAPIEndpoints:
         assert "page" in paginated_results
         assert "page_size" in paginated_results
 
-    def _search_models(
-        self, query: str, filters: dict = None, page: int = 1, page_size: int = 20
-    ) -> dict[str, Any]:
+    def _search_models(self, query: str, filters: dict = None, page: int = 1, page_size: int = 20) -> dict[str, Any]:
         """Mock model search endpoint."""
         # Mock search results
         mock_models = [
@@ -515,9 +506,7 @@ class TestBackendPerformance:
         import time
 
         # Mock large dataset query
-        mock_database.fetch_all.return_value = [
-            {"id": i, "name": f"model_{i}", "score": 0.8} for i in range(1000)
-        ]
+        mock_database.fetch_all.return_value = [{"id": i, "name": f"model_{i}", "score": 0.8} for i in range(1000)]
 
         start_time = time.time()
         results = self._search_large_dataset(mock_database)

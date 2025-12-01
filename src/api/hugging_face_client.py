@@ -16,9 +16,7 @@ class HuggingFaceClient:
 
     def get_dataset_info(self, repo_id: str) -> dict:
         info = self.api.dataset_info(repo_id)
-        normalized_likes = self.normalize_log(
-            info.likes if info.likes is not None else 0, MAX_DATASET_LIKES
-        )
+        normalized_likes = self.normalize_log(info.likes if info.likes is not None else 0, MAX_DATASET_LIKES)
         normalized_downloads = self.normalize_log(
             info.downloads if info.downloads is not None else 0, MAX_DATASET_DOWNLOADS
         )

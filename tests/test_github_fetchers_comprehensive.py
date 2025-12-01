@@ -131,9 +131,7 @@ class TestGetFunction:
     @patch("src.api.github_fetchers.requests.get")
     @patch("src.api.github_fetchers._headers")
     @patch("time.sleep")
-    def test_get_retries_exhausted(
-        self, mock_sleep, mock_headers, mock_requests_get, mock_settings
-    ):
+    def test_get_retries_exhausted(self, mock_sleep, mock_headers, mock_requests_get, mock_settings):
         """Test retry exhaustion when always rate limited."""
         mock_settings.http_retries = 2
         mock_settings.request_timeout_s = 30
@@ -241,8 +239,7 @@ class TestFetchRepoTree:
         assert mock_get.call_count == 2
         mock_get.assert_any_call("https://api.github.com/repos/owner/repo/commits/feature-branch")
         mock_get.assert_any_call(
-            "https://api.github.com/repos/owner/repo/git/trees/commit_sha_123",
-            params={"recursive": "1"},
+            "https://api.github.com/repos/owner/repo/git/trees/commit_sha_123", params={"recursive": "1"},
         )
 
     @patch("src.api.github_fetchers._get")
@@ -262,8 +259,7 @@ class TestFetchRepoTree:
 
         mock_get.assert_any_call("https://api.github.com/repos/owner/repo/branches/main")
         mock_get.assert_any_call(
-            "https://api.github.com/repos/owner/repo/git/trees/main_sha_456",
-            params={"recursive": "1"},
+            "https://api.github.com/repos/owner/repo/git/trees/main_sha_456", params={"recursive": "1"},
         )
 
     @patch("src.api.github_fetchers._get")
@@ -309,15 +305,11 @@ class TestFetchCommits:
         """Test fetching commits with specific ref."""
         mock_get.return_value = [
             {
-                "commit": {
-                    "author": {"email": "user1@example.com", "date": "2023-01-01T12:00:00Z"}
-                },
+                "commit": {"author": {"email": "user1@example.com", "date": "2023-01-01T12:00:00Z"}},
                 "author": {"login": "user1"},
             },
             {
-                "commit": {
-                    "author": {"email": "user2@example.com", "date": "2023-01-02T12:00:00Z"}
-                },
+                "commit": {"author": {"email": "user2@example.com", "date": "2023-01-02T12:00:00Z"}},
                 "author": {"login": "user2"},
             },
         ]
@@ -327,22 +319,13 @@ class TestFetchCommits:
         result = fetch_commits("owner/repo", "feature-branch")
 
         expected = [
-            {
-                "author_email": "user1@example.com",
-                "author_login": "user1",
-                "date": "2023-01-01T12:00:00Z",
-            },
-            {
-                "author_email": "user2@example.com",
-                "author_login": "user2",
-                "date": "2023-01-02T12:00:00Z",
-            },
+            {"author_email": "user1@example.com", "author_login": "user1", "date": "2023-01-01T12:00:00Z",},
+            {"author_email": "user2@example.com", "author_login": "user2", "date": "2023-01-02T12:00:00Z",},
         ]
         assert result == expected
 
         mock_get.assert_called_once_with(
-            "https://api.github.com/repos/owner/repo/commits",
-            params={"per_page": 100, "sha": "feature-branch"},
+            "https://api.github.com/repos/owner/repo/commits", params={"per_page": 100, "sha": "feature-branch"},
         )
 
     @patch("src.api.github_fetchers._get")
@@ -350,9 +333,7 @@ class TestFetchCommits:
         """Test fetching commits without ref."""
         mock_get.return_value = [
             {
-                "commit": {
-                    "author": {"email": "author@example.com", "date": "2023-01-01T12:00:00Z"}
-                },
+                "commit": {"author": {"email": "author@example.com", "date": "2023-01-01T12:00:00Z"}},
                 "author": {"login": "author"},
             }
         ]
@@ -361,9 +342,7 @@ class TestFetchCommits:
 
         fetch_commits("owner/repo", None)
 
-        mock_get.assert_called_once_with(
-            "https://api.github.com/repos/owner/repo/commits", params={"per_page": 100}
-        )
+        mock_get.assert_called_once_with("https://api.github.com/repos/owner/repo/commits", params={"per_page": 100})
 
     @patch("src.api.github_fetchers._get")
     def test_fetch_commits_missing_author_info(self, mock_get):
@@ -417,9 +396,7 @@ class TestFetchReadme:
         }
         assert result == expected
 
-        mock_get.assert_called_once_with(
-            "https://api.github.com/repos/owner/repo/readme", params={"ref": "main"}
-        )
+        mock_get.assert_called_once_with("https://api.github.com/repos/owner/repo/readme", params={"ref": "main"})
 
     @patch("src.api.github_fetchers._get")
     def test_fetch_readme_without_ref(self, mock_get):
@@ -433,9 +410,7 @@ class TestFetchReadme:
 
         fetch_readme("owner/repo", None)
 
-        mock_get.assert_called_once_with(
-            "https://api.github.com/repos/owner/repo/readme", params={}
-        )
+        mock_get.assert_called_once_with("https://api.github.com/repos/owner/repo/readme", params={})
 
     @patch("src.api.github_fetchers._get")
     def test_fetch_readme_api_error(self, mock_get):

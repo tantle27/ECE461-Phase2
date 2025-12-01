@@ -42,10 +42,7 @@ class PerformanceAnalyzer:
                 [
                     line
                     for line in lines
-                    if "passed" in line
-                    and "failed" in line
-                    or "passed" in line
-                    and "skipped" in line
+                    if "passed" in line and "failed" in line or "passed" in line and "skipped" in line
                 ][-1:]
                 if lines
                 else []
@@ -297,15 +294,11 @@ class PerformanceAnalyzer:
         # Top Performers
         if "fastest_endpoint" in summary:
             fastest = summary["fastest_endpoint"]
-            print(
-                f"   • Fastest Endpoint: {fastest['endpoint']} ({fastest['avg_response_time']}ms)"
-            )
+            print(f"   • Fastest Endpoint: {fastest['endpoint']} ({fastest['avg_response_time']}ms)")
 
         if "slowest_endpoint" in summary:
             slowest = summary["slowest_endpoint"]
-            print(
-                f"   • Slowest Endpoint: {slowest['endpoint']} ({slowest['avg_response_time']}ms)"
-            )
+            print(f"   • Slowest Endpoint: {slowest['endpoint']} ({slowest['avg_response_time']}ms)")
 
         # Database Performance
         db_ops = report_data.get("database_operations", [])

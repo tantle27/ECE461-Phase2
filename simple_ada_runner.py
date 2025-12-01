@@ -66,10 +66,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run simplified ADA tests")
     parser.add_argument("--url", default="http://localhost:5000", help="URL to test")
     parser.add_argument(
-        "--type",
-        choices=["all", "keyboard", "contrast", "accessibility"],
-        default="all",
-        help="Type of tests to run",
+        "--type", choices=["all", "keyboard", "contrast", "accessibility"], default="all", help="Type of tests to run",
     )
 
     args = parser.parse_args()

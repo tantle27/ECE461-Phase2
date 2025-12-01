@@ -205,11 +205,7 @@ app.run(host='127.0.0.1', port=5000, debug=False)
 
         test_scenarios = [
             ("GET", "/health", {}),
-            (
-                "PUT",
-                "/authenticate",
-                {"User": {"name": "test", "isAdmin": False}, "Secret": {"password": "test123"}},
-            ),
+            ("PUT", "/authenticate", {"User": {"name": "test", "isAdmin": False}, "Secret": {"password": "test123"}},),
             ("POST", "/artifacts", [{"Name": "*", "Version": "1.0.0"}]),
             ("GET", "/tracks", {}),
         ]
@@ -262,11 +258,7 @@ app.run(host='127.0.0.1', port=5000, debug=False)
                 "max_response_time_ms": 200,
                 "min_response_time_ms": 10,
             },
-            "coverage": {
-                "endpoints_covered": 4,
-                "total_endpoints": 20,
-                "coverage_percentage": 20.0,
-            },
+            "coverage": {"endpoints_covered": 4, "total_endpoints": 20, "coverage_percentage": 20.0,},
         }
 
         results_file = self.results_dir / f"{test_type}_results.json"
@@ -376,9 +368,7 @@ app.run(host='127.0.0.1', port=5000, debug=False)
 
         for test_name, test_data in analysis.get("test_summary", {}).items():
             success_rate = test_data.get("success_rate", 0)
-            status_class = (
-                "success" if success_rate >= 80 else "warning" if success_rate >= 60 else "error"
-            )
+            status_class = "success" if success_rate >= 80 else "warning" if success_rate >= 60 else "error"
 
             html_content += f"""
             <tr>
@@ -427,20 +417,12 @@ app.run(host='127.0.0.1', port=5000, debug=False)
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Run RESTler API fuzz tests")
-    parser.add_argument(
-        "--config", default="restler/restler_config.json", help="RESTler config file path"
-    )
-    parser.add_argument(
-        "--suite", default="smoke", choices=["smoke", "fuzzing", "all"], help="Test suite to run"
-    )
+    parser.add_argument("--config", default="restler/restler_config.json", help="RESTler config file path")
+    parser.add_argument("--suite", default="smoke", choices=["smoke", "fuzzing", "all"], help="Test suite to run")
     parser.add_argument("--endpoint", default="http://127.0.0.1:5000", help="API endpoint to test")
     parser.add_argument("--ci", action="store_true", help="Run in CI mode")
-    parser.add_argument(
-        "--output-dir", default="restler_reports", help="Output directory for results"
-    )
-    parser.add_argument(
-        "--no-server", action="store_true", help="Don't start test server (assume already running)"
-    )
+    parser.add_argument("--output-dir", default="restler_reports", help="Output directory for results")
+    parser.add_argument("--no-server", action="store_true", help="Don't start test server (assume already running)")
 
     args = parser.parse_args()
 
