@@ -532,7 +532,13 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         items = [item for item in items if item.metadata.name.lower() == needle]
         logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
     elif query.name == "*":
-        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
+        logger.warning("LIST: Wildcard '*' requested; returning complete artifact list without pagination")
+        return {
+            "items": [artifact_to_dict(artifact) for artifact in items],
+            "page": 1,
+            "page_size": len(items),
+            "total": len(items),
+        }
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
