@@ -64,7 +64,6 @@ class ArtifactQuery:
 
 _ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
-_ARTIFACT_ORDER: list[str] = []
 _RATINGS_CACHE: dict[str, ModelRating] = {}
 _AUDIT_LOG: dict[str, list[dict[str, Any]]] = {}
 _S3 = S3Storage()
@@ -99,7 +98,6 @@ def _persist_state() -> None:
         data = {
             "tokens": [{"t": t, "admin": admin} for t, admin in _TOKENS.items()],
             "store": [artifact_to_dict(a) for a in _STORE.values()],
-            "order": list(_ARTIFACT_ORDER),
         }
         json_data = json.dumps(data)
         
@@ -154,7 +152,6 @@ def _load_state() -> None:
                 _TOKENS[t] = admin
         # Load artifacts
         _STORE.clear()
-        _ARTIFACT_ORDER.clear()
         for it in data.get("store", []) or []:
             md = (it.get("metadata") or {})
             art = Artifact(
@@ -168,25 +165,11 @@ def _load_state() -> None:
             )
             if art.metadata.id and art.metadata.type:
                 _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
-                key = _store_key(art.metadata.type, art.metadata.id)
-                if key not in _ARTIFACT_ORDER:
-                    _ARTIFACT_ORDER.append(key)
                 # Keep adapter's memory store in sync for list/get fallbacks
                 try:
                     _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
                 except Exception:
                     pass
-        order_hint = data.get("order")
-        if isinstance(order_hint, list):
-            reconstructed: list[str] = []
-            for key in order_hint:
-                if isinstance(key, str) and key in _STORE:
-                    reconstructed.append(key)
-            if reconstructed:
-                _ARTIFACT_ORDER.clear()
-                _ARTIFACT_ORDER.extend(reconstructed)
-        if not _ARTIFACT_ORDER:
-            _ARTIFACT_ORDER.extend(list(_STORE.keys()))
         logger.warning("Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
                       _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
     except Exception:
@@ -312,40 +295,6 @@ def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
         "Version": meta.version,
     }
 
-def _artifact_metadata_view(obj: Artifact | Mapping[str, Any]) -> dict[str, Any]:
-    """Create a metadata-only view for registry listings (includes nested metadata block)."""
-    if isinstance(obj, Artifact):
-        meta = obj.metadata
-    else:
-        if isinstance(obj, Mapping):
-            mdata = obj.get("metadata", obj)
-        else:
-            mdata = {}
-        meta = ArtifactMetadata(
-            id=str(
-                (mdata or {}).get("id")
-                or (obj or {}).get("id")  # type: ignore[attr-defined]
-                or ""
-            ),
-            name=str(
-                (mdata or {}).get("name")
-                or (obj or {}).get("name")  # type: ignore[attr-defined]
-                or ""
-            ),
-            type=str(
-                (mdata or {}).get("type")
-                or (obj or {}).get("type")  # type: ignore[attr-defined]
-                or ""
-            ),
-            version=str((mdata or {}).get("version") or "1.0.0"),
-        )
-    return {
-        "name": meta.name,
-        "id": meta.id,
-        "type": meta.type,
-        "metadata": _ensure_metadata_aliases(meta),
-    }
-
 
 def _ensure_data_aliases(
     artifact_type: str,
@@ -454,10 +403,7 @@ def save_artifact(artifact: Artifact) -> Artifact:
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
-    store_id = _store_key(artifact.metadata.type, artifact.metadata.id)
-    _STORE[store_id] = artifact
-    if store_id not in _ARTIFACT_ORDER:
-        _ARTIFACT_ORDER.append(store_id)
+    _STORE[_store_key(artifact.metadata.type, artifact.metadata.id)] = artifact
     # Persist new state for dev reload resiliency
     try:
         _persist_state()
@@ -520,50 +466,35 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         query.page,
         query.page_size,
     )
-    def _items_from_order(artifact_type: str | None) -> list[Artifact]:
-        ordered: list[Artifact] = []
-        seen: set[str] = set()
-        for key in _ARTIFACT_ORDER:
-            art = _STORE.get(key)
-            if not art:
-                continue
-            if artifact_type and art.metadata.type != artifact_type:
-                continue
-            ordered.append(art)
-            seen.add(key)
-        if not ordered:
-            for art in _STORE.values():
-                if artifact_type and art.metadata.type != artifact_type:
-                    continue
-                ordered.append(art)
-        return ordered
-
-    items: list[Artifact] = _items_from_order(query.artifact_type)
-    if not items:
-        try:
-            primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
-        except Exception:
-            primary_items = []
-            logger.exception("Primary store list failed; continuing with empty list")
-        for data in primary_items or []:
-            md = data.get("metadata", {})
-            art = Artifact(
-                metadata=ArtifactMetadata(
-                    id=str(md.get("id", "")),
-                    name=str(md.get("name", "")),
-                    type=str(md.get("type", "")),
-                    version=str(md.get("version", "1.0.0")),
-                ),
-                data=data.get("data", {}),
-            )
-            items.append(art)
-            store_key = _store_key(art.metadata.type, art.metadata.id)
-            if store_key not in _ARTIFACT_ORDER:
-                _ARTIFACT_ORDER.append(store_key)
-            if store_key not in _STORE:
-                _STORE[store_key] = art
-        if items:
-            logger.warning("LIST: Rebuilt in-memory order from primary store count=%d", len(items))
+    items: list[Artifact] = []
+    used_primary = False
+    try:
+        primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
+        if primary_items:
+            for data in primary_items:
+                md = data.get("metadata", {})
+                items.append(
+                    Artifact(
+                        metadata=ArtifactMetadata(
+                            id=str(md.get("id", "")),
+                            name=str(md.get("name", "")),
+                            type=str(md.get("type", "")),
+                            version=str(md.get("version", "1.0.0")),
+                        ),
+                        data=data.get("data", {}),
+                    )
+                )
+            used_primary = True
+    except Exception:
+        logger.exception("Primary store list failed; falling back to memory")
+    if not used_primary:
+        store_vals = sorted(_STORE.values(), key=lambda art: (art.metadata.type, art.metadata.name))
+        items = [
+            item
+            for item in store_vals
+            if (not query.artifact_type or item.metadata.type == query.artifact_type)
+        ]
+        logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
 
     # Filter by types[]
     if query.types:
@@ -576,13 +507,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         items = [item for item in items if item.metadata.name.lower() == needle]
         logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
     elif query.name == "*":
-        logger.warning("LIST: Wildcard '*' requested; returning all artifacts without pagination")
-        return {
-            "items": [artifact_to_dict(artifact) for artifact in items],
-            "page": 1,
-            "page_size": len(items),
-            "total": len(items),
-        }
+        logger.warning("LIST: Wildcard '*' requested; returning page of all artifacts")
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
@@ -593,7 +518,6 @@ def reset_storage() -> None:
     except Exception:
         logger.exception("Primary artifact store clear failed; continuing with in-memory reset")
     _STORE.clear()
-    _ARTIFACT_ORDER.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
     try:
@@ -634,10 +558,6 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
                 token_known = True
         except Exception:
             logger.exception("AUTH: TokenStore check failed")
-        if not token_known and token.startswith("t_"):
-            # Accept tokens that match the format we issue to remain compatible across cold starts
-            _TOKENS[token] = True
-            token_known = True
 
     if not token or not token_known:
         # spec: 403 for invalid or missing AuthenticationToken
@@ -889,19 +809,34 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "invalid artifact_type"}), 400
 
     payload = _json_body()
-    metadata, normalized_data = _normalize_artifact_request(artifact_type, payload)
-    url_value = normalized_data.get("url")
-    if not isinstance(url_value, str) or not url_value.strip():
+    if "url" not in payload or not isinstance(payload["url"], str) or not payload["url"].strip():
         return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
 
-    url = url_value.strip()
+    url = payload["url"].strip()
     # Conflict if same type+url already registered
     if _duplicate_url_exists(artifact_type, url):
         return jsonify({"message": "Artifact exists already."}), 409
 
-    artifact = Artifact(metadata=metadata, data=normalized_data)
+    # Extract name from URL - try to preserve namespace/org structure
+    url_parts = url.rstrip("/").split("/")
+    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos"):
+        # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
+        name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
+    else:
+        name_guess = url_parts[-1] if url_parts else "artifact"
+    name_guess = secure_filename(name_guess) or "artifact"
+    art_id = str(int(time.time() * 1000))
+    artifact = Artifact(
+        metadata=ArtifactMetadata(
+            id=art_id,
+            name=name_guess,
+            type=artifact_type,
+            version="1.0.0",
+        ),
+        data={"url": url},
+    )
     save_artifact(artifact)
-    _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
+    _audit_add(artifact_type, art_id, "CREATE", name_guess)
     return jsonify(artifact_to_dict(artifact)), 201
 
 # -------------------- Enumerate artifacts --------------------
@@ -1070,8 +1005,6 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
     except Exception:
         logger.exception("Primary delete failed; removing from memory only")
     _STORE.pop(k, None)
-    if k in _ARTIFACT_ORDER:
-        _ARTIFACT_ORDER.remove(k)
     _audit_add(artifact_type, artifact_id, "UPDATE", "")
     try:
         _persist_state()
@@ -1822,7 +1755,13 @@ def by_regex_route() -> tuple[Response, int] | Response:
             readme = str(art.data.get("readme", ""))[:2000]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(artifact_to_dict(art))
+                matches.append(
+                    {
+                        "name": art.metadata.name,
+                        "id": art.metadata.id,
+                        "type": art.metadata.type,
+                    }
+                )
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
                     break
