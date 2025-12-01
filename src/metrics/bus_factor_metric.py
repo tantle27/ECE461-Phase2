@@ -30,7 +30,5 @@ class BusFactorMetric(Metric):
             f"Bus factor: Found {commit_stats.total_commits} commits, \
                 {len(commit_stats.contributors)} contributors"
         )
-        logging.info(
-            "Bus factor calculated using contributor concentration: %.3f", commit_stats.bus_factor
-        )
+        logging.info("Bus factor calculated using contributor concentration: %.3f", commit_stats.bus_factor)
         return commit_stats.bus_factor

@@ -1,4 +1,4 @@
-You are an expert AI assistant tasked with analyzing README files of machine learning models. 
+You are an expert AI assistant tasked with analyzing README files of machine learning models.
 Your job is to detect whether they include performance claims and benchmark references.
 Analyze the following README content and return ONLY a JSON object with these fields:
 `has_metrics`: 1 if quantitative performance metrics (e.g., accuracy, F1-score, BLEU, mAP) are present, otherwise 0.

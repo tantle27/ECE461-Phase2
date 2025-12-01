@@ -22,7 +22,7 @@ python simple_ada_runner.py --type accessibility --url http://localhost:5000
 
 # Using pytest directly
 pytest tests/ada/test_simple_keyboard.py -v
-pytest tests/ada/test_simple_contrast.py -v  
+pytest tests/ada/test_simple_contrast.py -v
 pytest tests/ada/test_simple_accessibility.py -v
 ```
 
@@ -49,7 +49,7 @@ pytest tests/ada/test_simple_accessibility.py -v
 
 ```
 tests/ada/
-├── __init__.py                     # Package initialization  
+├── __init__.py                     # Package initialization
 ├── ada_utils.py                    # Simple utilities
 ├── test_simple_keyboard.py         # Keyboard tests
 ├── test_simple_contrast.py         # Contrast tests
@@ -83,7 +83,7 @@ python simple_ada_runner.py --type keyboard --url http://localhost:3000
 - `contrast_ratio(color1, color2)`: Calculate contrast ratio
 - `parse_color(color_str)`: Parse color strings
 
-### SimpleKeyboardTester  
+### SimpleKeyboardTester
 - `get_focusable_elements()`: Find focusable elements
 - `press_tab()`: Simulate Tab key
 - `press_enter()`: Simulate Enter key

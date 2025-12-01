@@ -1,6 +1,6 @@
 # 🧪 Test Suite Documentation
 
-**ECE461 Phase 2 - Trustworthy Model Registry**  
+**ECE461 Phase 2 - Trustworthy Model Registry**
 **Total Tests: 538 passed** | **Coverage: 77%** | **Status: ✅ Working**
 
 ---
@@ -383,7 +383,7 @@ addopts = "-q --cov=src --cov=app --cov-report=term-missing"
 asyncio_mode = "auto"  # Automatic async test support
 markers = [
     "unit: Unit tests",
-    "integration: Integration tests", 
+    "integration: Integration tests",
     "api: API tests",
     "backend: Backend tests",
     "slow: Slow-running tests",
@@ -443,7 +443,7 @@ The test suite is designed for CI/CD with:
 ## 🎯 **Next Steps for Phase 2**
 
 ### Immediate Priorities
-1. **Database Schema** - Design models for registry, users, metrics  
+1. **Database Schema** - Design models for registry, users, metrics
 2. **New Metrics Implementation** - Implement Reproducibility, Reviewedness, Treescore
 3. **Flask App Testing** - Connect scaffolding tests to actual Flask endpoints
 4. **API Documentation** - Create OpenAPI/Swagger specifications
@@ -459,13 +459,13 @@ The test suite is designed for CI/CD with:
 ## 📚 **Additional Resources**
 
 - **Phase 1 Specification**: Original CLI tool requirements
-- **Phase 2 Specification**: REST API and registry requirements  
+- **Phase 2 Specification**: REST API and registry requirements
 - **API Documentation**: OpenAPI/Swagger specs (coming soon)
 - **Deployment Guide**: AWS infrastructure setup
 - **Contributing Guide**: Development standards and practices
 
 ---
 
-**Last Updated**: October 20, 2025  
-**Test Suite Version**: Phase 2 Scaffolding v1.0  
+**Last Updated**: October 20, 2025
+**Test Suite Version**: Phase 2 Scaffolding v1.0
 **Maintainer**: ECE461 Team

@@ -15,9 +15,10 @@ Usage:
     python db/seed_data.py
 """
 
-import boto3
 from datetime import datetime, timezone
 from decimal import Decimal
+
+import boto3
 
 REGION = "us-east-1"
 TABLE_NAME = "ArtifactsTable"

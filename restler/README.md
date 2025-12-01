@@ -65,7 +65,7 @@ python run_restler_tests.py --ci --output-dir ./restler_reports
 ## Test Suites
 
 1. **Authentication Tests** - Test auth bypass, token validation
-2. **Input Validation Tests** - Test malformed inputs, boundary conditions  
+2. **Input Validation Tests** - Test malformed inputs, boundary conditions
 3. **Resource Management Tests** - Test for resource leaks, DoS
 4. **Business Logic Tests** - Test workflow violations, state corruption
 

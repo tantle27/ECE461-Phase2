@@ -134,9 +134,7 @@ class TestMain(unittest.TestCase):
 
         # Make initial commit
         default_author = Actor("DefaultAuthor", "default@test.com")
-        repo.index.add(
-            ["main.py", "README.md", "requirements.txt", "examples/demo.py", "tests/test_main.py"]
-        )
+        repo.index.add(["main.py", "README.md", "requirements.txt", "examples/demo.py", "tests/test_main.py"])
         repo.index.commit("Initial commit", author=default_author)
 
         return self.temp_repo_path
@@ -215,7 +213,7 @@ class TestMain(unittest.TestCase):
             Actor("Author3", "author3@test.com"),
         ]
 
-        for i, author in enumerate(authors):
+        for _i, author in enumerate(authors):
             test_file.write_text(f"print('Update by {author.name}')")
             repo.index.add(["test.py"])
             repo.index.commit(f"Update by {author.name}", author=author)

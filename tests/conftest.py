@@ -42,9 +42,7 @@ def sample_url_file(temp_dir: str) -> str:
     file_path = os.path.join(temp_dir, "test_urls.txt")
     with open(file_path, "w") as f:
         f.write(
-            "https://github.com/test/repo1,"
-            "https://huggingface.co/datasets/test,"
-            "https://huggingface.co/model1\n"
+            "https://github.com/test/repo1," "https://huggingface.co/datasets/test," "https://huggingface.co/model1\n"
         )
         f.write(",,https://huggingface.co/model2\n")
         f.write("https://github.com/test/repo2,," "https://huggingface.co/model3\n")
@@ -63,9 +61,7 @@ def mock_git_client():
     client.analyze_commits.return_value = MagicMock(
         total_commits=50, contributors={"author1": 25, "author2": 15, "author3": 10}, bus_factor=0.6
     )
-    client.analyze_code_quality.return_value = MagicMock(
-        has_tests=True, lint_errors=2, code_quality_score=0.8
-    )
+    client.analyze_code_quality.return_value = MagicMock(has_tests=True, lint_errors=2, code_quality_score=0.8)
     client.analyze_ramp_up_time.return_value = {"has_examples": True, "has_dependencies": True}
     client.cleanup.return_value = None
     return client
@@ -136,12 +132,7 @@ def sample_scorecard() -> dict[str, Any]:
         "performance_claims_latency": 300,
         "license": 1.0,
         "license_latency": 50,
-        "size_score": {
-            "raspberry_pi": 0.5,
-            "jetson_nano": 0.7,
-            "desktop_pc": 1.0,
-            "aws_server": 1.0,
-        },
+        "size_score": {"raspberry_pi": 0.5, "jetson_nano": 0.7, "desktop_pc": 1.0, "aws_server": 1.0,},
         "size_score_latency": 75,
         "dataset_and_code_score": 0.85,
         "dataset_and_code_score_latency": 125,
@@ -156,11 +147,7 @@ def sample_scorecard() -> dict[str, Any]:
 def sample_model_entries():
     """Sample model entries for testing."""
     return [
-        (
-            "https://github.com/test/repo1",
-            "https://huggingface.co/datasets/test1",
-            "https://huggingface.co/model1",
-        ),
+        ("https://github.com/test/repo1", "https://huggingface.co/datasets/test1", "https://huggingface.co/model1",),
         (None, None, "https://huggingface.co/model2"),
         ("https://github.com/test/repo2", None, "https://huggingface.co/model3"),
     ]
@@ -263,9 +250,7 @@ def sample_api_request():
 # Mark slow tests
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
-    )
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
 
 
 # Skip slow tests by default in development
@@ -319,9 +304,7 @@ def assert_scorecard_valid():
                 assert 0.0 <= score_val <= 1.0, f"{field} score out of range: {score_val}"
 
         # Validate latency fields (should be non-negative integers)
-        latency_fields = [
-            f"{field}_latency" for field in score_fields if f"{field}_latency" in scorecard
-        ]
+        latency_fields = [f"{field}_latency" for field in score_fields if f"{field}_latency" in scorecard]
         for field in latency_fields:
             assert isinstance(scorecard[field], int), f"{field} should be an integer"
             assert scorecard[field] >= 0, f"{field} should be non-negative"

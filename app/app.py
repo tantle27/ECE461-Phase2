@@ -1,9 +1,10 @@
+import os
+import re
+
 from flask import Flask
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import os
-import re
 
 # Load registry secrets early so GH_TOKEN / GENAI_API_KEY are available
 # to modules that import configuration during startup. This import is
@@ -12,13 +13,15 @@ import re
 
 try:
     from app.secrets_loader import load_registry_secrets
+
     load_registry_secrets()
 except Exception:
     import logging
+
     logging.exception("secrets_loader failed - continuing without Secrets Manager")
 
-from app.core import blueprint
 from app.audit_logging import init_audit_logging
+from app.core import blueprint
 
 
 def create_app(config=None):
@@ -31,12 +34,8 @@ def create_app(config=None):
         import logging
 
         logging.exception("Failed to initialize audit logging; continuing")
-    
-    limiter = Limiter(
-        app=app,
-        key_func=get_remote_address,
-        default_limits=["500 per minute"]
-    )
+
+    Limiter(app=app, key_func=get_remote_address, default_limits=["500 per minute"])
 
     # Enable CORS for React frontend (local + Amplify)
     # Allow overriding via env var ALLOWED_ORIGINS (comma-separated)

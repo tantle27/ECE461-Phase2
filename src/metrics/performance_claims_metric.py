@@ -20,6 +20,6 @@ class PerformanceClaimsMetric(Metric):
     async def calculate(self, metric_input: Any) -> float:
         assert isinstance(metric_input, PerformanceInput)
         result = await self.gen_ai_client.get_performance_claims(metric_input.readme_text)
-        return self.HAS_BENCHMARKS_WEIGHT * result.get(
-            "mentions_benchmarks", 0
-        ) + self.HAS_METRICS_WEIGHT * result.get("has_metrics", 0)
+        return self.HAS_BENCHMARKS_WEIGHT * result.get("mentions_benchmarks", 0) + self.HAS_METRICS_WEIGHT * result.get(
+            "has_metrics", 0
+        )
