@@ -58,7 +58,8 @@ def main() -> int:
         ok = ensure_tool(exe, pkg)
         available[exe] = ok
 
-    # Do a lightweight whitespace cleanup first (trailing spaces, blank-line spaces, ensure newline at EOF)
+    # Do a lightweight whitespace cleanup first.
+    # Fix trailing spaces, blank-line spaces, and ensure newline at EOF.
     def iter_text_files(root: Path) -> Iterable[Path]:
         # Skip common non-source or virtualenv directories to avoid permission/stat errors
         SKIP_DIRS = {".venv", "venv", "env", ".env", "node_modules", "__pycache__", ".git"}
@@ -86,7 +87,10 @@ def main() -> int:
             except Exception:
                 continue
             # Remove trailing whitespace on each line
-            lines = [re.sub(r"[ \t]+$", "", l) for l in s.splitlines()]
+            lines = [
+                re.sub(r"[ \t]+$", "", line)
+                for line in s.splitlines()
+            ]
             # Replace lines that contain only spaces/tabs with empty line
             # (already handled by strip above)
             new = "\n".join(lines) + "\n"

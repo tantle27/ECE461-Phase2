@@ -31,17 +31,9 @@ C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE4
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1935:82: E231 missing whitespace after ','
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:231:94: E231 missing whitespace after ','
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:395:85: E231 missing whitespace after ','
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\src\__init__.py:1:1: W391 blank line at end of file
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\src\api\__init__.py:1:1: W391 blank line at end of file
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\src\metrics\__init__.py:1:1: W391 blank line at end of file
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:253:75: E231 missing whitespace after ','
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_main_comprehensive.py:283:101: E501 line too long (115 > 100 characters)
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:91:13: F401 'registry' imported but unused
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:92:13: F401 'app.app.create_app' imported but unused
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_secrets_loader_clean.py:410:101: E501 line too long (103 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\__init__.py:1:1: W391 blank line at end of file
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\api\__init__.py:1:1: W391 blank line at end of file
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\metrics\__init__.py:1:1: W391 blank line at end of file
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\models\__init__.py:1:1: W391 blank line at end of file
 C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tools\fix_flake8.py:61:101: E501 line too long (107 > 100 characters)
-C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tools\fix_flake8.py:89:52: E741 ambiguous variable name 'l'
