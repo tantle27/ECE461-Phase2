@@ -1,0 +1,29 @@
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:261:100: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:339:121: E501 line too long (126 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:343:121: E501 line too long (130 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:347:121: E501 line too long (134 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\run_restler_tests.py:376:121: E501 line too long (127 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1081:121: E501 line too long (135 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1301:106: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1792:121: E501 line too long (128 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1824:104: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1874:121: E501 line too long (132 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:1889:121: E501 line too long (135 > 120 characters)
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:2027:16: F821 undefined name 'HTTPException'
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\core.py:2041:24: F821 undefined name 'HTTPException'
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:239:94: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\app\db_adapter.py:389:85: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\db\dynamodb_setup.py:35:111: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\conftest.py:135:101: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_api_endpoints.py:108:110: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_api_endpoints.py:158:115: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_backend.py:386:105: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:393:113: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:425:115: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_db_adapter_comprehensive.py:550:109: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:250:75: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:322:106: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_github_fetchers_comprehensive.py:323:106: E231 missing whitespace after ','
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:91:13: F401 'registry' imported but unused
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\test_registry_comprehensive.py:92:13: F401 'app.app.create_app' imported but unused
+C:\Users\jldee\Documents\.Purdue Documents\ECE 46100 (Software Engineering)\ECE461-Phase2\tests\metrics\test_bus_factor_metric.py:18:100: E231 missing whitespace after ','

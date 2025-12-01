@@ -7,10 +7,10 @@ This module tests the three new metrics required for Phase 2:
 - Treescore metric
 """
 
-import pytest
+from typing import Any
 from unittest.mock import Mock
-from typing import Dict, Any
 
+import pytest
 
 # ==================== REPRODUCIBILITY METRIC TESTS ====================
 
@@ -86,10 +86,7 @@ class TestReproducibilityMetric:
         # Mock AI extraction of code from model card
         self.mock_gen_ai_client.extract_code_from_text.return_value = [
             {
-                "code": (
-                    "from transformers import AutoModel\n"
-                    "model = AutoModel.from_pretrained('model-name')"
-                ),
+                "code": ("from transformers import AutoModel\n" "model = AutoModel.from_pretrained('model-name')"),
                 "language": "python",
             }
         ]
@@ -356,9 +353,7 @@ class TestTreescoreMetric:
         # Return average of parent scores
         return sum(parent_scores) / len(parent_scores)
 
-    async def _calculate_treescore_from_config(
-        self, model_id: str, config: Dict[str, Any]
-    ) -> float:
+    async def _calculate_treescore_from_config(self, model_id: str, config: dict[str, Any]) -> float:
         """Calculate treescore from model config.json."""
         # Extract lineage from config
         parent_models = self.mock_lineage_analyzer.extract_lineage_from_config(config)
@@ -416,7 +411,7 @@ class TestNewMetricsIntegration:
         assert 0.0 <= net_score <= 1.0
         assert isinstance(net_score, float)
 
-    def _calculate_enhanced_net_score(self, metrics: Dict[str, float]) -> float:
+    def _calculate_enhanced_net_score(self, metrics: dict[str, float]) -> float:
         """Calculate net score including new Phase 2 metrics."""
         # Enhanced weighting formula for Phase 2
         weights = {

@@ -25,6 +25,7 @@ except Exception:
     def security_alert(message: str, **fields: Any) -> None:  # type: ignore
         logger.warning("security_alert noop: %s %s", message, fields)
 
+
 # Environment variable to enable DynamoDB (set to "true" in Lambda)
 USE_DYNAMODB = os.environ.get("USE_DYNAMODB", "false").lower() == "true"
 TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "ArtifactsTable")
@@ -93,10 +94,7 @@ class ArtifactStore:
                     "GSI1PK": f"TYPE#{artifact_type}",
                     "GSI1SK": artifact_id,
                     "GSI2PK": "STATUS",
-                    "GSI2SK": (
-                        f"{metadata.get('status') or data.get('status', 'unvetted')}"
-                        f"#{artifact_id}"
-                    ),
+                    "GSI2SK": (f"{metadata.get('status') or data.get('status', 'unvetted')}" f"#{artifact_id}"),
                 }
                 # Optional fields (S3, license, etc.)
                 if data.get("s3_key"):
@@ -117,9 +115,7 @@ class ArtifactStore:
                     trust_score=trust_score,
                     duration_ms=duration_ms,
                 )
-                logger.info(
-                    f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})"
-                )
+                logger.info(f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})")
             except Exception as e:
                 logger.error(f"DynamoDB save failed: {e}, falling back to memory")
                 security_alert(
@@ -207,10 +203,7 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_failed",
-                    table=TABLE_NAME,
-                    artifact_type=artifact_type,
-                    error=str(e),
+                    "dynamodb_list_failed", table=TABLE_NAME, artifact_type=artifact_type, error=str(e),
                 )
                 return self._list_all_memory(artifact_type)
         else:
@@ -243,10 +236,7 @@ class ArtifactStore:
                 response = dynamodb_table.query(
                     IndexName="GSI2",
                     KeyConditionExpression=key_cond,
-                    ExpressionAttributeValues={
-                        ":status_key": "STATUS",
-                        ":status_val": status,
-                    },
+                    ExpressionAttributeValues={":status_key": "STATUS", ":status_val": status,},
                     Limit=limit,
                 )
                 items = response.get("Items", [])
@@ -262,23 +252,18 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list_by_status failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_by_status_failed",
-                    table=TABLE_NAME,
-                    status=status,
-                    error=str(e),
+                    "dynamodb_list_by_status_failed", table=TABLE_NAME, status=status, error=str(e),
                 )
                 return [
                     v
                     for v in self._memory_store.values()
-                    if v.get("metadata", {}).get("status") == status
-                    or v.get("data", {}).get("status") == status
+                    if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
                 ]
         else:
             return [
                 v
                 for v in self._memory_store.values()
-                if v.get("metadata", {}).get("status") == status
-                or v.get("data", {}).get("status") == status
+                if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
             ]
 
     def list_by_min_trust_score(
@@ -295,9 +280,7 @@ class ArtifactStore:
                     filter_expr += " AND artifact_type = :type"
                     expr_values[":type"] = artifact_type
                 response = dynamodb_table.scan(
-                    FilterExpression=filter_expr,
-                    ExpressionAttributeValues=expr_values,
-                    Limit=limit,
+                    FilterExpression=filter_expr, ExpressionAttributeValues=expr_values, Limit=limit,
                 )
                 items = response.get("Items", [])
                 # Sort by trust_score descending (convert Decimal to float for sorting)
@@ -313,38 +296,21 @@ class ArtifactStore:
                 )
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
-                logger.error(
-                    f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory"
-                )
+                logger.error(f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_by_min_trust_failed",
-                    table=TABLE_NAME,
-                    min_score=min_score,
-                    error=str(e),
+                    "dynamodb_list_by_min_trust_failed", table=TABLE_NAME, min_score=min_score, error=str(e),
                 )
                 results = [
-                    v
-                    for v in self._memory_store.values()
-                    if v.get("data", {}).get("trust_score", 0.0) >= min_score
+                    v for v in self._memory_store.values() if v.get("data", {}).get("trust_score", 0.0) >= min_score
                 ]
                 if artifact_type:
-                    results = [
-                        r for r in results if r.get("metadata", {}).get("type") == artifact_type
-                    ]
-                return sorted(
-                    results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
-                )
+                    results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
+                return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
         else:
-            results = [
-                v
-                for v in self._memory_store.values()
-                if v.get("data", {}).get("trust_score", 0.0) >= min_score
-            ]
+            results = [v for v in self._memory_store.values() if v.get("data", {}).get("trust_score", 0.0) >= min_score]
             if artifact_type:
                 results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
-            return sorted(
-                results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
-            )
+            return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
 
     def delete(self, artifact_type: str, artifact_id: str) -> None:
         """Delete an artifact."""
@@ -420,11 +386,7 @@ class TokenStore:
         if self.use_dynamodb and dynamodb_table:
             try:
                 dynamodb_table.put_item(
-                    Item={
-                        "PK": "TOKEN#AUTH",
-                        "SK": f"TOKEN#{token}",
-                        "token": token,
-                    }
+                    Item={"PK": "TOKEN#AUTH", "SK": f"TOKEN#{token}", "token": token,}
                 )
             except Exception as e:
                 logger.error(f"DynamoDB token add failed: {e}")
@@ -449,8 +411,7 @@ class TokenStore:
         if self.use_dynamodb and dynamodb_table:
             try:
                 response = dynamodb_table.query(
-                    KeyConditionExpression="PK = :pk",
-                    ExpressionAttributeValues={":pk": "TOKEN#AUTH"},
+                    KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": "TOKEN#AUTH"},
                 )
                 with dynamodb_table.batch_writer() as batch:
                     for item in response.get("Items", []):
@@ -473,9 +434,7 @@ class RatingsCache:
         """Get cached rating."""
         if self.use_dynamodb and dynamodb_table:
             try:
-                response = dynamodb_table.get_item(
-                    Key={"PK": "RATING#CACHE", "SK": f"RATING#{artifact_id}"}
-                )
+                response = dynamodb_table.get_item(Key={"PK": "RATING#CACHE", "SK": f"RATING#{artifact_id}"})
                 if "Item" in response:
                     return json.loads(response["Item"]["data"])
                 return None
@@ -508,8 +467,7 @@ class RatingsCache:
         if self.use_dynamodb and dynamodb_table:
             try:
                 response = dynamodb_table.query(
-                    KeyConditionExpression="PK = :pk",
-                    ExpressionAttributeValues={":pk": "RATING#CACHE"},
+                    KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": "RATING#CACHE"},
                 )
                 with dynamodb_table.batch_writer() as batch:
                     for item in response.get("Items", []):

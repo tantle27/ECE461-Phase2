@@ -68,12 +68,9 @@ class GitClient:
     def _clone_with_gitpython(self, clone_url: str, dst: str) -> bool:
         try:
             from git import Repo  # type: ignore
+
             Repo.clone_from(
-                clone_url,
-                dst,
-                depth=1,
-                single_branch=True,
-                env={"GIT_TERMINAL_PROMPT": "0"},
+                clone_url, dst, depth=1, single_branch=True, env={"GIT_TERMINAL_PROMPT": "0"},
             )
             return True
         except Exception as e:
@@ -93,7 +90,7 @@ class GitClient:
             ]
             env = os.environ.copy()
             env.setdefault("GIT_TERMINAL_PROMPT", "0")
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=25)
+            subprocess.run(cmd, check=True, capture_output=True, env=env, timeout=25)
             return True
         except subprocess.CalledProcessError as e:
             msg = e.stderr.decode("utf-8", errors="ignore") if e.stderr else str(e)
@@ -215,7 +212,12 @@ class GitClient:
     def get_repository_size(self, repo_path: str) -> dict[str, float]:
         try:
             if not os.path.exists(repo_path):
-                return {"raspberry_pi": 0.0, "jetson_nano": 0.0, "desktop_pc": 0.0, "aws_server": 0.0}
+                return {
+                    "raspberry_pi": 0.0,
+                    "jetson_nano": 0.0,
+                    "desktop_pc": 0.0,
+                    "aws_server": 0.0,
+                }
             p = Path(repo_path)
             total = 0
             for fp in p.rglob("*"):
@@ -223,7 +225,7 @@ class GitClient:
                     continue
                 if fp.is_file():
                     total += fp.stat().st_size
-            size_gb = total / (1024**3)
+            size_gb = total / (1024 ** 3)
             return {
                 "raspberry_pi": 1.0 if size_gb < 1.0 else 0.0,
                 "jetson_nano": 1.0 if size_gb < 4.0 else 0.0,

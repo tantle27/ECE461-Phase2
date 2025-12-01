@@ -20,7 +20,7 @@ This document describes the implementation of Microsoft RESTler integration for 
 - Authentication integration and custom payload support
 
 **Authentication Config (`restler_auth_config.json`)**:
-- Bearer token and API key authentication support  
+- Bearer token and API key authentication support
 - Automatic token refresh via `/authenticate` endpoint
 - Test user credentials for security testing
 
@@ -35,7 +35,7 @@ This document describes the implementation of Microsoft RESTler integration for 
 - **Report Generation**: HTML reports with security findings and coverage metrics
 - **CI Integration**: Background process management and timeout handling
 
-#### 4. Coverage Gate Enforcement (`coverage_gate.py`)  
+#### 4. Coverage Gate Enforcement (`coverage_gate.py`)
 - **Coverage Measurement**: Integration with pytest-cov for detailed metrics
 - **Quality Gates**: Enforce ≥60% code coverage requirement with CI failure
 - **Detailed Reporting**: HTML reports showing package-level coverage and low-coverage files
@@ -54,7 +54,7 @@ This document describes the implementation of Microsoft RESTler integration for 
 OpenAPI Spec → RESTler Config → Mock/Real Fuzzing → Security Reports → Quality Gate
 ```
 
-#### Coverage Enforcement Pipeline  
+#### Coverage Enforcement Pipeline
 ```
 pytest + coverage → XML/JSON Reports → Coverage Gate → HTML Reports → CI Pass/Fail
 ```
@@ -92,10 +92,10 @@ python run_restler_tests.py --suite smoke --ci
 python coverage_gate.py --skip-tests --min-coverage 60
 ```
 
-#### CI Environment 
+#### CI Environment
 The GitHub Actions workflow automatically:
 1. Runs all 588+ tests with coverage measurement
-2. Enforces 60% coverage requirement  
+2. Enforces 60% coverage requirement
 3. Executes RESTler API security fuzzing
 4. Generates comprehensive quality reports
 5. Blocks deployment if quality gates fail
@@ -107,7 +107,7 @@ The GitHub Actions workflow automatically:
 ├── coverage_gate.py               # Coverage enforcement
 ├── .github/workflows/coverage-gate.yml  # CI pipeline
 └── restler/
-    ├── restler_config.json        # Main RESTler configuration  
+    ├── restler_config.json        # Main RESTler configuration
     ├── restler_auth_config.json   # Authentication setup
     ├── custom_payloads.json       # Security attack payloads
     └── README.md                  # Setup documentation
@@ -121,7 +121,7 @@ The GitHub Actions workflow automatically:
 - **CI/CD Integration**: Seamless GitHub Actions workflow integration
 - **Comprehensive Reporting**: Detailed HTML reports for coverage and security
 
-#### Operational Benefits  
+#### Operational Benefits
 - **Early Detection**: Find security issues before production deployment
 - **Coverage Accountability**: Clear visibility into test coverage gaps
 - **Automated Enforcement**: CI blocks low-quality code automatically

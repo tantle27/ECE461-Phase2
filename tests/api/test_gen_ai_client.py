@@ -21,9 +21,7 @@ class TestGenAIClient:
     async def test_chat_success(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "Hello, world!"}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "Hello, world!"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -67,9 +65,7 @@ class TestGenAIClient:
     async def test_chat_custom_model(self, mock_post):
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "Model response"}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "Model response"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -98,16 +94,12 @@ class TestGenAIClient:
         extraction_response = "METRICS FOUND: accuracy 92%\n" "BENCHMARKS FOUND: SQuAD"
         mock_response1 = AsyncMock()
         mock_response1.status = 200
-        mock_response1.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": extraction_response}}]}
-        )
+        mock_response1.json = AsyncMock(return_value={"choices": [{"message": {"content": extraction_response}}]})
 
         # Second response (conversion to JSON)
         mock_response2 = AsyncMock()
         mock_response2.status = 200
-        mock_response2.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]}
-        )
+        mock_response2.json = AsyncMock(return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]})
 
         mock_post.return_value.__aenter__.side_effect = [
             mock_response1,
@@ -123,12 +115,8 @@ class TestGenAIClient:
 
         # Verify both files were opened
         assert mock_open.call_count == 2
-        mock_open.assert_any_call(
-            "src/api/performance_claims_extraction_prompt.txt", "r", encoding="utf-8"
-        )
-        mock_open.assert_any_call(
-            "src/api/performance_claims_conversion_prompt.txt", "r", encoding="utf-8"
-        )
+        mock_open.assert_any_call("src/api/performance_claims_extraction_prompt.txt", "r", encoding="utf-8")
+        mock_open.assert_any_call("src/api/performance_claims_conversion_prompt.txt", "r", encoding="utf-8")
 
         # Verify HTTP calls were made twice
         assert mock_post.call_count == 2
@@ -147,14 +135,10 @@ class TestGenAIClient:
 
         # Mock HTTP response with JSON in markdown code block
         expected_dict = {"mentions_benchmarks": 1, "has_metrics": 0}
-        response_content = (
-            "Here is the analysis:\n" "```json\n" f"{json.dumps(expected_dict)}\n" "```\n" "Done."
-        )
+        response_content = "Here is the analysis:\n" "```json\n" f"{json.dumps(expected_dict)}\n" "```\n" "Done."
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": response_content}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": response_content}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -178,14 +162,11 @@ class TestGenAIClient:
         # the regex should extract only the first level
         expected_dict = {"mentions_benchmarks": 1, "has_metrics": 1}
         response_content = (
-            f"Analysis: {json.dumps(expected_dict)} and some nested object "
-            f'{{"inner": {{"deep": "value"}}}}'
+            f"Analysis: {json.dumps(expected_dict)} and some nested object " f'{{"inner": {{"deep": "value"}}}}'
         )
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": response_content}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": response_content}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -211,9 +192,7 @@ class TestGenAIClient:
         expected_dict = {"mentions_benchmarks": 0, "has_metrics": 1}
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": json.dumps(expected_dict)}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -238,9 +217,7 @@ class TestGenAIClient:
         response_content = "Analysis result: {invalid_json_content} - not valid"
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": response_content}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": response_content}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -269,9 +246,7 @@ class TestGenAIClient:
         response_content = "This is not JSON at all"
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": response_content}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": response_content}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -308,9 +283,7 @@ class TestGenAIClient:
         assert isinstance(result, float)
 
         # Verify file was opened correctly
-        mock_open.assert_called_once_with(
-            "src/api/readme_clarity_ai_prompt.txt", "r", encoding="utf-8"
-        )
+        mock_open.assert_called_once_with("src/api/readme_clarity_ai_prompt.txt", "r", encoding="utf-8")
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")
@@ -327,9 +300,7 @@ class TestGenAIClient:
         # Mock HTTP response with whitespace around float
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "  0.92  \n"}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "  0.92  \n"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -431,9 +402,7 @@ class TestGenAIClient:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(
-                return_value={"choices": [{"message": {"content": content}}]}
-            )
+            mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": content}}]})
             mock_post.return_value.__aenter__.return_value = mock_response
 
             client = GenAIClient()
@@ -465,9 +434,7 @@ class TestGenAIClient:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(
-                return_value={"choices": [{"message": {"content": content}}]}
-            )
+            mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": content}}]})
             mock_post.return_value.__aenter__.return_value = mock_response
 
             client = GenAIClient()
@@ -491,9 +458,7 @@ class TestGenAIClient:
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": "The documentation quality is very poor"}}]
-            }
+            return_value={"choices": [{"message": {"content": "The documentation quality is very poor"}}]}
         )
         mock_post.return_value.__aenter__.return_value = mock_response
 
@@ -547,9 +512,7 @@ class TestGenAIClient:
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": ("First score: 0.8, second score: 0.6")}}]
-            }
+            return_value={"choices": [{"message": {"content": ("First score: 0.8, second score: 0.6")}}]}
         )
         mock_post.return_value.__aenter__.return_value = mock_response
 

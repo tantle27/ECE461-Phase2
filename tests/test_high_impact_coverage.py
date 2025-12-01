@@ -5,7 +5,6 @@ Focuses on app/core.py, app/adapter.py, and other high-impact areas.
 import json
 import logging
 import os
-import pytest
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +16,7 @@ class TestAppCoreBasicFunctionality:
         """Test that app.core can be imported."""
         try:
             import app.core
+
             assert app.core is not None
         except ImportError:
             # If import fails, we can't test this module
@@ -26,8 +26,9 @@ class TestAppCoreBasicFunctionality:
         """Test that blueprint exists in app.core."""
         try:
             from app.core import blueprint
+
             assert blueprint is not None
-            assert hasattr(blueprint, 'name')
+            assert hasattr(blueprint, "name")
         except ImportError:
             pass
 
@@ -35,8 +36,9 @@ class TestAppCoreBasicFunctionality:
         """Test basic module attributes."""
         try:
             import app.core
+
             # Basic sanity check that module loaded
-            assert hasattr(app.core, '__name__')
+            assert hasattr(app.core, "__name__")
         except ImportError:
             pass
 
@@ -48,6 +50,7 @@ class TestAppDbAdapterBasic:
         """Test that db_adapter can be imported."""
         try:
             import app.db_adapter
+
             assert app.db_adapter is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -57,8 +60,9 @@ class TestAppDbAdapterBasic:
         """Test basic db_adapter functionality if available."""
         try:
             import app.db_adapter
+
             # Test basic attributes exist
-            assert hasattr(app.db_adapter, '__name__')
+            assert hasattr(app.db_adapter, "__name__")
         except ImportError:
             pass
 
@@ -70,6 +74,7 @@ class TestSrcMetricsBasic:
         """Test that src.metrics can be imported."""
         try:
             import src.metrics
+
             assert src.metrics is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -79,8 +84,9 @@ class TestSrcMetricsBasic:
         """Test basic src.metrics functionality if available."""
         try:
             import src.metrics
+
             # Test basic attributes exist
-            assert hasattr(src.metrics, '__name__')
+            assert hasattr(src.metrics, "__name__")
         except ImportError:
             pass
 
@@ -90,42 +96,46 @@ class TestGenAIClientCoverage:
 
     def test_bedrock_import_branch(self):
         """Test the bedrock import branch in gen_ai_client."""
-        with mock.patch.dict(os.environ, {'GENAI_PROVIDER': 'bedrock'}):
-            with mock.patch('src.api.bedrock_client.BedrockClient') as mock_bedrock:
+        with mock.patch.dict(os.environ, {"GENAI_PROVIDER": "bedrock"}):
+            with mock.patch("src.api.bedrock_client.BedrockClient") as mock_bedrock:
                 mock_bedrock_instance = MagicMock()
                 mock_bedrock.return_value = mock_bedrock_instance
-                
+
                 try:
                     from src.api.gen_ai_client import GenAIClient
+
                     client = GenAIClient()
-                    assert hasattr(client, '_bedrock')
+                    assert hasattr(client, "_bedrock")
                 except ImportError:
                     # BedrockClient import failed, which is the fallback path
                     from src.api.gen_ai_client import GenAIClient
+
                     client = GenAIClient()
                     # Should fall back to default GenAIClient
-                    assert hasattr(client, 'url')
+                    assert hasattr(client, "url")
 
     def test_bedrock_fallback_behavior(self):
         """Test bedrock fallback behavior without complex mocking."""
         # Test that GenAIClient can be created normally
         from src.api.gen_ai_client import GenAIClient
+
         client = GenAIClient()
-        assert hasattr(client, 'url')
-        assert hasattr(client, 'has_api_key')
-        
+        assert hasattr(client, "url")
+        assert hasattr(client, "has_api_key")
+
         # Test that environment variable doesn't break instantiation
-        with mock.patch.dict(os.environ, {'GENAI_PROVIDER': 'bedrock'}):
+        with mock.patch.dict(os.environ, {"GENAI_PROVIDER": "bedrock"}):
             client2 = GenAIClient()
-            assert hasattr(client2, 'url')
+            assert hasattr(client2, "url")
 
     def test_gen_ai_client_main_execution(self):
         """Test the __main__ execution block in gen_ai_client."""
         # This tests the asyncio.run(main()) block at the end of the file
         try:
             import src.api.gen_ai_client
+
             # If we can import it, the main block exists but won't execute
-            assert hasattr(src.api.gen_ai_client, 'GenAIClient')
+            assert hasattr(src.api.gen_ai_client, "GenAIClient")
         except ImportError:
             pass
 
@@ -137,6 +147,7 @@ class TestRegistryBasic:
         """Test that registry can be imported."""
         try:
             import registry
+
             assert registry is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -146,8 +157,9 @@ class TestRegistryBasic:
         """Test basic registry functionality if available."""
         try:
             import registry
+
             # Test basic attributes exist
-            assert hasattr(registry, '__name__')
+            assert hasattr(registry, "__name__")
         except ImportError:
             pass
 
@@ -159,6 +171,7 @@ class TestLambdaHandlerBasic:
         """Test that lambda_handler can be imported."""
         try:
             import app.lambda_handler
+
             assert app.lambda_handler is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -168,8 +181,9 @@ class TestLambdaHandlerBasic:
         """Test basic lambda_handler functionality if available."""
         try:
             import app.lambda_handler
+
             # Test basic attributes exist
-            assert hasattr(app.lambda_handler, '__name__')
+            assert hasattr(app.lambda_handler, "__name__")
         except ImportError:
             pass
 
@@ -181,6 +195,7 @@ class TestS3AdapterBasic:
         """Test that s3_adapter can be imported."""
         try:
             import app.s3_adapter
+
             assert app.s3_adapter is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -190,8 +205,9 @@ class TestS3AdapterBasic:
         """Test basic s3_adapter functionality if available."""
         try:
             import app.s3_adapter
+
             # Test basic attributes exist
-            assert hasattr(app.s3_adapter, '__name__')
+            assert hasattr(app.s3_adapter, "__name__")
         except ImportError:
             pass
 
@@ -203,6 +219,7 @@ class TestBedrockClientBasic:
         """Test that bedrock_client can be imported."""
         try:
             from src.api.bedrock_client import BedrockClient
+
             assert BedrockClient is not None
         except ImportError:
             # Module doesn't exist or has import issues (likely boto3 missing)
@@ -212,9 +229,10 @@ class TestBedrockClientBasic:
         """Test basic bedrock_client functionality if available."""
         try:
             from src.api.bedrock_client import BedrockClient
+
             # Test that class exists
             assert BedrockClient is not None
-            assert hasattr(BedrockClient, '__name__')
+            assert hasattr(BedrockClient, "__name__")
         except ImportError:
             pass
 
@@ -226,6 +244,7 @@ class TestGithubFetchersBasic:
         """Test that github_fetchers can be imported."""
         try:
             import src.api.github_fetchers
+
             assert src.api.github_fetchers is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -235,8 +254,9 @@ class TestGithubFetchersBasic:
         """Test basic github_fetchers functionality if available."""
         try:
             import src.api.github_fetchers
+
             # Test basic attributes exist
-            assert hasattr(src.api.github_fetchers, '__name__')
+            assert hasattr(src.api.github_fetchers, "__name__")
         except ImportError:
             pass
 
@@ -248,6 +268,7 @@ class TestSecretsLoaderBasic:
         """Test that secrets_loader can be imported."""
         try:
             from app import secrets_loader
+
             assert secrets_loader is not None
         except ImportError:
             # Module doesn't exist or has import issues (likely boto3 missing)
@@ -257,8 +278,9 @@ class TestSecretsLoaderBasic:
         """Test basic secrets_loader functionality if available."""
         try:
             from app import secrets_loader
+
             # Test basic attributes exist
-            assert hasattr(secrets_loader, '__name__')
+            assert hasattr(secrets_loader, "__name__")
         except ImportError:
             pass
 
@@ -270,6 +292,7 @@ class TestAppScoringBasic:
         """Test that app.scoring can be imported."""
         try:
             import app.scoring
+
             assert app.scoring is not None
         except ImportError:
             # Module doesn't exist or has import issues
@@ -279,8 +302,9 @@ class TestAppScoringBasic:
         """Test basic app.scoring functionality if available."""
         try:
             import app.scoring
+
             # Test basic attributes exist
-            assert hasattr(app.scoring, '__name__')
+            assert hasattr(app.scoring, "__name__")
         except ImportError:
             pass
 
@@ -292,6 +316,7 @@ class TestConstantsBasic:
         """Test that constants can be imported."""
         try:
             from src import constants
+
             assert constants is not None
         except ImportError:
             pass
@@ -300,8 +325,9 @@ class TestConstantsBasic:
         """Test basic constants functionality if available."""
         try:
             from src import constants
+
             # Test basic attributes exist
-            assert hasattr(constants, '__name__')
+            assert hasattr(constants, "__name__")
         except ImportError:
             pass
 
@@ -312,15 +338,16 @@ class TestEnvironmentVariableHandling:
     def test_environment_variables_usage(self):
         """Test that environment variables are handled correctly."""
         test_env_vars = {
-            'GENAI_API_KEY': 'test-key',
-            'GENAI_PROVIDER': 'default',
-            'GH_TOKEN': 'test-github-token',
+            "GENAI_API_KEY": "test-key",
+            "GENAI_PROVIDER": "default",
+            "GH_TOKEN": "test-github-token",
         }
-        
+
         with mock.patch.dict(os.environ, test_env_vars):
             # Test that modules can handle environment variables
             try:
                 from src.api.gen_ai_client import GenAIClient
+
                 client = GenAIClient()
                 assert client.has_api_key is True
             except ImportError:
@@ -331,6 +358,7 @@ class TestEnvironmentVariableHandling:
         with mock.patch.dict(os.environ, {}, clear=True):
             try:
                 from src.api.gen_ai_client import GenAIClient
+
                 client = GenAIClient()
                 assert client.has_api_key is False
             except ImportError:
@@ -343,25 +371,26 @@ class TestLoggingConfiguration:
     def test_logging_import(self):
         """Test that logging is imported correctly."""
         import logging
+
         assert logging is not None
-        assert hasattr(logging, 'getLogger')
+        assert hasattr(logging, "getLogger")
 
     def test_logging_basic_functionality(self):
         """Test basic logging functionality."""
-        logger = logging.getLogger('test_logger')
+        logger = logging.getLogger("test_logger")
         assert logger is not None
-        assert hasattr(logger, 'info')
-        assert hasattr(logger, 'error')
-        assert hasattr(logger, 'warning')
+        assert hasattr(logger, "info")
+        assert hasattr(logger, "error")
+        assert hasattr(logger, "warning")
 
     def test_logging_handler_creation(self):
         """Test logging handler creation."""
         handler = logging.StreamHandler()
         assert handler is not None
-        
+
         formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s")
         assert formatter is not None
-        
+
         handler.setFormatter(formatter)
         assert handler.formatter is not None
 
@@ -387,7 +416,7 @@ class TestJSONHandling:
         """Test JSON error handling."""
         try:
             json.loads("invalid json")
-            assert False, "Should have raised JSONDecodeError"
+            raise AssertionError("Should have raised JSONDecodeError")
         except json.JSONDecodeError:
             # Expected behavior
             pass
@@ -399,10 +428,10 @@ class TestFileOperations:
     def test_file_open_mock(self):
         """Test file operations with mocking."""
         mock_content = "test file content"
-        
-        with patch('builtins.open', mock.mock_open(read_data=mock_content)):
+
+        with patch("builtins.open", mock.mock_open(read_data=mock_content)):
             try:
-                with open('test_file.txt', 'r') as f:
+                with open("test_file.txt") as f:
                     content = f.read()
                     assert content == mock_content
             except Exception:
@@ -410,22 +439,22 @@ class TestFileOperations:
 
     def test_file_not_found_handling(self):
         """Test FileNotFoundError handling."""
-        with patch('builtins.open', side_effect=FileNotFoundError()):
+        with patch("builtins.open", side_effect=FileNotFoundError()):
             try:
-                with open('nonexistent.txt', 'r') as f:
+                with open("nonexistent.txt") as f:
                     f.read()
-                assert False, "Should have raised FileNotFoundError"
+                raise AssertionError("Should have raised FileNotFoundError")
             except FileNotFoundError:
                 # Expected behavior
                 pass
 
     def test_os_error_handling(self):
         """Test OSError handling."""
-        with patch('builtins.open', side_effect=OSError("Permission denied")):
+        with patch("builtins.open", side_effect=OSError("Permission denied")):
             try:
-                with open('protected.txt', 'r') as f:
+                with open("protected.txt") as f:
                     f.read()
-                assert False, "Should have raised OSError"
+                raise AssertionError("Should have raised OSError")
             except OSError:
                 # Expected behavior
                 pass

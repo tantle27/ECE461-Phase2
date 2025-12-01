@@ -12,28 +12,28 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/react-app/package-lock.json
-      
+
       - name: Install dependencies
         working-directory: app/react-app
         run: npm ci
-      
+
       - name: Build React app
         working-directory: app/react-app
         env:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: npm run build
-      
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
@@ -44,17 +44,17 @@ jobs:
   # Optional: Add backend tests
   test-backend:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-      
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt

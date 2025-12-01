@@ -15,9 +15,7 @@ def mock_clients():
     """
     with patch("src.metrics.metrics_calculator.GitClient") as MockGitClient, patch(
         "src.metrics.metrics_calculator.GenAIClient"
-    ) as MockGenAIClient, patch(
-        "src.metrics.metrics_calculator.HuggingFaceClient"
-    ) as MockHuggingFaceClient:
+    ) as MockGenAIClient, patch("src.metrics.metrics_calculator.HuggingFaceClient") as MockHuggingFaceClient:
 
         mock_git = MockGitClient.return_value
         mock_genai = MockGenAIClient.return_value
@@ -57,9 +55,7 @@ This project is licensed under the MIT License.
     }
 
     # Mock GenAI client responses (async methods)
-    mock_genai.get_performance_claims = AsyncMock(
-        return_value={"has_metrics": 1, "mentions_benchmarks": 1}
-    )
+    mock_genai.get_performance_claims = AsyncMock(return_value={"has_metrics": 1, "mentions_benchmarks": 1})
     mock_genai.get_readme_clarity = AsyncMock(return_value=0.8)
 
     # Mock HuggingFace client responses (async methods)

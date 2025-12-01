@@ -5,10 +5,10 @@ This module tests the Flask REST API endpoints that will be
 implemented for Phase 2 of the model registry.
 """
 
-import pytest
+from typing import Any
 from unittest.mock import Mock
-from typing import Dict, Any
 
+import pytest
 
 # ==================== MODEL REGISTRY API TESTS ====================
 
@@ -105,12 +105,7 @@ class TestModelRegistryAPI:
         expected_results = {
             "total": 25,
             "results": [
-                {
-                    "id": "model-123",
-                    "name": "transformer-base",
-                    "score": 0.85,
-                    "tags": ["nlp", "transformer"],
-                },
+                {"id": "model-123", "name": "transformer-base", "score": 0.85, "tags": ["nlp", "transformer"],},
                 {"id": "model-456", "name": "bert-model", "score": 0.78, "tags": ["nlp", "bert"]},
             ],
             "page": 1,
@@ -160,10 +155,7 @@ class TestModelRegistryAPI:
         expected_response = {
             "status": "success",
             "message": "Model deleted successfully",
-            "deleted_files": [
-                "s3://bucket/models/model-123/model.pkl",
-                "s3://bucket/models/model-123/config.json",
-            ],
+            "deleted_files": ["s3://bucket/models/model-123/model.pkl", "s3://bucket/models/model-123/config.json",],
         }
 
         self.api_client.delete.return_value = expected_response
@@ -173,23 +165,23 @@ class TestModelRegistryAPI:
         assert response["status"] == "success"
         assert "deleted_files" in response
 
-    async def _upload_model(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _upload_model(self, data: dict[str, Any]) -> dict[str, Any]:
         """Upload model via API."""
         return self.api_client.post("/api/models", data=data)
 
-    async def _get_model(self, model_id: str) -> Dict[str, Any]:
+    async def _get_model(self, model_id: str) -> dict[str, Any]:
         """Get model by ID via API."""
         return self.api_client.get(f"/api/models/{model_id}")
 
-    async def _search_models(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _search_models(self, params: dict[str, Any]) -> dict[str, Any]:
         """Search models via API."""
         return self.api_client.get("/api/models/search", params=params)
 
-    async def _update_model(self, model_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _update_model(self, model_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update model via API."""
         return self.api_client.put(f"/api/models/{model_id}", data=data)
 
-    async def _delete_model(self, model_id: str) -> Dict[str, Any]:
+    async def _delete_model(self, model_id: str) -> dict[str, Any]:
         """Delete model via API."""
         return self.api_client.delete(f"/api/models/{model_id}")
 
@@ -279,15 +271,15 @@ class TestPackageRegistryAPI:
         assert response["total"] > 0
         assert len(response["results"]) <= search_params["limit"]
 
-    async def _upload_package(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _upload_package(self, data: dict[str, Any]) -> dict[str, Any]:
         """Upload package via API."""
         return self.api_client.post("/api/packages", data=data)
 
-    async def _get_package_metrics(self, package_id: str) -> Dict[str, Any]:
+    async def _get_package_metrics(self, package_id: str) -> dict[str, Any]:
         """Get package metrics via API."""
         return self.api_client.get(f"/api/packages/{package_id}/metrics")
 
-    async def _search_packages(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _search_packages(self, params: dict[str, Any]) -> dict[str, Any]:
         """Search packages via API."""
         return self.api_client.get("/api/packages/search", params=params)
 
@@ -416,23 +408,23 @@ class TestAuthenticationAPI:
         assert response["status"] == "error"
         assert response["code"] == 401
 
-    async def _register_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _register_user(self, data: dict[str, Any]) -> dict[str, Any]:
         """Register user via API."""
         return self.api_client.post("/api/auth/register", data=data)
 
-    async def _login_user(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _login_user(self, data: dict[str, Any]) -> dict[str, Any]:
         """Login user via API."""
         return self.api_client.post("/api/auth/login", data=data)
 
-    async def _refresh_token(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _refresh_token(self, data: dict[str, Any]) -> dict[str, Any]:
         """Refresh token via API."""
         return self.api_client.post("/api/auth/refresh", data=data)
 
-    async def _logout_user(self, headers: Dict[str, str]) -> Dict[str, Any]:
+    async def _logout_user(self, headers: dict[str, str]) -> dict[str, Any]:
         """Logout user via API."""
         return self.api_client.post("/api/auth/logout", headers=headers)
 
-    async def _access_protected_endpoint(self) -> Dict[str, Any]:
+    async def _access_protected_endpoint(self) -> dict[str, Any]:
         """Access protected endpoint."""
         return self.api_client.get("/api/user/profile")
 
@@ -526,15 +518,15 @@ class TestAPIErrorHandling:
         assert response["code"] == 404
         assert response["resource_type"] == "model"
 
-    async def _make_request(self) -> Dict[str, Any]:
+    async def _make_request(self) -> dict[str, Any]:
         """Make API request."""
         return self.api_client.get("/api/models")
 
-    async def _submit_invalid_data(self) -> Dict[str, Any]:
+    async def _submit_invalid_data(self) -> dict[str, Any]:
         """Submit invalid data."""
         return self.api_client.post("/api/models", data={})
 
-    async def _get_nonexistent_resource(self) -> Dict[str, Any]:
+    async def _get_nonexistent_resource(self) -> dict[str, Any]:
         """Get nonexistent resource."""
         return self.api_client.get("/api/models/model-999")
 
@@ -612,17 +604,17 @@ class TestAPIPerformance:
         assert "job_id" in response
         assert "estimated_completion" in response
 
-    async def _upload_model_concurrent(self, index: int) -> Dict[str, Any]:
+    async def _upload_model_concurrent(self, index: int) -> dict[str, Any]:
         """Upload model in concurrent test."""
         data = {"name": f"model-{index}", "version": "1.0.0"}
         return self.api_client.post("/api/models", data=data)
 
-    async def _search_large_dataset(self) -> Dict[str, Any]:
+    async def _search_large_dataset(self) -> dict[str, Any]:
         """Search large dataset."""
         params = {"limit": 100, "page": 1}
         return self.api_client.get("/api/models/search", params=params)
 
-    async def _start_metrics_calculation(self) -> Dict[str, Any]:
+    async def _start_metrics_calculation(self) -> dict[str, Any]:
         """Start metrics calculation."""
         data = {"model_id": "model-123", "force_recalculate": True}
         return self.api_client.post("/api/models/metrics", data=data)

@@ -6,10 +6,9 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.metrics.metrics_calculator import MetricsCalculator
-
 
 # ----------------- helpers -----------------
 
@@ -21,8 +20,10 @@ _GH_TOKEN_PATTERNS = [
     re.compile(r"^github_pat_[A-Za-z0-9_]{30,}$"),
 ]
 
+
 def _github_token_is_valid(tok: str) -> bool:
     return any(p.match(tok) for p in _GH_TOKEN_PATTERNS)
+
 
 def _fail(msg: str) -> None:
     print(f"Error: {msg}", file=sys.stderr)
@@ -30,6 +31,7 @@ def _fail(msg: str) -> None:
 
 
 # ----------------- log/env validation -----------------
+
 
 def validate_and_configure_logging() -> None:
     """
@@ -66,7 +68,7 @@ def validate_and_configure_logging() -> None:
             # append check (does not add bytes)
             with open(log_file, "a"):
                 pass
-        except (OSError, IOError) as e:
+        except OSError as e:
             _fail(f"Invalid log file path: {e}")
 
     # configure logging
@@ -76,7 +78,7 @@ def validate_and_configure_logging() -> None:
             try:
                 with open(log_file, "w"):
                     pass  # truncate to zero bytes
-            except (OSError, IOError) as e:
+            except OSError as e:
                 _fail(f"Failed to create blank log file: {e}")
         logging.disable(logging.CRITICAL)
         logging.getLogger().setLevel(logging.CRITICAL + 1)
@@ -87,11 +89,7 @@ def validate_and_configure_logging() -> None:
         level_map = {"1": logging.INFO, "2": logging.DEBUG}
         level = level_map[level_str]
         logging.basicConfig(
-            level=level,
-            format="%(asctime)s [%(levelname)s] %(message)s",
-            filename=log_file,
-            filemode="a",
-            force=True,
+            level=level, format="%(asctime)s [%(levelname)s] %(message)s", filename=log_file, filemode="a", force=True,
         )
         logging.getLogger().setLevel(level)
         # seed logs so grader can distinguish 1 vs 2
@@ -109,6 +107,7 @@ def validate_and_configure_logging() -> None:
 
 # ----------------- URL parsing -----------------
 
+
 def _classify_url(u: str) -> str:
     s = u.strip()
     if not s:
@@ -121,7 +120,8 @@ def _classify_url(u: str) -> str:
         return "model"
     return "unknown"
 
-def parse_url_file(file_path: str) -> List[Tuple[Optional[str], Optional[str], str]]:
+
+def parse_url_file(file_path: str) -> list[tuple[str | None, str | None, str]]:
     """
     Accept both formats:
       - CSV triplet per line: code_link,dataset_link,model_link (empty fields allowed)
@@ -130,11 +130,11 @@ def parse_url_file(file_path: str) -> List[Tuple[Optional[str], Optional[str], s
     """
     logging.info("Reading URLs from: %s", file_path)
     try:
-        entries: List[Tuple[Optional[str], Optional[str], str]] = []
-        last_code: Optional[str] = None
-        last_dataset: Optional[str] = None
+        entries: list[tuple[str | None, str | None, str]] = []
+        last_code: str | None = None
+        last_dataset: str | None = None
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             for line_num, raw in enumerate(f, 1):
                 line = raw.strip()
                 if not line:
@@ -177,7 +177,8 @@ def parse_url_file(file_path: str) -> List[Tuple[Optional[str], Optional[str], s
 
 # ----------------- scoring -----------------
 
-def calculate_net_score(metrics: Dict[str, Any]) -> float:
+
+def calculate_net_score(metrics: dict[str, Any]) -> float:
     weights = {
         "license": 0.30,
         "ramp_up_time": 0.20,
@@ -193,11 +194,10 @@ def calculate_net_score(metrics: Dict[str, Any]) -> float:
 
 # ----------------- analysis -----------------
 
+
 async def analyze_entry(
-    entry: Tuple[Optional[str], Optional[str], str],
-    process_pool: ThreadPoolExecutor,
-    encountered_datasets: set,
-) -> Dict[str, Any]:
+    entry: tuple[str | None, str | None, str], process_pool: ThreadPoolExecutor, encountered_datasets: set,
+) -> dict[str, Any]:
     code_link, dataset_link, model_link = entry
     start_time = time.time()
 
@@ -232,7 +232,7 @@ async def analyze_entry(
     }
 
 
-async def process_entries(entries: List[Tuple[Optional[str], Optional[str], str]]) -> None:
+async def process_entries(entries: list[tuple[str | None, str | None, str]]) -> None:
     logging.info("Processing %d entries", len(entries))
     max_workers = os.cpu_count() or 4
     logging.info("Using %d worker threads", max_workers)
@@ -277,7 +277,7 @@ async def process_entries(entries: List[Tuple[Optional[str], Optional[str], str]
 def main() -> None:
     # run validation + logging setup before anything else
     validate_and_configure_logging()
-    
+
     if len(sys.argv) != 2:
         print("Usage: python -m src.main <URL_FILE>", file=sys.stderr)
         sys.exit(1)

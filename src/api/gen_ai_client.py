@@ -45,9 +45,7 @@ class GenAIClient:
 
                 self._bedrock = BedrockClient()
             except Exception:
-                logging.exception(
-                    "Failed to import BedrockClient; using default GenAIClient implementation"
-                )
+                logging.exception("Failed to import BedrockClient; using default GenAIClient implementation")
 
     async def chat(self, message: str, model: str | None = "llama3.3:70b") -> str:
         # Delegate to Bedrock if configured
@@ -77,25 +75,19 @@ class GenAIClient:
                             data = await response.json()
                             return data["choices"][0]["message"]["content"]
                         if response.status == 401:
-                            logging.error(
-                                "GenAI authentication failed. Falling back to default response."
-                            )
+                            logging.error("GenAI authentication failed. Falling back to default response.")
                             self.has_api_key = False
                             return self._default_chat_response
                         if 500 <= response.status < 600:
                             error_text = await response.text()
-                            logging.warning(
-                                "GenAI service error (%s): %s", response.status, error_text.strip()
-                            )
+                            logging.warning("GenAI service error (%s): %s", response.status, error_text.strip())
                             last_error = Exception(f"Error: {response.status}, {error_text}")
                             await asyncio.sleep(self.retry_delay_seconds * attempt)
                             continue
                         error = await response.text()
                         raise Exception(f"Error: {response.status}, {error}")
             except aiohttp.ClientError as exc:
-                logging.warning(
-                    "GenAI client error on attempt %d/%d: %s", attempt, self.max_retries, str(exc)
-                )
+                logging.warning("GenAI client error on attempt %d/%d: %s", attempt, self.max_retries, str(exc))
                 last_error = exc
                 await asyncio.sleep(self.retry_delay_seconds * attempt)
 
@@ -112,21 +104,15 @@ class GenAIClient:
             return deepcopy(self._default_performance_result)
 
         try:
-            extraction_prompt = (
-                self._read_prompt("src/api/performance_claims_extraction_prompt.txt") + readme_text
-            )
+            extraction_prompt = self._read_prompt("src/api/performance_claims_extraction_prompt.txt") + readme_text
             extraction_response = await self.chat(extraction_prompt)
 
             conversion_prompt = (
-                self._read_prompt("src/api/performance_claims_conversion_prompt.txt")
-                + "\n"
-                + extraction_response
+                self._read_prompt("src/api/performance_claims_conversion_prompt.txt") + "\n" + extraction_response
             )
             json_response = await self.chat(conversion_prompt)
         except Exception as exc:
-            logging.warning(
-                "Falling back to default performance claims due to GenAI error: %s", str(exc)
-            )
+            logging.warning("Falling back to default performance claims due to GenAI error: %s", str(exc))
             return deepcopy(self._default_performance_result)
 
         # Extract JSON object from response (handles markdown code blocks)
@@ -159,9 +145,7 @@ class GenAIClient:
         try:
             response = await self.chat(prompt)
         except Exception as exc:
-            logging.warning(
-                "Falling back to default clarity score due to GenAI error: %s", str(exc)
-            )
+            logging.warning("Falling back to default clarity score due to GenAI error: %s", str(exc))
             return self._default_clarity_score
 
         # Try to extract a floating point number from the response
@@ -192,7 +176,7 @@ class GenAIClient:
     @staticmethod
     def _read_prompt(path: str) -> str:
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            with open(path, encoding="utf-8") as handle:
                 return handle.read()
         except FileNotFoundError:
             logging.error("Prompt file not found: %s", path)
