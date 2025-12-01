@@ -1625,8 +1625,15 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         if isinstance(art.data, dict):
             remote_url = _coerce_text(art.data.get("download_url") or art.data.get("url"))
             if remote_url:
+                payload = {
+                    "download_url": remote_url,
+                    "downloadUrl": remote_url,
+                    "DownloadURL": remote_url,
+                    "url": remote_url,
+                    "URL": remote_url,
+                }
                 _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
-                return jsonify({"download_url": remote_url}), 200
+                return jsonify(payload), 200
         return jsonify({"message": "Model has no stored package path"}), 400
 
     if isinstance(art.data, dict) and _S3.enabled:
@@ -1691,25 +1698,6 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
         _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
         return resp
-
-    with zipfile.ZipFile(str(zpath), "r") as zin:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
-            prefix = f"{part.strip('/')}/"
-            for info in zin.infolist():
-                if info.filename.startswith(prefix):
-                    zout.writestr(info, zin.read(info))
-        buf.seek(0)
-
-    resp = send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"{artifact_id}-{part}.zip",
-        mimetype="application/zip",
-    )
-    resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
-    return resp
 
     with zipfile.ZipFile(str(zpath), "r") as zin:
         buf = io.BytesIO()
@@ -1866,21 +1854,38 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
             logger.exception("LINEAGE: Failed parsing config for %s", artifact_id)
 
     parents = sorted(parents)
-    nodes = [
+    id_to_artifact: dict[str, Artifact] = {artifact_id: art}
+    for stored in _STORE.values():
+        id_to_artifact.setdefault(stored.metadata.id, stored)
+
+    nodes: list[dict[str, Any]] = [
         {
             "artifact_id": artifact_id,
             "name": art.metadata.name,
-            "source": "config_json",
+            "type": art.metadata.type,
+            "source": "artifact",
         }
     ]
     for p in parents:
-        nodes.append(
-            {
-                "artifact_id": p,
-                "name": p,
-                "source": "config_json",
-            }
-        )
+        resolved = id_to_artifact.get(p)
+        if resolved:
+            nodes.append(
+                {
+                    "artifact_id": resolved.metadata.id,
+                    "name": resolved.metadata.name,
+                    "type": resolved.metadata.type,
+                    "source": "artifact",
+                }
+            )
+        else:
+            nodes.append(
+                {
+                    "artifact_id": p,
+                    "name": p,
+                    "type": "unknown",
+                    "source": "metadata",
+                }
+            )
     edges = [
         {
             "from_node_artifact_id": p,
