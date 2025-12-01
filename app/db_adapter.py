@@ -52,6 +52,7 @@ class ArtifactStore:
 
     def __init__(self):
         self._memory_store: dict[str, Any] = {}
+        self._memory_order: list[str] = []
         self.use_dynamodb = USE_DYNAMODB
 
     def _make_pk(self, artifact_type: str, artifact_id: str) -> str:
@@ -128,16 +129,21 @@ class ArtifactStore:
                     artifact_id=artifact_id,
                     error=str(e),
                 )
-                self._memory_store[f"{artifact_type}:{artifact_id}"] = artifact_data
+                key = f"{artifact_type}:{artifact_id}"
+                self._memory_store[key] = artifact_data
+                if key not in self._memory_order:
+                    self._memory_order.append(key)
         else:
-            self._memory_store[f"{artifact_type}:{artifact_id}"] = artifact_data
+            key = f"{artifact_type}:{artifact_id}"
+            self._memory_store[key] = artifact_data
+            if key not in self._memory_order:
+                self._memory_order.append(key)
 
     def get(self, artifact_type: str, artifact_id: str) -> dict[str, Any] | None:
         """Get a specific artifact."""
         start = time.time()
         if self.use_dynamodb and dynamodb_table:
             try:
-                # Query by PK, get latest version (or you can specify version)
                 response = dynamodb_table.query(
                     KeyConditionExpression="PK = :pk",
                     ExpressionAttributeValues={":pk": self._make_pk(artifact_type, artifact_id)},
@@ -206,17 +212,27 @@ class ArtifactStore:
                     artifact_type=artifact_type,
                     error=str(e),
                 )
-                return [
-                    v
-                    for k, v in self._memory_store.items()
-                    if artifact_type is None or k.startswith(f"{artifact_type}:")
-                ]
+                return self._list_all_memory(artifact_type)
         else:
-            return [
-                v
-                for k, v in self._memory_store.items()
-                if artifact_type is None or k.startswith(f"{artifact_type}:")
-            ]
+            return self._list_all_memory(artifact_type)
+
+    def _list_all_memory(self, artifact_type: str | None) -> list[dict[str, Any]]:
+        ordered: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for key in self._memory_order:
+            data = self._memory_store.get(key)
+            if not data:
+                continue
+            if artifact_type and not key.startswith(f"{artifact_type}:"):
+                continue
+            ordered.append(data)
+            seen.add(key)
+        if not ordered:
+            for key, data in self._memory_store.items():
+                if artifact_type and not key.startswith(f"{artifact_type}:"):
+                    continue
+                ordered.append(data)
+        return ordered
 
     def list_by_status(self, status: str, limit: int = 100) -> list[dict[str, Any]]:
         """List artifacts by status (e.g., 'unvetted', 'approved', 'rejected')."""
@@ -360,9 +376,15 @@ class ArtifactStore:
                     artifact_id=artifact_id,
                     error=str(e),
                 )
-                self._memory_store.pop(f"{artifact_type}:{artifact_id}", None)
+                key = f"{artifact_type}:{artifact_id}"
+                self._memory_store.pop(key, None)
+                if key in self._memory_order:
+                    self._memory_order.remove(key)
         else:
-            self._memory_store.pop(f"{artifact_type}:{artifact_id}", None)
+            key = f"{artifact_type}:{artifact_id}"
+            self._memory_store.pop(key, None)
+            if key in self._memory_order:
+                self._memory_order.remove(key)
 
     def clear(self) -> None:
         """Clear all artifacts (for reset endpoint)."""
@@ -383,6 +405,7 @@ class ArtifactStore:
                 self._memory_store.clear()
         else:
             self._memory_store.clear()
+            self._memory_order.clear()
 
 
 class TokenStore:
