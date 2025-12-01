@@ -64,6 +64,7 @@ class ArtifactQuery:
 
 _ARTIFACT_STORE = ArtifactStore()
 _STORE: dict[str, Artifact] = {}
+_ARTIFACT_ORDER: list[str] = []
 _RATINGS_CACHE: dict[str, ModelRating] = {}
 _AUDIT_LOG: dict[str, list[dict[str, Any]]] = {}
 _S3 = S3Storage()
@@ -98,6 +99,7 @@ def _persist_state() -> None:
         data = {
             "tokens": [{"t": t, "admin": admin} for t, admin in _TOKENS.items()],
             "store": [artifact_to_dict(a) for a in _STORE.values()],
+            "order": list(_ARTIFACT_ORDER),
         }
         json_data = json.dumps(data)
         
@@ -152,6 +154,9 @@ def _load_state() -> None:
                 _TOKENS[t] = admin
         # Load artifacts
         _STORE.clear()
+        order_hint = data.get("order")
+        if isinstance(order_hint, list):
+            _ARTIFACT_ORDER.extend([key for key in order_hint if isinstance(key, str)])
         for it in data.get("store", []) or []:
             md = (it.get("metadata") or {})
             art = Artifact(
@@ -164,12 +169,17 @@ def _load_state() -> None:
                 data=it.get("data", {}),
             )
             if art.metadata.id and art.metadata.type:
-                _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
+                store_key = _store_key(art.metadata.type, art.metadata.id)
+                _STORE[store_key] = art
+                if store_key not in _ARTIFACT_ORDER:
+                    _ARTIFACT_ORDER.append(store_key)
                 # Keep adapter's memory store in sync for list/get fallbacks
                 try:
                     _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
                 except Exception:
                     pass
+        if not _ARTIFACT_ORDER:
+            _ARTIFACT_ORDER.extend(list(_STORE.keys()))
         logger.warning("Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
                       _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
     except Exception:
@@ -403,7 +413,10 @@ def save_artifact(artifact: Artifact) -> Artifact:
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
-    _STORE[_store_key(artifact.metadata.type, artifact.metadata.id)] = artifact
+    store_key = _store_key(artifact.metadata.type, artifact.metadata.id)
+    _STORE[store_key] = artifact
+    if store_key not in _ARTIFACT_ORDER:
+        _ARTIFACT_ORDER.append(store_key)
     # Persist new state for dev reload resiliency
     try:
         _persist_state()
@@ -468,33 +481,45 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     )
     items: list[Artifact] = []
     used_primary = False
-    try:
-        primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
-        if primary_items:
-            for data in primary_items:
-                md = data.get("metadata", {})
-                items.append(
-                    Artifact(
-                        metadata=ArtifactMetadata(
-                            id=str(md.get("id", "")),
-                            name=str(md.get("name", "")),
-                            type=str(md.get("type", "")),
-                            version=str(md.get("version", "1.0.0")),
-                        ),
-                        data=data.get("data", {}),
-                    )
-                )
-            used_primary = True
-    except Exception:
-        logger.exception("Primary store list failed; falling back to memory")
-    if not used_primary:
-        store_vals = list(_STORE.values())
-        items = [
-            item
-            for item in store_vals
-            if (not query.artifact_type or item.metadata.type == query.artifact_type)
-        ]
-        logger.warning("LIST: Using in-memory store, pre-filter count=%d", len(items))
+    def _from_order(artifact_type: str | None) -> list[Artifact]:
+        ordered: list[Artifact] = []
+        for key in _ARTIFACT_ORDER:
+            art = _STORE.get(key)
+            if not art:
+                continue
+            if artifact_type and art.metadata.type != artifact_type:
+                continue
+            ordered.append(art)
+        if not ordered:
+            for art in _STORE.values():
+                if artifact_type and art.metadata.type != artifact_type:
+                    continue
+                ordered.append(art)
+        return ordered
+
+    items = _from_order(query.artifact_type)
+    if not items:
+        try:
+            primary_items = _ARTIFACT_STORE.list_all(query.artifact_type)
+        except Exception:
+            primary_items = []
+            logger.exception("Primary store list failed; falling back to memory only")
+        for data in primary_items or []:
+            md = data.get("metadata", {})
+            art = Artifact(
+                metadata=ArtifactMetadata(
+                    id=str(md.get("id", "")),
+                    name=str(md.get("name", "")),
+                    type=str(md.get("type", "")),
+                    version=str(md.get("version", "1.0.0")),
+                ),
+                data=data.get("data", {}),
+            )
+            items.append(art)
+            store_key = _store_key(art.metadata.type, art.metadata.id)
+            _STORE.setdefault(store_key, art)
+            if store_key not in _ARTIFACT_ORDER:
+                _ARTIFACT_ORDER.append(store_key)
 
     # Filter by types[]
     if query.types:
@@ -518,6 +543,7 @@ def reset_storage() -> None:
     except Exception:
         logger.exception("Primary artifact store clear failed; continuing with in-memory reset")
     _STORE.clear()
+    _ARTIFACT_ORDER.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
     try:
@@ -1005,6 +1031,8 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
     except Exception:
         logger.exception("Primary delete failed; removing from memory only")
     _STORE.pop(k, None)
+    if k in _ARTIFACT_ORDER:
+        _ARTIFACT_ORDER.remove(k)
     _audit_add(artifact_type, artifact_id, "UPDATE", "")
     try:
         _persist_state()
