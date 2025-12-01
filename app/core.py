@@ -1612,7 +1612,6 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
 
 # -------------------- Download (kept) & size cost --------------------
 
-
 @blueprint.route("/artifact/model/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
 def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
@@ -1621,6 +1620,15 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     art = fetch_artifact("model", artifact_id)
     if art is None:
         return jsonify({"message": "Artifact does not exist."}), 404
+
+    def _remote_download_response() -> tuple[Response, int] | Response:
+        if isinstance(art.data, dict):
+            remote_url = _coerce_text(art.data.get("download_url") or art.data.get("url"))
+            if remote_url:
+                _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+                return jsonify({"download_url": remote_url}), 200
+        return jsonify({"message": "Model has no stored package path"}), 400
+
     if isinstance(art.data, dict) and _S3.enabled:
         s3_key = art.data.get("s3_key")
         s3_bucket = art.data.get("s3_bucket")
@@ -1649,7 +1657,10 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                                 zout.writestr(info, zin.read(info))
                     buf.seek(0)
                 resp = send_file(
-                    buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",
+                    buf,
+                    as_attachment=True,
+                    download_name=f"{artifact_id}-{part}.zip",
+                    mimetype="application/zip",
                 )
                 resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
                 _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -1659,16 +1670,23 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     rel = art.data.get("path")
     if not isinstance(rel, str) or not rel:
-        return jsonify({"message": "Model has no stored package path"}), 400
+        return _remote_download_response()
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
+        resp = _remote_download_response()
+        if isinstance(resp, tuple) and resp[1] == 200:
+            return resp
         return jsonify({"message": "Package not found on disk"}), 404
 
     size_bytes = zpath.stat().st_size
 
     if part == "all":
         resp = send_file(
-            str(zpath), as_attachment=True, download_name=zpath.name, etag=True, mimetype="application/zip",
+            str(zpath),
+            as_attachment=True,
+            download_name=zpath.name,
+            etag=True,
+            mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
         _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -1683,11 +1701,34 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     zout.writestr(info, zin.read(info))
         buf.seek(0)
 
-    resp = send_file(buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",)
+    resp = send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"{artifact_id}-{part}.zip",
+        mimetype="application/zip",
+    )
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
     _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
 
+    with zipfile.ZipFile(str(zpath), "r") as zin:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            prefix = f"{part.strip('/')}/"
+            for info in zin.infolist():
+                if info.filename.startswith(prefix):
+                    zout.writestr(info, zin.read(info))
+        buf.seek(0)
+
+    resp = send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"{artifact_id}-{part}.zip",
+        mimetype="application/zip",
+    )
+    resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
+    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+    return resp
 
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
 @_record_timing
@@ -1739,7 +1780,6 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
         logger.exception("Failed to calculate artifact cost for %s", artifact_id)
         return jsonify({"message": "The artifact cost calculator encountered an error."}), 500
 
-
 def _calculate_artifact_size_mb(artifact) -> float:
     size_bytes = 0
     if isinstance(artifact.data, dict):
@@ -1762,9 +1802,7 @@ def _calculate_artifact_size_mb(artifact) -> float:
                     size_bytes = zpath.stat().st_size
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
-
 # -------------------- Lineage --------------------
-
 
 @blueprint.route("/artifact/model/<string:artifact_id>/lineage", methods=["GET"])
 @_record_timing
@@ -1775,6 +1813,22 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "Artifact does not exist."}), 404
     s3_key = art.data.get("s3_key") if isinstance(art.data, dict) else None
     s3_ver = art.data.get("s3_version_id") if isinstance(art.data, dict) else None
+    parents: set[str] = set()
+
+    def _collect_from_value(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            parents.add(value.strip())
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            for entry in value:
+                if isinstance(entry, str) and entry.strip():
+                    parents.add(entry.strip())
+
+    data_block = art.data if isinstance(art.data, dict) else {}
+    for key in ("base_model", "base_model_id", "parent_model", "derived_from"):
+        _collect_from_value(data_block.get(key))
+    for key in ("parents", "dependencies", "lineage", "ancestors"):
+        _collect_from_value(data_block.get(key))
+
     zbody: bytes | None = None
     zpath = None
     if s3_key and _S3.enabled:
@@ -1785,47 +1839,57 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
             zbody = None
     if zbody is None:
         rel = art.data.get("path")
-        if not rel:
-            return (
-                jsonify(
-                    {
-                        "message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."
-                    }
-                ),
-                400,
-            )
-        zpath = (_UPLOAD_DIR.parent / rel).resolve()
-        if not zpath.exists():
-            return jsonify({"message": "Artifact package not found"}), 404
+        if rel:
+            zpath = (_UPLOAD_DIR.parent / rel).resolve()
+            if not zpath.exists():
+                return jsonify({"message": "Artifact package not found"}), 404
+        else:
+            zpath = None
 
-    parents: list[str] = []
-    try:
-        zf_ctx = zipfile.ZipFile(io.BytesIO(zbody), "r") if zbody is not None else zipfile.ZipFile(str(zpath), "r")
-        with zf_ctx as zf:
-            cand = [n for n in zf.namelist() if n.endswith("config.json")]
-            for name in cand:
-                try:
-                    cfg = json.loads(zf.read(name))
-                    for key in ("base_model", "architectures", "parents", "parent_model"):
-                        v = cfg.get(key)
-                        if isinstance(v, str):
-                            parents.append(v)
-                        elif isinstance(v, list):
-                            parents += [x for x in v if isinstance(x, str)]
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    parents = sorted(set(parents))
-    nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "config_json"}]
+    if zbody is not None or zpath is not None:
+        try:
+            zf_ctx = (
+                zipfile.ZipFile(io.BytesIO(zbody), "r")
+                if zbody is not None
+                else zipfile.ZipFile(str(zpath), "r")
+            )
+            with zf_ctx as zf:
+                cand = [n for n in zf.namelist() if n.endswith("config.json")]
+                for name in cand:
+                    try:
+                        cfg = json.loads(zf.read(name))
+                        for key in ("base_model", "architectures", "parents", "parent_model"):
+                            _collect_from_value(cfg.get(key))
+                    except Exception:
+                        continue
+        except Exception:
+            logger.exception("LINEAGE: Failed parsing config for %s", artifact_id)
+
+    parents = sorted(parents)
+    nodes = [
+        {
+            "artifact_id": artifact_id,
+            "name": art.metadata.name,
+            "source": "config_json",
+        }
+    ]
     for p in parents:
-        nodes.append({"artifact_id": p, "name": p, "source": "config_json"})
+        nodes.append(
+            {
+                "artifact_id": p,
+                "name": p,
+                "source": "config_json",
+            }
+        )
     edges = [
-        {"from_node_artifact_id": p, "to_node_artifact_id": artifact_id, "relationship": "derived_from",}
+        {
+            "from_node_artifact_id": p,
+            "to_node_artifact_id": artifact_id,
+            "relationship": "derived_from",
+        }
         for p in parents
     ]
     return jsonify({"nodes": nodes, "edges": edges}), 200
-
 
 # -------------------- License check (per-spec path) --------------------
 
