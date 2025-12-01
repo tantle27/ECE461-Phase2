@@ -923,6 +923,25 @@ def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dic
     }
 
 
+def _parent_ids_from_artifact(artifact: Artifact) -> list[str]:
+    parents: set[str] = set()
+    data = artifact.data if isinstance(artifact.data, Mapping) else {}
+
+    def _collect(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            parents.add(value.strip())
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            for entry in value:
+                if isinstance(entry, str) and entry.strip():
+                    parents.add(entry.strip())
+
+    for key in ("base_model", "base_model_id", "parent_model", "derived_from"):
+        _collect(data.get(key))
+    for key in ("parents", "dependencies", "lineage", "ancestors"):
+        _collect(data.get(key))
+    return sorted(parents)
+
+
 # ---------------------------------------------------------------------------
 # Flask blueprint and routes
 # ---------------------------------------------------------------------------
@@ -1471,7 +1490,19 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             float((rating.scores or {}).get("net_score", 0.0) or 0.0),
             sorted(list((rating.scores or {}).keys())),
         )
-        logger.info("RATE: computed id=%s net=%s metrics=%s", artifact_id, rating.scores.get('net_score'), sorted((rating.scores or {}).keys()))
+        logger.info(
+            "RATE: computed id=%s net=%s metrics=%s",
+            artifact_id,
+            rating.scores.get("net_score"),
+            sorted((rating.scores or {}).keys()),
+        )
+
+        tree_score, parent_scores = _tree_score_for_artifact(artifact)
+        rating.scores["tree_score"] = tree_score
+        rating.latencies.setdefault("tree_score", 0)
+        if parent_scores:
+            rating.summary["parent_scores"] = parent_scores
+
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
@@ -1531,6 +1562,34 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
     return ModelRating(
         id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
     )
+
+
+def _tree_score_for_artifact(artifact: Artifact) -> tuple[float, dict[str, float]]:
+    parent_ids = _parent_ids_from_artifact(artifact)
+    if not parent_ids:
+        return 0.0, {}
+    parent_scores: dict[str, float] = {}
+    for parent_id in parent_ids:
+        parent = fetch_artifact(artifact.metadata.type, parent_id)
+        if not parent:
+            continue
+        score: float | None = None
+        if parent_id in _RATINGS_CACHE:
+            score = _RATINGS_CACHE[parent_id].scores.get("net_score")
+        if score is None:
+            cached = _rating_from_artifact_data(parent)
+            if cached:
+                score = cached.scores.get("net_score")
+        if score is None and isinstance(parent.data, dict):
+            trust = parent.data.get("trust_score")
+            if isinstance(trust, (int, float)):
+                score = float(trust)
+        if score is not None:
+            parent_scores[parent_id] = float(score)
+    if not parent_scores:
+        return 0.0, {}
+    avg = sum(parent_scores.values()) / len(parent_scores)
+    return avg, parent_scores
 
 
 def _parse_timestamp(raw: Any) -> datetime | None:
@@ -1813,21 +1872,7 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
         return jsonify({"message": "Artifact does not exist."}), 404
     s3_key = art.data.get("s3_key") if isinstance(art.data, dict) else None
     s3_ver = art.data.get("s3_version_id") if isinstance(art.data, dict) else None
-    parents: set[str] = set()
-
-    def _collect_from_value(value: Any) -> None:
-        if isinstance(value, str) and value.strip():
-            parents.add(value.strip())
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for entry in value:
-                if isinstance(entry, str) and entry.strip():
-                    parents.add(entry.strip())
-
-    data_block = art.data if isinstance(art.data, dict) else {}
-    for key in ("base_model", "base_model_id", "parent_model", "derived_from"):
-        _collect_from_value(data_block.get(key))
-    for key in ("parents", "dependencies", "lineage", "ancestors"):
-        _collect_from_value(data_block.get(key))
+    parents: set[str] = set(_parent_ids_from_artifact(art))
 
     zbody: bytes | None = None
     zpath = None
@@ -1859,7 +1904,13 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
                     try:
                         cfg = json.loads(zf.read(name))
                         for key in ("base_model", "architectures", "parents", "parent_model"):
-                            _collect_from_value(cfg.get(key))
+                            value = cfg.get(key)
+                            if isinstance(value, str) and value.strip():
+                                parents.add(value.strip())
+                            elif isinstance(value, list):
+                                for entry in value:
+                                    if isinstance(entry, str) and entry.strip():
+                                        parents.add(entry.strip())
                     except Exception:
                         continue
         except Exception:

@@ -209,6 +209,11 @@ class MetricsCalculator:
             )
             size_task = self._run_cpu_bound(self.size_metric.calculate, SizeInput(repo_url=repo_path))
 
+            reproducibility_task = self._run_cpu_bound(self.git_client.estimate_reproducibility, repo_path)
+            reviewedness_task = self._run_cpu_bound(
+                self.git_client.estimate_reviewedness, repo_path, repo_url
+            )
+
             (
                 (bus_factor_score, bus_lat),
                 (code_quality_score, qual_lat),
@@ -217,6 +222,8 @@ class MetricsCalculator:
                 (dataset_quality_score, dataset_lat),
                 (performance_claims_score, perf_lat),
                 (size_score, size_lat),
+                (reproducibility_score, reproducibility_lat),
+                (reviewedness_score, reviewed_lat),
             ) = await asyncio.gather(
                 bus_factor_task,
                 code_quality_task,
@@ -225,6 +232,8 @@ class MetricsCalculator:
                 dataset_quality_task,
                 performance_claims_task,
                 size_task,
+                reproducibility_task,
+                reviewedness_task,
             )
 
             return {
@@ -242,6 +251,10 @@ class MetricsCalculator:
                 "size_score_latency": size_lat,
                 "performance_claims": performance_claims_score,
                 "performance_claims_latency": perf_lat,
+                "reproducibility": reproducibility_score,
+                "reproducibility_latency": reproducibility_lat,
+                "reviewedness": reviewedness_score,
+                "reviewedness_latency": reviewed_lat,
             }
         finally:
             self.git_client.cleanup()
@@ -304,6 +317,11 @@ class MetricsCalculator:
         dataset_and_code_score = self._calculate_dataset_and_code_score(code_link, dataset_link, repo_metrics)
         repo_metrics["dataset_and_code_score"] = dataset_and_code_score
         repo_metrics["dataset_and_code_score_latency"] = 0  # Placeholder
+
+        tree_score = repo_metrics.get("tree_score")
+        if tree_score is None:
+            repo_metrics["tree_score"] = 0.0
+            repo_metrics["tree_score_latency"] = 0
 
         return repo_metrics
 
@@ -401,4 +419,10 @@ class MetricsCalculator:
             "performance_claims_latency": 0,
             "dataset_quality": 0.0,
             "dataset_quality_latency": 0,
+            "reproducibility": 0.0,
+            "reproducibility_latency": 0,
+            "reviewedness": -1.0,
+            "reviewedness_latency": 0,
+            "tree_score": 0.0,
+            "tree_score_latency": 0,
         }
