@@ -817,6 +817,8 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
     return ""
 
 
+_REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
+
 def _regex_segments(text: str) -> list[str]:
     if not text:
         return []
@@ -827,6 +829,15 @@ def _regex_segments(text: str) -> list[str]:
         if segment:
             segments.append(segment)
     return segments
+
+def _is_plain_name_pattern(raw_pattern: str) -> bool:
+    """Return True for regex patterns that are simple ^literal$ without operators."""
+    if not raw_pattern.startswith("^") or not raw_pattern.endswith("$"):
+        return False
+    body = raw_pattern[1:-1]
+    if not body:
+        return False
+    return _REGEX_META_CHAR_RE.search(body) is None
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -1211,11 +1222,13 @@ def upload_create_route() -> tuple[Response, int] | Response:
     if not f or f.filename is None or f.filename.strip() == "":
         return jsonify({"message": "Empty filename"}), 400
 
-    safe_name = secure_filename(f.filename)
+    original_name = f.filename
+    safe_name = secure_filename(original_name)
     if not safe_name:
         return jsonify({"message": "Invalid filename"}), 400
 
-    artifact_name = request.form.get("name", safe_name)
+    requested_name = request.form.get("name")
+    artifact_name = (requested_name or original_name or safe_name).strip() or safe_name
     artifact_type = request.form.get("artifact_type", "file")
     artifact_id = request.form.get("id", str(int(time.time()*1000)))
 
@@ -1884,7 +1897,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
         logger.warning("BY_REGEX: Rejecting pattern '%s' due to dangerous structure", raw_pattern)
         return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
 
-    name_only = raw_pattern.startswith("^") and raw_pattern.endswith("$")
+    name_only = _is_plain_name_pattern(raw_pattern)
     try:
         # Apply case-insensitive matching by default; callers can force sensitivity via inline flags.
         flags = re.IGNORECASE
