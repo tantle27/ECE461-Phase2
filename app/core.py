@@ -84,6 +84,8 @@ _DEFAULT_USER = {
     "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
     "role": "admin",
 }
+_REGEX_CACHE: dict[str, re.Pattern[str]] = {}
+_REGEX_CACHE_MAX = 16
 
 # ---------------------------------------------------------------------------
 # Observability helpers
@@ -532,13 +534,10 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
         items = [item for item in items if item.metadata.name.lower() == needle]
         logger.warning("LIST: After exact-name filter '%s' count=%d", needle, len(items))
     elif query.name == "*":
-        logger.warning("LIST: Wildcard '*' requested; returning complete artifact list without pagination")
-        return {
-            "items": [artifact_to_dict(artifact) for artifact in items],
-            "page": 1,
-            "page_size": len(items),
-            "total": len(items),
-        }
+        logger.warning("LIST: Wildcard '*' requested; forcing single-page response")
+        query.page = 1
+        desired_size = len(items) or query.page_size or 25
+        query.page_size = max(query.page_size, desired_size)
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
@@ -662,18 +661,20 @@ def _sanitize_search_pattern(raw_pattern: str) -> str:
 
     # Remove or clip dangerous nested constructs (best-effort)
     dangerous_patterns = [
-        r"(\w+\*)+",   # nested word+star chains
-        r"(\.*)+",      # repeated any-char groups
-        r"(\(.*\))+",  # nested groups with quantifiers
+        r"(\w+\*){2,}",   # nested word+star chains
+        r"(\.{1,2}\+)+",
+        r"(\(.*\)\+){2,}",  # nested groups with quantifiers
+        r"\(\?[:!=P<]",  # advanced group prefixes
     ]
     for danger in dangerous_patterns:
         try:
-            raw_pattern = re.sub(danger, lambda m: m.group(0)[:50], raw_pattern)
+            raw_pattern = re.sub(danger, "", raw_pattern)
         except Exception:
             pass
 
-    # Allow safe characters; exclude braces {}
+    # Allow safe characters; exclude braces {} and backreferences
     allowed = re.sub(r"[^\w\s\.\*\+\?\|\[\]\(\)\^\$\-]", "", raw_pattern)
+    allowed = re.sub(r"\\[dDwWsS]", "", allowed)  # remove shorthand classes
     # Limit consecutive wildcards/plus
     allowed = re.sub(r"\*{3,}", "**", allowed)
     allowed = re.sub(r"\+{3,}", "++", allowed)
@@ -948,8 +949,8 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
 
     response_items = result.get("items", [])
     response = jsonify(response_items)
-    next_header = str(next_offset) if next_offset < total else "0"
-    response.headers["offset"] = next_header
+    if next_offset < total:
+        response.headers["offset"] = str(next_offset)
     return response, 200
 
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
@@ -1742,14 +1743,22 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
     try:
         sanitized = _sanitize_search_pattern(regex)
-        pattern = re.compile(sanitized, re.IGNORECASE)
+        pattern = _REGEX_CACHE.get(sanitized)
+        if pattern is None:
+            pattern = re.compile(sanitized, re.IGNORECASE)
+            _REGEX_CACHE[sanitized] = pattern
+            if len(_REGEX_CACHE) > _REGEX_CACHE_MAX:
+                oldest_key = next(iter(_REGEX_CACHE))
+                if oldest_key != sanitized:
+                    _REGEX_CACHE.pop(oldest_key, None)
         logger.warning(
-            "BY_REGEX: raw='%s' sanitized='%s' store_size=%d startswith_caret=%s endswith_dollar=%s",
+            "BY_REGEX: raw='%s' sanitized='%s' store_size=%d startswith_caret=%s endswith_dollar=%s cache_size=%d",
             regex,
             sanitized,
             len(_STORE),
             sanitized.startswith("^"),
             sanitized.endswith("$"),
+            len(_REGEX_CACHE),
         )
         # Quick self-test on a small string to detect catastrophic patterns
         # Use signal for timeout if available
@@ -1769,9 +1778,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
     # Limit the search space and time to avoid Lambda timeouts
-    MAX_ARTIFACTS = 1000
-    MAX_TIME_SECONDS = 50  # leave ~10s buffer before Lambda timeout
+    MAX_ARTIFACTS = 200
+    MAX_TIME_SECONDS = 8  # leave buffer before Lambda timeout
     start_time = time.time()
+    deadline = start_time + MAX_TIME_SECONDS
 
     # Stream from memory first (fastest path)
     artifacts_to_check = list(_STORE.values())[:MAX_ARTIFACTS]
@@ -1780,13 +1790,13 @@ def by_regex_route() -> tuple[Response, int] | Response:
     matches: list[dict[str, Any]] = []
     for art in artifacts_to_check:
         # Check time budget
-        if time.time() - start_time > MAX_TIME_SECONDS:
+        if time.time() > deadline:
             logger.warning("BY_REGEX: Timeout approaching, returning partial results")
             break
         readme = ""
         if isinstance(art.data, dict):
             # Reduce readme size for matching
-            readme = str(art.data.get("readme", ""))[:2000]
+            readme = str(art.data.get("readme", ""))[:500]
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
                 matches.append(
