@@ -86,6 +86,10 @@ _DEFAULT_USER = {
     "role": "admin",
 }
 _REGEX_MAX_PATTERN_LENGTH = 500
+_REGEX_MAX_TIME_SECONDS = 2.0
+_REGEX_MAX_ARTIFACTS = 1000
+_REGEX_MAX_MATCHES = 100
+_REGEX_README_TRUNCATE = 10000
 _DANGEROUS_REGEX_SNIPPETS: list[re.Pattern[str]] = [
     re.compile(r"\((?:[^()\\]|\\.)+\)[*+]\s*[*+]+"),  # nested quantified groups like (.+)+
     re.compile(r"\(\?:\.\+\)\+"),  # (?:.+)+
@@ -750,6 +754,53 @@ def _safe_text_search(
         )
         raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
     return bool(matched)
+
+
+def _coerce_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8", errors="ignore")
+        except Exception:
+            return ""
+    return ""
+
+
+def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
+    if not isinstance(data, Mapping):
+        return ""
+    for key in ("readme", "readme_text", "README", "README_text"):
+        candidate = _coerce_text(data.get(key))
+        if candidate:
+            return candidate
+
+    hf_entries: list[Any] = []
+    hf_data = data.get("hf_data")
+    if isinstance(hf_data, list):
+        hf_entries = hf_data
+    elif isinstance(hf_data, str):
+        try:
+            parsed = json.loads(hf_data)
+            if isinstance(parsed, list):
+                hf_entries = parsed
+            elif isinstance(parsed, Mapping):
+                hf_entries = [parsed]
+        except Exception:
+            hf_entries = []
+
+    for entry in hf_entries:
+        if not isinstance(entry, Mapping):
+            continue
+        candidate = _coerce_text(entry.get("readme_text") or entry.get("readme"))
+        if candidate:
+            return candidate
+        card_data = entry.get("card_data") or entry.get("cardData")
+        if isinstance(card_data, Mapping):
+            candidate = _coerce_text(card_data.get("readme_text") or card_data.get("readme"))
+            if candidate:
+                return candidate
+    return ""
 
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
@@ -1809,90 +1860,98 @@ def by_regex_route() -> tuple[Response, int] | Response:
     _require_auth()
     body = _json_body()
     # Support both 'regex' and spec-stated 'RegEx'
-    regex = str(body.get("regex") or body.get("RegEx") or "").strip()
-    if not regex:
+    raw_pattern = str(body.get("regex") or body.get("RegEx") or "").strip()
+    if not raw_pattern:
         return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
+    if len(raw_pattern) > _REGEX_MAX_PATTERN_LENGTH:
+        logger.warning("BY_REGEX: Rejecting pattern exceeding length limit (%d chars)", len(raw_pattern))
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+    if _is_dangerous_regex(raw_pattern):
+        logger.warning("BY_REGEX: Rejecting pattern '%s' due to dangerous structure", raw_pattern)
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+
+    name_only = raw_pattern.startswith("^") and raw_pattern.endswith("$")
     try:
-        sanitized = _sanitize_search_pattern(regex)
-        danger = _regex_complexity_reason(regex, sanitized)
-        if danger:
-            logger.warning("BY_REGEX: Rejecting sanitized pattern '%s' reason=%s", sanitized, danger)
-            return jsonify({"message": "Regex pattern too complex"}), 400
-        pattern = _REGEX_CACHE.get(sanitized)
-        if pattern is None:
-            pattern = re.compile(sanitized, re.IGNORECASE)
-            _REGEX_CACHE[sanitized] = pattern
-            if len(_REGEX_CACHE) > _REGEX_CACHE_MAX:
-                oldest_key = next(iter(_REGEX_CACHE))
-                if oldest_key != sanitized:
-                    _REGEX_CACHE.pop(oldest_key, None)
-        logger.warning(
-            "BY_REGEX: raw='%s' sanitized='%s' store_size=%d startswith_caret=%s endswith_dollar=%s cache_size=%d",
-            regex,
-            sanitized,
-            len(_STORE),
-            sanitized.startswith("^"),
-            sanitized.endswith("$"),
-            len(_REGEX_CACHE),
-        )
-        # Quick self-test on a small string to detect catastrophic patterns
-        # Use signal for timeout if available
-        try:
-            import signal
-            def _test_timeout(signum, frame):
-                raise TimeoutError("Pattern test timeout")
-            signal.signal(signal.SIGALRM, _test_timeout)
-            signal.alarm(1)  # 1 second max for self-test
-            try:
-                _ = pattern.search("a" * 1000)
-                _ = pattern.search("ab" * 500)
-            finally:
-                signal.alarm(0)
-        except (TimeoutError, Exception):
-            logger.warning("BY_REGEX: Pattern failed self-test, rejecting")
-            return jsonify({"message": "Regex pattern too complex"}), 400
+        flags = 0 if name_only else re.IGNORECASE
+        pattern = re.compile(raw_pattern, flags)
     except re.error:
         return jsonify({"message": "Invalid regex"}), 400
-    # Limit the search space and time to avoid Lambda timeouts
-    MAX_ARTIFACTS = 200
-    MAX_TIME_SECONDS = 8  # leave buffer before Lambda timeout
+
+    # Runtime bomb test using timeout-protected evaluation
+    test_candidate = "a" * 100 + "b"
+    match_fn = pattern.fullmatch if name_only else pattern.search
+    ok, _ = _safe_eval_with_timeout(lambda: match_fn(test_candidate) is not None, timeout_ms=1000)
+    if not ok:
+        logger.warning("BY_REGEX: Pattern '%s' failed runtime ReDoS test", raw_pattern)
+        return jsonify({"message": "Regex pattern too complex and may cause excessive backtracking."}), 400
+
     start_time = time.time()
-    deadline = start_time + MAX_TIME_SECONDS
-
-    # Stream from memory first (fastest path)
-    artifacts_to_check = list(_STORE.values())[:MAX_ARTIFACTS]
-    logger.warning("BY_REGEX: scanning_count=%d (memory only)", len(artifacts_to_check))
-
+    deadline = start_time + _REGEX_MAX_TIME_SECONDS
     matches: list[dict[str, Any]] = []
     scanned = 0
-    for art in artifacts_to_check:
-        # Check time budget
-        if time.time() > deadline:
-            logger.warning("BY_REGEX: Timeout approaching, returning partial results")
+
+    logger.warning(
+        "BY_REGEX: raw='%s' store_size=%d exact_match=%s",
+        raw_pattern,
+        len(_STORE),
+        name_only,
+    )
+
+    for art in _STORE.values():
+        if scanned >= _REGEX_MAX_ARTIFACTS or time.time() > deadline:
+            logger.warning("BY_REGEX: Stopping scan early (scanned=%d, matches=%d)", scanned, len(matches))
             break
         scanned += 1
-        readme = ""
-        if isinstance(art.data, dict):
-            # Reduce readme size for matching
-            readme = str(art.data.get("readme", ""))[:500]
+
+        name_match = False
         try:
-            if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
-                matches.append(
-                    {
-                        "name": art.metadata.name,
-                        "id": art.metadata.id,
-                        "type": art.metadata.type,
-                    }
-                )
-                if len(matches) >= 100:
-                    logger.warning("BY_REGEX: Found 100 matches, stopping early")
-                    break
-        except Exception as e:
-            logger.warning("BY_REGEX: Pattern match error: %s", e)
-            continue
+            name_match = _safe_name_match(
+                pattern,
+                art.metadata.name,
+                exact_match=name_only,
+                raw_pattern=raw_pattern,
+                context="artifact metadata name",
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("BY_REGEX: Name match error for id=%s: %s", art.metadata.id, exc)
+
+        readme_match = False
+        if not name_only:
+            readme_source = art.data if isinstance(art.data, Mapping) else None
+            readme = _extract_readme_snippet(readme_source)
+            if readme:
+                snippet = readme[:_REGEX_README_TRUNCATE]
+                if snippet:
+                    try:
+                        readme_match = _safe_text_search(
+                            pattern,
+                            snippet,
+                            raw_pattern=raw_pattern,
+                            context="artifact readme",
+                        )
+                    except HTTPException:
+                        raise
+                    except Exception as exc:
+                        logger.warning("BY_REGEX: README match error for id=%s: %s", art.metadata.id, exc)
+
+        if name_match or readme_match:
+            matches.append(
+                {
+                    "name": art.metadata.name,
+                    "id": art.metadata.id,
+                    "type": art.metadata.type,
+                }
+            )
+            if len(matches) >= _REGEX_MAX_MATCHES:
+                logger.warning("BY_REGEX: Collected %d matches, stopping early", len(matches))
+                break
+
     if not matches:
-        logger.warning("BY_REGEX: no matches for sanitized='%s'", sanitized)
+        logger.warning("BY_REGEX: no matches for pattern '%s'", raw_pattern)
         return jsonify({"message": "No artifact found under this regex"}), 404
+
     logger.warning(
         "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs",
         len(matches),
