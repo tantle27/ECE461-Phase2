@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Any
 
-from flask import request, g
+from flask import g, request
 
 
 class JSONFormatter(logging.Formatter):
@@ -16,11 +16,7 @@ class JSONFormatter(logging.Formatter):
         }
         # include any structured data passed via extra
         base = logging.LogRecord("", 0, "", "", None, (), None).__dict__
-        extras = {
-            k: v
-            for k, v in record.__dict__.items()
-            if k not in base
-        }
+        extras = {k: v for k, v in record.__dict__.items() if k not in base}
         # common safe extras
         for k in (
             "request_id",
@@ -72,9 +68,8 @@ def init_audit_logging(app) -> None:
             start = getattr(g, "_audit_start", time.time())
             duration_ms = int((time.time() - start) * 1000)
             client_ip = request.remote_addr or request.headers.get("X-Forwarded-For", "")
-            token_hdr = (
-                request.headers.get("X-Authorization", "")
-                or request.headers.get("Authorization", "")
+            token_hdr = request.headers.get("X-Authorization", "") or request.headers.get(
+                "Authorization", ""
             )
             token_present = bool(token_hdr)
             event = {

@@ -7,15 +7,15 @@ import os
 import re
 import time
 import zipfile
-import yaml
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import wraps
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, cast, BinaryIO
+from typing import Any, BinaryIO, cast
 
+import yaml
 from flask import Blueprint, Response, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
@@ -34,9 +34,11 @@ except Exception:
     def security_alert(message: str, **fields: Any) -> None:  # type: ignore
         logger.warning("security_alert noop: %s %s", message, fields)
 
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ArtifactMetadata:
@@ -45,10 +47,12 @@ class ArtifactMetadata:
     type: str
     version: str
 
+
 @dataclass
 class Artifact:
     metadata: ArtifactMetadata
     data: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class ArtifactQuery:
@@ -57,6 +61,7 @@ class ArtifactQuery:
     types: list[str] = field(default_factory=list)
     page: int = 1
     page_size: int = 25
+
 
 # ---------------------------------------------------------------------------
 # Storage (DynamoDB-backed with in-memory fallback)
@@ -80,7 +85,7 @@ _PERSIST_S3_KEY = os.environ.get("REGISTRY_PERSIST_S3_KEY", "registry/registry_s
 _TOKENS: dict[str, bool] = {}
 _DEFAULT_USER = {
     "username": "ece30861defaultadminuser",
-    "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
+    "password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;""",
     "role": "admin",
 }
 
@@ -92,6 +97,7 @@ _REQUEST_TIMES: list[float] = []
 _STATS = {"ok": 0, "err": 0}
 ps_start_time = time.time()
 
+
 def _persist_state() -> None:
     """Persist tokens and in-memory artifacts to S3 for dev reloads."""
     try:
@@ -100,21 +106,24 @@ def _persist_state() -> None:
             "store": [artifact_to_dict(a) for a in _STORE.values()],
         }
         json_data = json.dumps(data)
-        
+
         if _S3.enabled:
             # Use S3 for persistence
             import io
-            _S3.put_file(
-                io.BytesIO(json_data.encode('utf-8')),
-                _PERSIST_S3_KEY,
-                "application/json"
+
+            _S3.put_file(io.BytesIO(json_data.encode("utf-8")), _PERSIST_S3_KEY, "application/json")
+            logger.info(
+                "Persisted state to S3 s3://%s/%s (artifacts=%d, tokens=%d)",
+                _S3.bucket,
+                _S3._key(_PERSIST_S3_KEY),
+                len(_STORE),
+                len(_TOKENS),
             )
-            logger.info("Persisted state to S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
-                       _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
         else:
             logger.warning("S3 not enabled, state persistence disabled")
     except Exception:
         logger.exception("Failed to persist registry state to S3")
+
 
 def _load_state() -> None:
     """Load tokens and artifacts from S3 if present (best-effort)."""
@@ -135,13 +144,16 @@ def _load_state() -> None:
                 )
                 return
             raise
-        content = body.decode('utf-8').strip()
-        
+        content = body.decode("utf-8").strip()
+
         if not content:
-            logger.info("S3 persist file s3://%s/%s is empty, skipping load", 
-                       _S3.bucket, _S3._key(_PERSIST_S3_KEY))
+            logger.info(
+                "S3 persist file s3://%s/%s is empty, skipping load",
+                _S3.bucket,
+                _S3._key(_PERSIST_S3_KEY),
+            )
             return
-        
+
         data = json.loads(content) or {}
         # Load tokens
         _TOKENS.clear()
@@ -153,7 +165,7 @@ def _load_state() -> None:
         # Load artifacts
         _STORE.clear()
         for it in data.get("store", []) or []:
-            md = (it.get("metadata") or {})
+            md = it.get("metadata") or {}
             art = Artifact(
                 metadata=ArtifactMetadata(
                     id=str(md.get("id", "")),
@@ -167,13 +179,23 @@ def _load_state() -> None:
                 _STORE[_store_key(art.metadata.type, art.metadata.id)] = art
                 # Keep adapter's memory store in sync for list/get fallbacks
                 try:
-                    _ARTIFACT_STORE._memory_store[f"{art.metadata.type}:{art.metadata.id}"] = artifact_to_dict(art)
+                    _ARTIFACT_STORE._memory_store[
+                        f"{art.metadata.type}:{art.metadata.id}"
+                    ] = artifact_to_dict(art)
                 except Exception:
                     pass
-        logger.warning("Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)", 
-                      _S3.bucket, _S3._key(_PERSIST_S3_KEY), len(_STORE), len(_TOKENS))
+        logger.warning(
+            "Loaded persisted state from S3 s3://%s/%s (artifacts=%d, tokens=%d)",
+            _S3.bucket,
+            _S3._key(_PERSIST_S3_KEY),
+            len(_STORE),
+            len(_TOKENS),
+        )
     except Exception:
-        logger.exception("Failed to load persisted registry state from S3 (this is normal on first run)")
+        logger.exception(
+            "Failed to load persisted registry state from S3 (this is normal on first run)"
+        )
+
 
 def _record_timing(f):
     @wraps(f)
@@ -190,7 +212,9 @@ def _record_timing(f):
             _REQUEST_TIMES.append(time.time() - t0)
             if len(_REQUEST_TIMES) > 5000:
                 del _REQUEST_TIMES[: len(_REQUEST_TIMES) - 5000]
+
     return _w
+
 
 def _percentile(seq: list[float], p: float) -> float:
     if not seq:
@@ -198,6 +222,7 @@ def _percentile(seq: list[float], p: float) -> float:
     s = sorted(seq)
     idx = max(0, min(len(s) - 1, int(p * (len(s) - 1))))
     return s[idx]
+
 
 # Field normalization helpers -------------------------------------------------
 
@@ -240,7 +265,9 @@ _TYPE_URL_ALIASES = {
 }
 
 
-def _payload_sections(payload: Mapping[str, Any] | None) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+def _payload_sections(
+    payload: Mapping[str, Any] | None
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
     """Split a payload into metadata/data dicts while always including the root."""
     metadata_sections: list[Mapping[str, Any]] = []
     data_sections: list[Mapping[str, Any]] = []
@@ -297,9 +324,7 @@ def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
 
 
 def _ensure_data_aliases(
-    artifact_type: str,
-    data: Mapping[str, Any] | None,
-    preferred_url: str | None = None,
+    artifact_type: str, data: Mapping[str, Any] | None, preferred_url: str | None = None,
 ) -> dict[str, Any]:
     """Provide consistent url/download/model_link aliases for stored artifact data."""
     normalized: dict[str, Any] = {}
@@ -332,16 +357,16 @@ def _ensure_data_aliases(
 
 
 def _normalize_artifact_request(
-    artifact_type: str,
-    payload: Mapping[str, Any] | None,
-    enforced_id: str | None = None,
+    artifact_type: str, payload: Mapping[str, Any] | None, enforced_id: str | None = None,
 ) -> tuple[ArtifactMetadata, dict[str, Any]]:
     """Normalize arbitrary artifact payloads into canonical metadata/data."""
     metadata_sections, data_sections = _payload_sections(payload)
 
     name = _coalesce_str(metadata_sections, ["name", "Name", "artifact_name", "artifactName"])
     version = _coalesce_str(metadata_sections, ["version", "Version"]) or "1.0.0"
-    artifact_id = enforced_id or _coalesce_str(metadata_sections, ["id", "ID", "artifact_id", "artifactId"])
+    artifact_id = enforced_id or _coalesce_str(
+        metadata_sections, ["id", "ID", "artifact_id", "artifactId"]
+    )
 
     url_keys = ["url", "URL", "link", "download_url", "downloadUrl", "DownloadURL"]
     url_keys.extend(_TYPE_URL_ALIASES.get(artifact_type, []))
@@ -365,17 +390,14 @@ def _normalize_artifact_request(
 
     normalized_data = _ensure_data_aliases(artifact_type, merged_data, url)
 
-    metadata = ArtifactMetadata(
-        id=artifact_id,
-        name=name,
-        type=artifact_type,
-        version=version,
-    )
+    metadata = ArtifactMetadata(id=artifact_id, name=name, type=artifact_type, version=version,)
     return metadata, normalized_data
+
 
 # ---------------------------------------------------------------------------
 # Helper utilities
 # ---------------------------------------------------------------------------
+
 
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     metadata_block = _ensure_metadata_aliases(artifact.metadata)
@@ -389,17 +411,17 @@ def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
         "data": data_block,
     }
 
+
 def _store_key(artifact_type: str, artifact_id: str) -> str:
     return f"{artifact_type}:{artifact_id}"
+
 
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
     artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
     try:
         _ARTIFACT_STORE.save(
-            artifact.metadata.type,
-            artifact.metadata.id,
-            artifact_to_dict(artifact),
+            artifact.metadata.type, artifact.metadata.id, artifact_to_dict(artifact),
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
@@ -410,6 +432,7 @@ def save_artifact(artifact: Artifact) -> Artifact:
     except Exception:
         pass
     return artifact
+
 
 def _artifact_from_raw(raw: Mapping[str, Any], default_type: str, default_id: str) -> Artifact:
     """Convert stored dict representation into an Artifact with normalized data."""
@@ -425,23 +448,37 @@ def _artifact_from_raw(raw: Mapping[str, Any], default_type: str, default_id: st
     artifact.data = _ensure_data_aliases(metadata.type, artifact.data)
     return artifact
 
+
 def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
     logger.info("Fetching artifact %s/%s", artifact_type, artifact_id)
     try:
         data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
         if data:
             art = _artifact_from_raw(data, artifact_type, artifact_id)
-            logger.warning("FETCH: Found in primary store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
+            logger.warning(
+                "FETCH: Found in primary store type=%s id=%s has_url=%s",
+                artifact_type,
+                artifact_id,
+                isinstance(art.data, dict) and bool(art.data.get("url")),
+            )
             return art
     except Exception:
         logger.exception("Primary store fetch failed; falling back to memory")
     art = _STORE.get(_store_key(artifact_type, artifact_id))
     if art:
         art.data = _ensure_data_aliases(art.metadata.type, art.data)
-        logger.warning("FETCH: Found in memory store type=%s id=%s has_url=%s", artifact_type, artifact_id, isinstance(art.data, dict) and bool(art.data.get("url")))
+        logger.warning(
+            "FETCH: Found in memory store type=%s id=%s has_url=%s",
+            artifact_type,
+            artifact_id,
+            isinstance(art.data, dict) and bool(art.data.get("url")),
+        )
     else:
-        logger.warning("FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id)
+        logger.warning(
+            "FETCH: Not found in primary nor memory type=%s id=%s", artifact_type, artifact_id
+        )
     return art
+
 
 def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     for a in _STORE.values():
@@ -450,11 +487,14 @@ def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     try:
         items = _ARTIFACT_STORE.list_all(artifact_type)
         for d in items or []:
-            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (d.get("data", {}) or {}).get("url") == url:
+            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (
+                d.get("data", {}) or {}
+            ).get("url") == url:
                 return True
     except Exception:
         pass
     return False
+
 
 def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
     logger.info("Listing artifacts page=%s size=%s", query.page, query.page_size)
@@ -511,6 +551,7 @@ def list_artifacts(query: ArtifactQuery) -> dict[str, Any]:
 
     return _paginate_artifacts(items, query.page, query.page_size)
 
+
 def reset_storage() -> None:
     logger.warning("Resetting in-memory artifact store")
     try:
@@ -525,6 +566,7 @@ def reset_storage() -> None:
     except Exception:
         logger.exception("Failed to persist state after reset")
 
+
 def _parse_bearer(header_value: str) -> str:
     if not header_value:
         return ""
@@ -532,6 +574,7 @@ def _parse_bearer(header_value: str) -> str:
     if v.lower().startswith("bearer "):
         return v.split(" ", 1)[1].strip()
     return v
+
 
 def _require_auth(admin: bool = False) -> tuple[str, bool]:
     # Per spec, use X-Authorization; Authorization required in your system
@@ -567,9 +610,12 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
             token_present=bool(token),
             token=(token[:8] + "...") if token else "",
         )
-        response = jsonify({"message": "Authentication failed due to invalid or missing AuthenticationToken."})
+        response = jsonify(
+            {"message": "Authentication failed due to invalid or missing AuthenticationToken."}
+        )
         response.status_code = HTTPStatus.FORBIDDEN
         from flask import abort
+
         abort(response)
 
     is_admin = bool(_TOKENS[token])
@@ -578,17 +624,17 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     if admin and not is_admin:
         # spec: 401 when you do not have permission to reset
         security_alert(
-            "auth_failed",
-            reason="admin_required",
-            token=(token[:8] + "...") if token else "",
+            "auth_failed", reason="admin_required", token=(token[:8] + "...") if token else "",
         )
         response = jsonify({"message": "You do not have permission to reset the registry."})
         response.status_code = HTTPStatus.UNAUTHORIZED
         from flask import abort
+
         abort(response)
 
     audit_event("auth_success", token=(token[:8] + "..."), is_admin=is_admin)
     return token, is_admin
+
 
 def _json_body() -> dict[str, Any]:
     if request.method in ("GET",):
@@ -598,11 +644,13 @@ def _json_body() -> dict[str, Any]:
         return {}
     return cast(dict[str, Any], payload)
 
+
 def _safe_int(value: Any, default: int) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
         return default
+
 
 def _parse_query(payload: dict[str, Any]) -> ArtifactQuery:
     page = _safe_int(payload.get("page", 1), 1)
@@ -617,11 +665,14 @@ def _parse_query(payload: dict[str, Any]) -> ArtifactQuery:
         page_size=page_size if 1 <= page_size <= 100 else 25,
     )
 
+
 def raise_error(status: HTTPStatus, message: str) -> None:
     response = jsonify({"message": message})
     response.status_code = status
     from flask import abort
+
     abort(response)
+
 
 def _sanitize_search_pattern(raw_pattern: str) -> str:
     """Sanitize regex pattern to prevent catastrophic backtracking"""
@@ -630,8 +681,8 @@ def _sanitize_search_pattern(raw_pattern: str) -> str:
 
     # Remove or clip dangerous nested constructs (best-effort)
     dangerous_patterns = [
-        r"(\w+\*)+",   # nested word+star chains
-        r"(\.*)+",      # repeated any-char groups
+        r"(\w+\*)+",  # nested word+star chains
+        r"(\.*)+",  # repeated any-char groups
         r"(\(.*\))+",  # nested groups with quantifiers
     ]
     for danger in dangerous_patterns:
@@ -647,6 +698,7 @@ def _sanitize_search_pattern(raw_pattern: str) -> str:
     allowed = re.sub(r"\+{3,}", "++", allowed)
     return allowed or ".*"
 
+
 def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dict[str, Any]:
     page = page if page > 0 else 1
     page_size = page_size if 1 <= page_size <= 100 else 25
@@ -660,6 +712,7 @@ def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dic
         "page_size": page_size,
         "total": total,
     }
+
 
 # ---------------------------------------------------------------------------
 # Flask blueprint and routes
@@ -675,10 +728,12 @@ except Exception:
 
 # -------------------- Health --------------------
 
+
 @blueprint.route("/health", methods=["GET"])
 def health() -> tuple[Response, int]:
     # Autograder expects a JSON body with ok:true
     return jsonify({"ok": True}), 200
+
 
 @blueprint.route("/health/components", methods=["GET"])
 def health_components_route() -> tuple[Response, int] | Response:
@@ -710,11 +765,7 @@ def health_components_route() -> tuple[Response, int] | Response:
     ]
     return (
         jsonify(
-            {
-                "components": components,
-                "generated_at": now_iso,
-                "window_minutes": window_minutes,
-            }
+            {"components": components, "generated_at": now_iso, "window_minutes": window_minutes,}
         ),
         200,
     )
@@ -726,7 +777,7 @@ def get_openapi_spec() -> tuple[Response, int]:
     try:
         # Load the OpenAPI specification from the YAML file
         openapi_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "openapi.yaml")
-        with open(openapi_path, "r", encoding="utf-8") as f:
+        with open(openapi_path, encoding="utf-8") as f:
             openapi_spec = yaml.safe_load(f)
         return jsonify(openapi_spec), 200
     except Exception as e:
@@ -736,16 +787,17 @@ def get_openapi_spec() -> tuple[Response, int]:
 
 # -------------------- Authentication (per-spec) --------------------
 
+
 @blueprint.route("/authenticate", methods=["PUT"])
 def authenticate_route() -> tuple[Response, int] | Response:
     # Minimal, non-sensitive logging
     logger.warning("AUTH: Authentication attempt received")
-    
+
     body = _json_body() or {}
     logger.warning(
         f"AUTH: Parsed body type={type(body)}, keys={list(body.keys()) if isinstance(body, dict) else 'not-dict'}"
     )
-    
+
     user = (body.get("user") or {}) if isinstance(body, dict) else {}
     secret = (body.get("secret") or {}) if isinstance(body, dict) else {}
     username = str(user.get("name", "")).strip()
@@ -754,7 +806,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     logger.warning(
         f"AUTH: Received authentication request for username='{username}', has_password={bool(password)}"
     )
-    
+
     # Spec: if system supports auth, validate; else 501.
     if not username or not password:
         logger.warning("AUTH: Missing username or password")
@@ -770,7 +822,7 @@ def authenticate_route() -> tuple[Response, int] | Response:
     logger.warning(
         f"AUTH: Created token for user '{username}', is_admin={is_admin}, token_count={len(_TOKENS)}"
     )
-    
+
     try:
         TokenStore().add(tok)
         logger.warning("AUTH: Added token to TokenStore")
@@ -787,7 +839,9 @@ def authenticate_route() -> tuple[Response, int] | Response:
     logger.warning("AUTH: Returning token response with bearer prefix")
     return response, 200
 
+
 # -------------------- Audit helper --------------------
+
 
 def _audit_add(artifact_type: str, artifact_id: str, action: str, name: str = "") -> None:
     aid = str(artifact_id)
@@ -799,7 +853,9 @@ def _audit_add(artifact_type: str, artifact_id: str, action: str, name: str = ""
     }
     _AUDIT_LOG.setdefault(aid, []).append(entry)
 
+
 # -------------------- Create/Register artifact --------------------
+
 
 @blueprint.route("/artifact/<string:artifact_type>", methods=["POST"])
 @_record_timing
@@ -810,7 +866,14 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
 
     payload = _json_body()
     if "url" not in payload or not isinstance(payload["url"], str) or not payload["url"].strip():
-        return jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}), 400
+        return (
+            jsonify(
+                {
+                    "message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."
+                }
+            ),
+            400,
+        )
 
     url = payload["url"].strip()
     # Conflict if same type+url already registered
@@ -819,7 +882,14 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
 
     # Extract name from URL - try to preserve namespace/org structure
     url_parts = url.rstrip("/").split("/")
-    if len(url_parts) >= 2 and url_parts[-2] not in ("http:", "https:", "models", "datasets", "code", "repos"):
+    if len(url_parts) >= 2 and url_parts[-2] not in (
+        "http:",
+        "https:",
+        "models",
+        "datasets",
+        "code",
+        "repos",
+    ):
         # Use last two segments for HuggingFace-style names (e.g., google-research/bert)
         name_guess = f"{url_parts[-2]}-{url_parts[-1]}"
     else:
@@ -827,19 +897,16 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     name_guess = secure_filename(name_guess) or "artifact"
     art_id = str(int(time.time() * 1000))
     artifact = Artifact(
-        metadata=ArtifactMetadata(
-            id=art_id,
-            name=name_guess,
-            type=artifact_type,
-            version="1.0.0",
-        ),
+        metadata=ArtifactMetadata(id=art_id, name=name_guess, type=artifact_type, version="1.0.0",),
         data={"url": url},
     )
     save_artifact(artifact)
     _audit_add(artifact_type, art_id, "CREATE", name_guess)
     return jsonify(artifact_to_dict(artifact)), 201
 
+
 # -------------------- Enumerate artifacts --------------------
+
 
 @blueprint.route("/artifacts", methods=["POST"])
 @_record_timing
@@ -879,7 +946,11 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     }
     logger.warning(
         "ARTIFACTS: Received enumerate query name=%s types=%s page=%s page_size=%s offset=%s",
-        qd.get("name"), qd.get("types"), qd.get("page"), qd.get("page_size"), request.args.get("offset")
+        qd.get("name"),
+        qd.get("types"),
+        qd.get("page"),
+        qd.get("page_size"),
+        request.args.get("offset"),
     )
     # allow query parameter limit to override requested page_size
     limit_param = request.args.get("limit")
@@ -895,14 +966,24 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     if offset_str:
         try:
             offset = max(0, int(offset_str))
-            page_size = int(qd.get("page_size", 25)) if isinstance(qd.get("page_size", 25), int) else 25
+            page_size = (
+                int(qd.get("page_size", 25)) if isinstance(qd.get("page_size", 25), int) else 25
+            )
             if page_size <= 0:
                 page_size = 25
             qd["page"] = (offset // page_size) + 1
         except Exception:
             pass
 
-    query = _parse_query({"artifact_type": qd.get("artifact_type"), "name": qd.get("name"), "types": qd.get("types", []), "page": qd.get("page", 1), "page_size": qd.get("page_size", 25)})
+    query = _parse_query(
+        {
+            "artifact_type": qd.get("artifact_type"),
+            "name": qd.get("name"),
+            "types": qd.get("types", []),
+            "page": qd.get("page", 1),
+            "page_size": qd.get("page_size", 25),
+        }
+    )
     result = list_artifacts(query)
 
     current_page = int(result.get("page", 1))
@@ -911,7 +992,11 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     next_offset = current_page * page_size
     logger.warning(
         "ARTIFACTS: Returning page=%s size=%s total=%s next_offset=%s items_on_page=%s",
-        current_page, page_size, total, next_offset, len(result.get("items", []))
+        current_page,
+        page_size,
+        total,
+        next_offset,
+        len(result.get("items", [])),
     )
 
     response_items = result.get("items", [])
@@ -920,7 +1005,9 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
         response.headers["offset"] = str(next_offset)
     return response, 200
 
+
 # -------------------- Artifact by id (GET/PUT/DELETE) --------------------
+
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
@@ -949,12 +1036,16 @@ def get_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, 
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return jsonify(artifact_to_dict(art)), 200
 
+
 # Alias: support singular path for fetching an artifact as well
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>", methods=["GET"])
 @_record_timing
-def get_artifact_route_alias(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+def get_artifact_route_alias(
+    artifact_type: str, artifact_id: str
+) -> tuple[Response, int] | Response:
     # Delegate to the primary handler to keep behavior consistent
     return get_artifact_route(artifact_type, artifact_id)
+
 
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["PUT"])
 @_record_timing
@@ -987,6 +1078,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
     _audit_add(artifact_type, artifact_id, "UPDATE", art.metadata.name)
     return jsonify({"message": "Artifact is updated."}), 200
 
+
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
 @_record_timing
 def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
@@ -1012,7 +1104,9 @@ def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
         pass
     return jsonify({"message": "Artifact is deleted."}), 200
 
+
 # -------------------- Upload helpers (kept) --------------------
+
 
 @blueprint.route("/upload", methods=["GET"])
 @_record_timing
@@ -1030,6 +1124,7 @@ def upload_list_route() -> tuple[Response, int] | Response:
             )
     return jsonify({"uploads": files}), 200
 
+
 @blueprint.route("/upload", methods=["POST"])
 @_record_timing
 def upload_create_route() -> tuple[Response, int] | Response:
@@ -1046,7 +1141,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
 
     artifact_name = request.form.get("name", safe_name)
     artifact_type = request.form.get("artifact_type", "file")
-    artifact_id = request.form.get("id", str(int(time.time()*1000)))
+    artifact_id = request.form.get("id", str(int(time.time() * 1000)))
 
     data: dict[str, Any]
     if _S3.enabled:
@@ -1096,10 +1191,7 @@ def upload_create_route() -> tuple[Response, int] | Response:
         }
     art = Artifact(
         metadata=ArtifactMetadata(
-            id=artifact_id,
-            name=artifact_name,
-            type=artifact_type,
-            version="1.0.0",
+            id=artifact_id, name=artifact_name, type=artifact_type, version="1.0.0",
         ),
         data=data,
     )
@@ -1107,7 +1199,9 @@ def upload_create_route() -> tuple[Response, int] | Response:
     _audit_add(artifact_type, artifact_id, "CREATE", artifact_name)
     return jsonify({"artifact": artifact_to_dict(art)}), 201
 
+
 # -------------------- Rating --------------------
+
 
 @blueprint.route("/artifact/model/<string:artifact_id>/rate", methods=["GET"])
 @_record_timing
@@ -1181,6 +1275,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         except TimeoutError:
             try:
                 import signal
+
                 signal.alarm(0)
             except Exception:
                 pass
@@ -1189,6 +1284,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         finally:
             try:
                 import signal
+
                 signal.alarm(0)
             except Exception:
                 pass
@@ -1212,7 +1308,14 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         return jsonify({"message": str(exc)}), 400
     except Exception:
         logger.exception("Failed to score artifact %s", artifact_id)
-        return jsonify({"message": "The artifact rating system encountered an error while computing at least one metric."}), 500
+        return (
+            jsonify(
+                {
+                    "message": "The artifact rating system encountered an error while computing at least one metric."
+                }
+            ),
+            500,
+        )
     return jsonify(_to_openapi_model_rating(rating)), 200
 
 
@@ -1266,6 +1369,7 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return datetime.fromisoformat(sanitized)
     except Exception:
         return None
+
 
 def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     scores = rating.scores or {}
@@ -1332,13 +1436,13 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
     }
     for alias, internal in alias_map.items():
         response[alias] = response.get(internal, _score(internal))
-        response[f"{alias}Latency"] = response.get(
-            f"{internal}_latency", _latency(internal)
-        )
+        response[f"{alias}Latency"] = response.get(f"{internal}_latency", _latency(internal))
 
     return response
 
+
 # -------------------- Download (kept) & size cost --------------------
+
 
 @blueprint.route("/artifact/model/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
@@ -1427,6 +1531,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
 
+
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
 @_record_timing
 def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
@@ -1477,6 +1582,7 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
         logger.exception("Failed to calculate artifact cost for %s", artifact_id)
         return jsonify({"message": "The artifact cost calculator encountered an error."}), 500
 
+
 def _calculate_artifact_size_mb(artifact) -> float:
     size_bytes = 0
     if isinstance(artifact.data, dict):
@@ -1499,7 +1605,9 @@ def _calculate_artifact_size_mb(artifact) -> float:
                     size_bytes = zpath.stat().st_size
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
+
 # -------------------- Lineage --------------------
+
 
 @blueprint.route("/artifact/model/<string:artifact_id>/lineage", methods=["GET"])
 @_record_timing
@@ -1521,7 +1629,14 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     if zbody is None:
         rel = art.data.get("path")
         if not rel:
-            return jsonify({"message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."}), 400
+            return (
+                jsonify(
+                    {
+                        "message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."
+                    }
+                ),
+                400,
+            )
         zpath = (_UPLOAD_DIR.parent / rel).resolve()
         if not zpath.exists():
             return jsonify({"message": "Artifact package not found"}), 404
@@ -1549,20 +1664,10 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         pass
     parents = sorted(set(parents))
-    nodes = [
-        {
-            "artifact_id": artifact_id,
-            "name": art.metadata.name,
-            "source": "config_json",
-        }
-    ]
+    nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "config_json",}]
     for p in parents:
         nodes.append(
-            {
-                "artifact_id": p,
-                "name": p,
-                "source": "config_json",
-            }
+            {"artifact_id": p, "name": p, "source": "config_json",}
         )
     edges = [
         {
@@ -1574,7 +1679,9 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     ]
     return jsonify({"nodes": nodes, "edges": edges}), 200
 
+
 # -------------------- License check (per-spec path) --------------------
+
 
 @blueprint.route("/artifact/model/<string:artifact_id>/license-check", methods=["POST"])
 @_record_timing
@@ -1583,49 +1690,72 @@ def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Respon
     body = _json_body()
     gh_url = str(body.get("github_url", "")).strip()
     if not gh_url:
-        return jsonify({"message": "The license check request is malformed or references an unsupported usage context."}), 400
+        return (
+            jsonify(
+                {
+                    "message": "The license check request is malformed or references an unsupported usage context."
+                }
+            ),
+            400,
+        )
     # Stub OK result (your adapter could do real checks)
     return jsonify(True), 200
 
+
 # -------------------- Reset --------------------
+
 
 @blueprint.route("/reset", methods=["DELETE"])
 def reset_route() -> tuple[Response, int] | Response:
     _require_auth(admin=True)
-    
+
     # Log initial state
     logger.warning(f"RESET: Starting reset. Current _STORE has {len(_STORE)} items")
     logger.warning(f"RESET: Current _RATINGS_CACHE has {len(_RATINGS_CACHE)} items")
     logger.warning(f"RESET: Current _AUDIT_LOG has {len(_AUDIT_LOG)} items")
     logger.warning(f"RESET: Current _TOKENS has {len(_TOKENS)} items")
-    logger.warning(f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
-    logger.warning(f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items")
-    
+    logger.warning(
+        f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}"
+    )
+    logger.warning(
+        f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items"
+    )
+
     # Clear in-memory stores (but keep tokens)
     _STORE.clear()
     _RATINGS_CACHE.clear()
     _AUDIT_LOG.clear()
-    
+
     # Also clear the global _ARTIFACT_STORE's memory
     _ARTIFACT_STORE._memory_store.clear()
-    
-    logger.warning(f"RESET: After clearing in-memory: _STORE={len(_STORE)}, _RATINGS_CACHE={len(_RATINGS_CACHE)}, _AUDIT_LOG={len(_AUDIT_LOG)}")
-    logger.warning(f"RESET: After clearing _ARTIFACT_STORE._memory_store={len(_ARTIFACT_STORE._memory_store)}")
-    
+
+    logger.warning(
+        f"RESET: After clearing in-memory: _STORE={len(_STORE)}, _RATINGS_CACHE={len(_RATINGS_CACHE)}, _AUDIT_LOG={len(_AUDIT_LOG)}"
+    )
+    logger.warning(
+        f"RESET: After clearing _ARTIFACT_STORE._memory_store={len(_ARTIFACT_STORE._memory_store)}"
+    )
+
     # Clear DynamoDB stores
     try:
-        logger.warning(f"RESET: Calling _ARTIFACT_STORE.clear() with use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
+        logger.warning(
+            f"RESET: Calling _ARTIFACT_STORE.clear() with use_dynamodb={_ARTIFACT_STORE.use_dynamodb}"
+        )
         _ARTIFACT_STORE.clear()
         logger.warning("RESET: _ARTIFACT_STORE.clear() completed successfully")
-        
+
         # Verify it's actually cleared
         all_artifacts = _ARTIFACT_STORE.list_all()
-        logger.warning(f"RESET: After _ARTIFACT_STORE.clear(), list_all() returns {len(all_artifacts)} items")
+        logger.warning(
+            f"RESET: After _ARTIFACT_STORE.clear(), list_all() returns {len(all_artifacts)} items"
+        )
         if all_artifacts:
-            logger.error(f"RESET: WARNING - Artifacts still present after clear: {[a.get('metadata', {}).get('id') for a in all_artifacts[:5]]}")
+            logger.error(
+                f"RESET: WARNING - Artifacts still present after clear: {[a.get('metadata', {}).get('id') for a in all_artifacts[:5]]}"
+            )
     except Exception as e:
         logger.exception(f"RESET: Failed to clear _ARTIFACT_STORE: {e}")
-    
+
     try:
         cache = RatingsCache()
         logger.warning(f"RESET: RatingsCache use_dynamodb={cache.use_dynamodb}")
@@ -1633,7 +1763,7 @@ def reset_route() -> tuple[Response, int] | Response:
         logger.warning("RESET: RatingsCache.clear() completed successfully")
     except Exception as e:
         logger.exception(f"RESET: Failed to clear RatingsCache (DynamoDB): {e}")
-    
+
     # Don't clear tokens - keep authentication working
     logger.warning(f"RESET: Keeping _TOKENS with {len(_TOKENS)} items for authentication")
     logger.warning("RESET: Reset complete!")
@@ -1642,10 +1772,12 @@ def reset_route() -> tuple[Response, int] | Response:
         _persist_state()
     except Exception:
         pass
-    
+
     return jsonify({"message": "Registry is reset."}), 200
 
+
 # -------------------- Name and RegEx lookups --------------------
+
 
 @blueprint.route("/artifact/byName/<string:name>", methods=["GET"])
 @_record_timing
@@ -1659,16 +1791,16 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         bool(request.headers.get("X-Authorization") or request.headers.get("Authorization")),
     )
     # Search in-memory first
-    found: list[Artifact] = [
-        art for art in _STORE.values() if art.metadata.name.lower() == needle
-    ]
+    found: list[Artifact] = [art for art in _STORE.values() if art.metadata.name.lower() == needle]
     # If not found, attempt primary store enumeration as fallback (may include duplicates)
     if not found:
         try:
             primary_items = _ARTIFACT_STORE.list_all()
         except Exception:
             primary_items = []
-        logger.warning("BY_NAME: memory miss; enumerating primary count=%d", len(primary_items or []))
+        logger.warning(
+            "BY_NAME: memory miss; enumerating primary count=%d", len(primary_items or [])
+        )
         for data in primary_items or []:
             md = data.get("metadata", {})
             nm = str(md.get("name", ""))
@@ -1697,6 +1829,7 @@ def by_name_route(name: str) -> tuple[Response, int] | Response:
         entries.append(artifact_to_dict(art))
     return jsonify(entries), 200
 
+
 @blueprint.route("/artifact/byRegEx", methods=["POST"])
 @_record_timing
 def by_regex_route() -> tuple[Response, int] | Response:
@@ -1705,7 +1838,14 @@ def by_regex_route() -> tuple[Response, int] | Response:
     # Support both 'regex' and spec-stated 'RegEx'
     regex = str(body.get("regex") or body.get("RegEx") or "").strip()
     if not regex:
-        return jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}), 400
+        return (
+            jsonify(
+                {
+                    "message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"
+                }
+            ),
+            400,
+        )
     try:
         sanitized = _sanitize_search_pattern(regex)
         pattern = re.compile(sanitized, re.IGNORECASE)
@@ -1721,8 +1861,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
         # Use signal for timeout if available
         try:
             import signal
+
             def _test_timeout(signum, frame):
                 raise TimeoutError("Pattern test timeout")
+
             signal.signal(signal.SIGALRM, _test_timeout)
             signal.alarm(1)  # 1 second max for self-test
             try:
@@ -1756,11 +1898,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
         try:
             if pattern.search(art.metadata.name) or (readme and pattern.search(readme)):
                 matches.append(
-                    {
-                        "name": art.metadata.name,
-                        "id": art.metadata.id,
-                        "type": art.metadata.type,
-                    }
+                    {"name": art.metadata.name, "id": art.metadata.id, "type": art.metadata.type,}
                 )
                 if len(matches) >= 100:
                     logger.warning("BY_REGEX: Found 100 matches, stopping early")
@@ -1773,7 +1911,9 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "No artifact found under this regex"}), 404
     return jsonify(matches), 200
 
+
 # -------------------- Audit log --------------------
+
 
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/audit", methods=["GET"])
 @_record_timing
@@ -1786,15 +1926,10 @@ def audit_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | 
     _audit_add(artifact_type, artifact_id, "AUDIT")
     return jsonify(entries), 200
 
+
 # -------------------- Tracks --------------------
+
 
 @blueprint.route("/tracks", methods=["GET"])
 def tracks_route() -> tuple[Response, int] | Response:
-    return jsonify(
-        {
-            "plannedTracks": [
-                "Performance track",
-                "Access control track",
-            ]
-        }
-    ), 200
+    return jsonify({"plannedTracks": ["Performance track", "Access control track",]}), 200

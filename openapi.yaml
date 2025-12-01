@@ -26,7 +26,7 @@ components:
       type: apiKey
       in: header
       name: X-Authorization
-      
+
   schemas:
     Error:
       type: object
@@ -37,7 +37,7 @@ components:
           type: string
         code:
           type: integer
-          
+
     HealthStatus:
       type: object
       properties:
@@ -49,7 +49,7 @@ components:
           format: date-time
         uptime:
           type: number
-          
+
     AuthRequest:
       type: object
       required:
@@ -72,7 +72,7 @@ components:
               type: string
               minLength: 8
               maxLength: 128
-              
+
     AuthResponse:
       type: object
       properties:
@@ -85,7 +85,7 @@ components:
               type: string
             isAdmin:
               type: boolean
-              
+
     ArtifactMetadata:
       type: object
       required:
@@ -105,7 +105,7 @@ components:
           type: string
           minLength: 1
           maxLength: 100
-          
+
     PackageData:
       type: object
       properties:
@@ -117,7 +117,7 @@ components:
           format: uri
         JSProgram:
           type: string
-          
+
     PackageRequest:
       type: object
       required:
@@ -127,7 +127,7 @@ components:
           $ref: '#/components/schemas/ArtifactMetadata'
         data:
           $ref: '#/components/schemas/PackageData'
-          
+
     PackageResponse:
       type: object
       properties:
@@ -170,7 +170,7 @@ components:
               type: number
               minimum: 0
               maximum: 1
-              
+
     PackageQuery:
       type: object
       properties:
@@ -179,7 +179,7 @@ components:
           pattern: '^[a-zA-Z0-9._*-]+$'
         Version:
           type: string
-        
+
     PackageHistoryEntry:
       type: object
       properties:
@@ -198,7 +198,7 @@ components:
         Action:
           type: string
           enum: [CREATE, UPDATE, DOWNLOAD, RATE]
-          
+
 security:
   - BearerAuth: []
   - ApiKeyAuth: []
@@ -224,7 +224,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /health/components:
     get:
       summary: Get detailed component health
@@ -249,7 +249,7 @@ paths:
                   external_apis:
                     type: string
                     enum: [healthy, degraded, unhealthy]
-                    
+
   /authenticate:
     put:
       summary: Authenticate user
@@ -282,7 +282,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifact/{artifact_type}:
     post:
       summary: Create a new artifact
@@ -327,7 +327,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifacts:
     post:
       summary: Query artifacts
@@ -376,7 +376,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifacts/{artifact_type}/{artifact_id}:
     get:
       summary: Get artifact by ID
@@ -410,7 +410,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
     put:
       summary: Update artifact
       description: Update an existing artifact
@@ -455,7 +455,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
     delete:
       summary: Delete artifact
       description: Delete an artifact from the registry
@@ -490,7 +490,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifact/{artifact_type}/{artifact_id}/cost:
     get:
       summary: Get artifact cost
@@ -532,7 +532,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifact/model/{artifact_id}/rate:
     get:
       summary: Get model rating
@@ -591,7 +591,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifact/model/{artifact_id}/download:
     get:
       summary: Download model
@@ -618,7 +618,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /reset:
     delete:
       summary: Reset registry
@@ -634,7 +634,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /tracks:
     get:
       summary: Get planned tracks
@@ -650,7 +650,7 @@ paths:
                 type: array
                 items:
                   type: string
-                  
+
   /artifact/byName/{name}:
     get:
       summary: Get artifact by name
@@ -678,7 +678,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-                
+
   /artifact/byRegEx:
     post:
       summary: Search by regular expression

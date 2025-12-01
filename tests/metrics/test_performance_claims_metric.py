@@ -2,14 +2,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.metrics.performance_claims_metric import (
-    PerformanceClaimsMetric,
-    PerformanceInput,
-)
+from src.metrics.performance_claims_metric import PerformanceClaimsMetric, PerformanceInput
 
 
 class TestPerformanceClaimsMetric:
-
     @pytest.mark.asyncio
     async def test_calculate_with_valid_data(self):
         # Mock the GenAIClient

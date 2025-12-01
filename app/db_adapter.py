@@ -25,6 +25,7 @@ except Exception:
     def security_alert(message: str, **fields: Any) -> None:  # type: ignore
         logger.warning("security_alert noop: %s %s", message, fields)
 
+
 # Environment variable to enable DynamoDB (set to "true" in Lambda)
 USE_DYNAMODB = os.environ.get("USE_DYNAMODB", "false").lower() == "true"
 TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "ArtifactsTable")
@@ -227,10 +228,7 @@ class ArtifactStore:
                 response = dynamodb_table.query(
                     IndexName="GSI2",
                     KeyConditionExpression=key_cond,
-                    ExpressionAttributeValues={
-                        ":status_key": "STATUS",
-                        ":status_val": status,
-                    },
+                    ExpressionAttributeValues={":status_key": "STATUS", ":status_val": status,},
                     Limit=limit,
                 )
                 items = response.get("Items", [])
@@ -246,10 +244,7 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list_by_status failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_by_status_failed",
-                    table=TABLE_NAME,
-                    status=status,
-                    error=str(e),
+                    "dynamodb_list_by_status_failed", table=TABLE_NAME, status=status, error=str(e),
                 )
                 return [
                     v
@@ -397,11 +392,7 @@ class TokenStore:
         if self.use_dynamodb and dynamodb_table:
             try:
                 dynamodb_table.put_item(
-                    Item={
-                        "PK": "TOKEN#AUTH",
-                        "SK": f"TOKEN#{token}",
-                        "token": token,
-                    }
+                    Item={"PK": "TOKEN#AUTH", "SK": f"TOKEN#{token}", "token": token,}
                 )
             except Exception as e:
                 logger.error(f"DynamoDB token add failed: {e}")

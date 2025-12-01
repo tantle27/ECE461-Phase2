@@ -215,7 +215,7 @@ class TestMain(unittest.TestCase):
             Actor("Author3", "author3@test.com"),
         ]
 
-        for i, author in enumerate(authors):
+        for _i, author in enumerate(authors):
             test_file.write_text(f"print('Update by {author.name}')")
             repo.index.add(["test.py"])
             repo.index.commit(f"Update by {author.name}", author=author)

@@ -3,19 +3,20 @@ Test coverage for src.main module.
 Tests core functionality to improve overall coverage.
 """
 
-import pytest
-import tempfile
 import os
 import sys
-from unittest.mock import patch, MagicMock
+import tempfile
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.main import (
-    _github_token_is_valid,
     _fail,
-    validate_and_configure_logging,
+    _github_token_is_valid,
+    main,
     parse_url_file,
     process_entries,
-    main
+    validate_and_configure_logging,
 )
 
 
@@ -61,7 +62,7 @@ class TestFailFunction:
             _fail("Test error message")
         assert exc_info.value.code == 1
 
-    @patch('sys.stderr')
+    @patch("sys.stderr")
     def test_fail_prints_error_message(self, mock_stderr):
         """Test that _fail prints error to stderr."""
         with pytest.raises(SystemExit):
@@ -118,7 +119,7 @@ class TestUrlFileParsing:
 
     def test_parse_url_file_valid_urls(self):
         """Test parsing file with valid URLs."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
             tmp.write("https://github.com/user/repo1\\n")
             tmp.write("https://huggingface.co/user/model1\\n")
             tmp_path = tmp.name
@@ -132,7 +133,7 @@ class TestUrlFileParsing:
 
     def test_parse_url_file_empty_file(self):
         """Test parsing empty file."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
             tmp_path = tmp.name
 
         try:
@@ -146,17 +147,17 @@ class TestUrlFileParsing:
 class TestProcessEntries:
     """Test entries processing functionality."""
 
-    @patch('src.main.MetricsCalculator')
+    @patch("src.main.MetricsCalculator")
     @pytest.mark.asyncio
     async def test_process_entries_empty_list(self, mock_calculator):
         """Test processing empty entries list."""
         mock_instance = MagicMock()
         mock_calculator.return_value = mock_instance
-        
+
         await process_entries([])
         # Should complete without error
 
-    @patch('src.main.MetricsCalculator')
+    @patch("src.main.MetricsCalculator")
     @pytest.mark.asyncio
     async def test_process_entries_with_urls(self, mock_calculator):
         """Test processing entries with URLs."""
@@ -177,7 +178,7 @@ class TestProcessEntries:
             "code_quality": 0.85,
             "code_quality_latency": 180,
         }
-        
+
         entries = [(None, None, "https://github.com/user/repo")]
         await process_entries(entries)
 
@@ -187,28 +188,28 @@ class TestMainFunction:
 
     def test_main_no_arguments(self):
         """Test main function with no arguments."""
-        with patch.object(sys, 'argv', ['main.py']):
+        with patch.object(sys, "argv", ["main.py"]):
             with pytest.raises(SystemExit):
                 main()
 
     def test_main_too_many_arguments(self):
         """Test main function with too many arguments."""
-        with patch.object(sys, 'argv', ['main.py', 'file1.txt', 'file2.txt']):
+        with patch.object(sys, "argv", ["main.py", "file1.txt", "file2.txt"]):
             with pytest.raises(SystemExit):
                 main()
 
-    @patch('src.main.parse_url_file')
-    @patch('src.main.asyncio.run')
+    @patch("src.main.parse_url_file")
+    @patch("src.main.asyncio.run")
     def test_main_with_valid_file(self, mock_asyncio_run, mock_parse):
         """Test main function with valid file."""
         mock_parse.return_value = ["https://github.com/user/repo"]
-        
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp:
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
             tmp_path = tmp.name
-        
+
         try:
             with patch.dict(os.environ, {"LOG_LEVEL": "0"}, clear=True):
-                with patch.object(sys, 'argv', ['main.py', tmp_path]):
+                with patch.object(sys, "argv", ["main.py", tmp_path]):
                     with pytest.raises(SystemExit) as exc_info:
                         main()
                     assert exc_info.value.code == 0
@@ -216,16 +217,16 @@ class TestMainFunction:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 
-    @patch('src.main.parse_url_file')
+    @patch("src.main.parse_url_file")
     def test_main_with_empty_file(self, mock_parse):
         """Test main function with file containing no URLs."""
         mock_parse.return_value = []
-        
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp:
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
             tmp_path = tmp.name
-        
+
         try:
-            with patch.object(sys, 'argv', ['main.py', tmp_path]):
+            with patch.object(sys, "argv", ["main.py", tmp_path]):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1

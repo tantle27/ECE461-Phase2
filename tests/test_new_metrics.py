@@ -7,10 +7,10 @@ This module tests the three new metrics required for Phase 2:
 - Treescore metric
 """
 
-import pytest
+from typing import Any
 from unittest.mock import Mock
-from typing import Dict, Any
 
+import pytest
 
 # ==================== REPRODUCIBILITY METRIC TESTS ====================
 
@@ -357,7 +357,7 @@ class TestTreescoreMetric:
         return sum(parent_scores) / len(parent_scores)
 
     async def _calculate_treescore_from_config(
-        self, model_id: str, config: Dict[str, Any]
+        self, model_id: str, config: dict[str, Any]
     ) -> float:
         """Calculate treescore from model config.json."""
         # Extract lineage from config
@@ -416,7 +416,7 @@ class TestNewMetricsIntegration:
         assert 0.0 <= net_score <= 1.0
         assert isinstance(net_score, float)
 
-    def _calculate_enhanced_net_score(self, metrics: Dict[str, float]) -> float:
+    def _calculate_enhanced_net_score(self, metrics: dict[str, float]) -> float:
         """Calculate net score including new Phase 2 metrics."""
         # Enhanced weighting formula for Phase 2
         weights = {

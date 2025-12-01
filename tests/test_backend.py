@@ -9,9 +9,10 @@ This module contains tests for backend functionality including:
 - File upload/download operations
 """
 
-import pytest
 import os
-from typing import Dict, Any
+from typing import Any
+
+import pytest
 
 # Phase 2 imports (will be implemented)
 # from app.api import create_app
@@ -61,7 +62,7 @@ class TestModelRegistry:
         invalid_metadata["version"] = "invalid-version"
         assert self._validate_model_metadata(invalid_metadata) is False
 
-    def _validate_model_metadata(self, metadata: Dict[str, Any]) -> bool:
+    def _validate_model_metadata(self, metadata: dict[str, Any]) -> bool:
         """Helper method to validate model metadata."""
         # Basic validation logic
         if not metadata.get("model_name"):
@@ -86,7 +87,7 @@ class TestModelRegistry:
         assert isinstance(result["net_score"], (int, float))
         assert 0.0 <= result["net_score"] <= 1.0
 
-    async def _score_model(self, url: str, calculator) -> Dict[str, Any]:
+    async def _score_model(self, url: str, calculator) -> dict[str, Any]:
         """Mock model scoring for testing."""
         # This will be replaced with actual implementation
         return {
@@ -150,19 +151,19 @@ class TestDatabaseOperations:
         result = self._delete_model(mock_database, 1)
         assert result["status"] == "deleted"
 
-    def _create_model(self, db, model_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_model(self, db, model_data: dict[str, Any]) -> dict[str, Any]:
         """Mock model creation."""
         return db.execute(f"INSERT INTO models VALUES {model_data}")
 
-    def _get_model(self, db, name: str, version: str) -> Dict[str, Any]:
+    def _get_model(self, db, name: str, version: str) -> dict[str, Any]:
         """Mock model retrieval."""
         return db.fetch_one(f"SELECT * FROM models WHERE name='{name}' AND version='{version}'")
 
-    def _update_model(self, db, model_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _update_model(self, db, model_id: int, data: dict[str, Any]) -> dict[str, Any]:
         """Mock model update."""
         return db.execute(f"UPDATE models SET {data} WHERE id={model_id}")
 
-    def _delete_model(self, db, model_id: int) -> Dict[str, Any]:
+    def _delete_model(self, db, model_id: int) -> dict[str, Any]:
         """Mock model deletion."""
         return db.execute(f"DELETE FROM models WHERE id={model_id}")
 
@@ -186,11 +187,11 @@ class TestDatabaseOperations:
         assert user["username"] == "testuser"
         assert "upload" in user["permissions"]
 
-    def _create_user(self, db, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_user(self, db, user_data: dict[str, Any]) -> dict[str, Any]:
         """Mock user creation."""
         return db.execute(f"INSERT INTO users VALUES {user_data}")
 
-    def _authenticate_user(self, db, username: str) -> Dict[str, Any]:
+    def _authenticate_user(self, db, username: str) -> dict[str, Any]:
         """Mock user authentication."""
         return db.fetch_one(f"SELECT * FROM users WHERE username='{username}'")
 
@@ -315,15 +316,15 @@ class TestAuthenticationAuthorization:
         else:
             assert self._is_admin(mock_auth_token) is False
 
-    def _can_upload(self, token: Dict[str, Any]) -> bool:
+    def _can_upload(self, token: dict[str, Any]) -> bool:
         """Check if user can upload models."""
         return "upload" in token.get("permissions", [])
 
-    def _can_download(self, token: Dict[str, Any]) -> bool:
+    def _can_download(self, token: dict[str, Any]) -> bool:
         """Check if user can download models."""
         return "download" in token.get("permissions", [])
 
-    def _is_admin(self, token: Dict[str, Any]) -> bool:
+    def _is_admin(self, token: dict[str, Any]) -> bool:
         """Check if user has admin privileges."""
         return "admin" in token.get("permissions", [])
 
@@ -379,7 +380,7 @@ class TestAPIEndpoints:
         assert "s3" in services
         assert "auth" in services
 
-    def _get_health_status(self) -> Dict[str, Any]:
+    def _get_health_status(self) -> dict[str, Any]:
         """Mock health status endpoint."""
         return {
             "status": "healthy",
@@ -410,8 +411,8 @@ class TestAPIEndpoints:
         assert "page_size" in paginated_results
 
     def _search_models(
-        self, query: str, filters: Dict = None, page: int = 1, page_size: int = 20
-    ) -> Dict[str, Any]:
+        self, query: str, filters: dict = None, page: int = 1, page_size: int = 20
+    ) -> dict[str, Any]:
         """Mock model search endpoint."""
         # Mock search results
         mock_models = [
@@ -458,7 +459,7 @@ class TestAPIEndpoints:
         scores = ingest_result["scores"]
         assert scores["net_score"] >= 0.5  # Minimum threshold for ingestion
 
-    def _ingest_model(self, hf_url: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    def _ingest_model(self, hf_url: str, metadata: dict[str, Any]) -> dict[str, Any]:
         """Mock model ingestion endpoint."""
         # Mock successful ingestion
         return {
@@ -499,10 +500,10 @@ class TestBackendPerformance:
         # Should complete within reasonable time (30 seconds for 10 uploads)
         assert duration < 30.0
 
-    def _mock_upload(self, model_name: str) -> Dict[str, Any]:
+    def _mock_upload(self, model_name: str) -> dict[str, Any]:
         """Mock file upload operation."""
-        import time
         import random
+        import time
 
         # Simulate upload time (1-3 seconds)
         time.sleep(random.uniform(1.0, 3.0))

@@ -6,7 +6,6 @@ from src.constants import MAX_DATASET_DOWNLOADS, MAX_DATASET_LIKES
 
 
 class HuggingFaceClient:
-
     def __init__(self):
         self.api = HfApi()
 
@@ -26,8 +25,4 @@ class HuggingFaceClient:
         return {"normalized_likes": normalized_likes, "normalized_downloads": normalized_downloads}
 
     def download_file(self, repo_id: str, filename: str, local_dir: str = "./") -> str:
-        return hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-            local_dir=local_dir,
-        )
+        return hf_hub_download(repo_id=repo_id, filename=filename, local_dir=local_dir,)

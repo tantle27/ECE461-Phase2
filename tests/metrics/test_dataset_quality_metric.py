@@ -2,10 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.metrics.dataset_quality_metric import (
-    DatasetQualityInput,
-    DatasetQualityMetric,
-)
+from src.metrics.dataset_quality_metric import DatasetQualityInput, DatasetQualityMetric
 
 
 class TestDatasetQualityMetric:

@@ -5,6 +5,7 @@ This file tests the Settings class and configuration loading functionality.
 
 import os
 from unittest.mock import patch
+
 from src.core.config import Settings, settings
 
 
@@ -51,10 +52,7 @@ class TestSettings:
 
     def test_multiple_env_vars(self):
         """Test loading multiple environment variables."""
-        with patch.dict(os.environ, {
-            "GH_TOKEN": "multi_test_token",
-            "ENV": "staging"
-        }):
+        with patch.dict(os.environ, {"GH_TOKEN": "multi_test_token", "ENV": "staging"}):
             s = Settings()
             assert s.GH_TOKEN == "multi_test_token"
 
@@ -67,17 +65,17 @@ class TestSettings:
     def test_settings_singleton_behavior(self):
         """Test the global settings object."""
         # The global settings should be accessible
-        assert hasattr(settings, 'env')
-        assert hasattr(settings, 'GH_TOKEN')
-        assert hasattr(settings, 'request_timeout_s')
-        assert hasattr(settings, 'http_retries')
+        assert hasattr(settings, "env")
+        assert hasattr(settings, "GH_TOKEN")
+        assert hasattr(settings, "request_timeout_s")
+        assert hasattr(settings, "http_retries")
 
     def test_field_default_values(self):
         """Test that Field defaults work correctly."""
         s = Settings()
         # GH_TOKEN should use Field default (None)
         assert s.GH_TOKEN is None
-        
+
         # Other fields should use their class defaults
         assert s.env == "dev"
         assert s.request_timeout_s == 15.0
@@ -137,4 +135,4 @@ class TestSettings:
         _ = s.http_retries
 
         # Test Config class access
-        assert hasattr(s, '__config__') or hasattr(Settings, 'Config')
+        assert hasattr(s, "__config__") or hasattr(Settings, "Config")

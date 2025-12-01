@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional, BinaryIO
+from typing import Any, BinaryIO
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +59,7 @@ class S3Storage:
         return rel
 
     def put_file(
-        self,
-        fileobj: BinaryIO,
-        key_rel: str,
-        content_type: Optional[str] = None,
+        self, fileobj: BinaryIO, key_rel: str, content_type: str | None = None,
     ) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
             logger.error("S3Storage.put_file failed precondition.")
@@ -112,9 +109,7 @@ class S3Storage:
             "content_type": head.get("ContentType"),
         }
 
-    def get_object(
-        self, key: str, version_id: Optional[str] = None
-    ) -> tuple[bytes, dict[str, Any]]:
+    def get_object(self, key: str, version_id: str | None = None) -> tuple[bytes, dict[str, Any]]:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}
@@ -129,7 +124,7 @@ class S3Storage:
         return body, meta
 
     def generate_presigned_url(
-        self, key: str, expires_in: int = 3600, version_id: Optional[str] = None
+        self, key: str, expires_in: int = 3600, version_id: str | None = None
     ) -> str:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
@@ -137,12 +132,10 @@ class S3Storage:
         if version_id:
             params["VersionId"] = version_id
         return s3_client.generate_presigned_url(
-            ClientMethod="get_object",
-            Params=params,
-            ExpiresIn=expires_in,
+            ClientMethod="get_object", Params=params, ExpiresIn=expires_in,
         )
 
-    def delete_object(self, key: str, version_id: Optional[str] = None) -> None:
+    def delete_object(self, key: str, version_id: str | None = None) -> None:
         if not self.enabled or not s3_client or not self.bucket:
             return
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}

@@ -21,7 +21,7 @@ def _get(url: str, params: dict[str, Any] | None = None) -> Any:
     for attempt in range(settings.http_retries):
         r = requests.get(url, headers=_headers(), params=params, timeout=settings.request_timeout_s)
         if r.status_code == 403 and "rate limit" in r.text.lower():
-            time.sleep(2**attempt)
+            time.sleep(2 ** attempt)
             continue
         r.raise_for_status()
         return r.json()

@@ -3,7 +3,7 @@ import hashlib
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
@@ -108,10 +108,7 @@ def _calculate_net_score(metrics: dict[str, Any]) -> float:
 
 
 def _build_model_rating(
-    artifact,
-    model_link: str,
-    metrics: dict[str, Any],
-    total_latency_ms: int,
+    artifact, model_link: str, metrics: dict[str, Any], total_latency_ms: int,
 ) -> ModelRating:
     net_score = round(_calculate_net_score(metrics), 2)
     metric_keys = [
@@ -213,12 +210,10 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         metrics = _generate_lightweight_metrics(artifact, model_link_str)
         total_latency_ms = int((time.time() - start_time) * 1000) or 5
     else:
+
         async def _collect() -> dict[str, Any]:
             return await _METRICS_CALCULATOR.analyze_entry(
-                code_link,
-                dataset_link,
-                model_link_str,
-                set(),
+                code_link, dataset_link, model_link_str, set(),
             )
 
         metrics = _run_async(_collect())

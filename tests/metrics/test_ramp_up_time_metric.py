@@ -6,7 +6,6 @@ from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
 
 
 class TestRampUpTimeMetric:
-
     @pytest.mark.asyncio
     async def test_calculate_with_perfect_score(self):
         """Test calculate method with perfect score (all components maxed)."""
