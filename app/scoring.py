@@ -161,7 +161,8 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     start_time = time.time()
 
     async def _collect() -> dict[str, Any]:
-        return await _METRICS_CALCULATOR.analyze_entry(code_link, dataset_link, model_link_str, set())
+        calc = _get_metrics_calculator()
+        return await calc.analyze_entry(code_link, dataset_link, model_link_str, set())
 
     metrics = _run_async(_collect())
     total_latency_ms = int((time.time() - start_time) * 1000)
@@ -198,4 +199,14 @@ def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) 
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
 # Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
 _THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
-_METRICS_CALCULATOR = MetricsCalculator(cast(ProcessPoolExecutor, _THREAD_POOL), os.environ.get("GH_TOKEN"))
+_METRICS_CALCULATOR: MetricsCalculator | None = None
+
+
+def _get_metrics_calculator() -> MetricsCalculator:
+    """Lazy initialization of MetricsCalculator to ensure GH_TOKEN is loaded from secrets."""
+    global _METRICS_CALCULATOR
+    if _METRICS_CALCULATOR is None:
+        gh_token = os.environ.get("GH_TOKEN")
+        logger.info("Initializing MetricsCalculator with GH_TOKEN=%s", "present" if gh_token else "missing")
+        _METRICS_CALCULATOR = MetricsCalculator(cast(ProcessPoolExecutor, _THREAD_POOL), gh_token)
+    return _METRICS_CALCULATOR

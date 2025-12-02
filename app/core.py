@@ -888,7 +888,7 @@ _REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
 # URL extraction patterns for link inference
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\((https?://[^\s)]+)\)")
-_CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org")
+_CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org", "huggingface.co/spaces")
 _DATA_URL_HINTS = ("huggingface.co/datasets", "kaggle.com", "openml.org", "datasets/")
 
 
@@ -1020,6 +1020,11 @@ def _infer_related_links(artifact: Artifact) -> None:
         except Exception:
             pass
     
+    # Also check model_link itself - it might be a HF model page with embedded info
+    model_url = _coerce_text(artifact.data.get("model_link") or artifact.data.get("url"))
+    if model_url:
+        texts.append(model_url)
+    
     # Extract and classify URLs
     candidates: list[tuple[str, str]] = []
     for text in texts:
@@ -1046,6 +1051,11 @@ def _infer_related_links(artifact: Artifact) -> None:
     
     if updated:
         logger.info("Inferred links for %s: %s", artifact.metadata.id, updated)
+        # Persist immediately so scoring sees the updated links
+        try:
+            save_artifact(artifact)
+        except Exception:
+            logger.exception("Failed to save inferred links")
 
 
 def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelRating:
