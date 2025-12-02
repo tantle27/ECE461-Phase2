@@ -17,6 +17,7 @@ from src.metrics.license_metric import LicenseInput, LicenseMetric
 from src.metrics.performance_claims_metric import PerformanceClaimsMetric, PerformanceInput
 from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
 from src.metrics.size_metric import SizeInput, SizeMetric
+logger = logging.getLogger(__name__)
 
 
 def extract_hf_repo_id(url: str) -> str:
@@ -114,7 +115,7 @@ class MetricsCalculator:
 
         Args:
             process_pool: ProcessPoolExecutor for CPU-bound operations
-            GH_TOKEN: Optional GitHub token for API access
+            GH_TOKEN: Optional[str] = None
         """
         self.git_client = GitClient(GH_TOKEN)
         self.gen_ai_client = GenAIClient()
@@ -167,12 +168,12 @@ class MetricsCalculator:
         Returns:
             Dictionary containing all computed metrics and their latencies
         """
-        logging.info("METRICS: begin_repo_analysis url=%s", url)
+        logger.info("METRICS: begin_repo_analysis url=%s", url)
 
         # Early exit for Hugging Face model URLs without code repository
         # These will have all zero scores anyway, no need to clone
         if is_model_url(url) and not is_code_repository(url):
-            logging.info("METRICS: skip repo clone (model-only) url=%s", url)
+            logger.info("METRICS: skip repo clone (model-only) url=%s", url)
             return self._get_default_metrics()
 
         loop = asyncio.get_running_loop()
@@ -180,10 +181,10 @@ class MetricsCalculator:
         repo_path = await loop.run_in_executor(self.thread_pool, self.git_client.clone_repository, url)
 
         if not repo_path:
-            logging.error(f"Failed to clone repository: {url}")
+            logger.error(f"Failed to clone repository: {url}")
             return self._get_default_metrics()
 
-        logging.info("METRICS: cloned repo url=%s path=%s", url, repo_path)
+        logger.info("METRICS: cloned repo url=%s path=%s", url, repo_path)
 
         try:
             # Extract repo_id if this is a Hugging Face dataset URL
@@ -192,7 +193,7 @@ class MetricsCalculator:
                 try:
                     repo_id = extract_hf_repo_id(url)
                 except ValueError as e:
-                    logging.error(str(e))
+                    logger.error(str(e))
             bus_factor_task = self._run_cpu_bound(self.bus_factor_metric.calculate, BusFactorInput(repo_url=repo_path))
             code_quality_task = self._run_cpu_bound(
                 self.code_quality_metric.calculate, CodeQualityInput(repo_url=repo_path)
@@ -213,7 +214,7 @@ class MetricsCalculator:
 
             reproducibility_task = self._run_cpu_bound(self.git_client.estimate_reproducibility, repo_path)
             reviewedness_task = self._run_cpu_bound(
-                self.git_client.estimate_reviewedness, repo_path, repo_url
+                self.git_client.estimate_reviewedness, repo_path, url
             )
             dataset_code_task = self._run_cpu_bound(
                 self.dataset_code_metric.calculate, DatasetCodeInput(repo_url=repo_path)
@@ -265,7 +266,7 @@ class MetricsCalculator:
                 "dataset_code_score": dataset_code_score,
                 "dataset_code_score_latency": dataset_code_lat,
             }
-            logging.info(
+            logger.info(
                 "METRICS: repo_scores url=%s summary=%s",
                 url,
                 {
@@ -295,15 +296,15 @@ class MetricsCalculator:
         Tracks encountered datasets to support shared dataset inference.
 
         Args:
-            code_link: Optional URL to code repository
-            dataset_link: Optional URL to dataset (HF datasets, ImageNet, etc.)
+            code_link: Optional[str]
+            dataset_link: Optional[str]
             model_link: Required URL to ML model (typically Hugging Face)
             encountered_datasets: Set to track previously seen datasets
 
         Returns:
             Dictionary containing all computed metrics and combined scores
         """
-        logging.info(
+        logger.info(
             "METRICS: analyze_entry code_link=%s dataset_link=%s model_link=%s",
             code_link,
             dataset_link,
@@ -314,18 +315,18 @@ class MetricsCalculator:
         primary_repo_url = None
         if code_link and is_code_repository(code_link):
             primary_repo_url = code_link
-            logging.info("METRICS: primary repo from code_link=%s", code_link)
+            logger.info("METRICS: primary repo from code_link=%s", code_link)
         elif is_code_repository(model_link):
             primary_repo_url = model_link
-            logging.info("METRICS: primary repo from model_link=%s", model_link)
+            logger.info("METRICS: primary repo from model_link=%s", model_link)
 
         # If no code repository available,
         # try to analyze the model URL as repository
         if not primary_repo_url:
             primary_repo_url = model_link
-            logging.info("METRICS: fallback primary repo=%s", model_link)
+            logger.info("METRICS: fallback primary repo=%s", model_link)
         else:
-            logging.info("METRICS: selected primary repo=%s", primary_repo_url)
+            logger.info("METRICS: selected primary repo=%s", primary_repo_url)
 
         # Handle dataset tracking
         if dataset_link:
@@ -347,7 +348,7 @@ class MetricsCalculator:
             dataset_and_code_score = dataset_code
         else:
             dataset_and_code_score = self._calculate_dataset_and_code_score(code_link, dataset_link, repo_metrics)
-            logging.info(
+            logger.info(
                 "SCORE_FIX: dataset_code_score missing; using heuristic for code=%s dataset=%s",
                 code_link,
                 dataset_link,
@@ -359,7 +360,7 @@ class MetricsCalculator:
         if tree_score is None:
             repo_metrics["tree_score"] = 0.0
             repo_metrics["tree_score_latency"] = 0
-        logging.info(
+        logger.info(
             "METRICS: combined metrics model=%s net_inputs=%s",
             model_link,
             {
@@ -402,15 +403,15 @@ class MetricsCalculator:
                 # For non-Hugging Face datasets, we can't
                 # calculate quality with current tools
                 # Return a neutral score (0.5) to indicate "unknown quality"
-                logging.info("Dataset quality not supported for non-HF dataset: " f"{dataset_link}")
+                logger.info("Dataset quality not supported for non-HF dataset: " f"{dataset_link}")
                 return {
                     "dataset_quality": 0.5,  # Neutral score for unsupported
                     "dataset_quality_latency": 0,
                 }
         except ValueError as e:
-            logging.error(f"Failed to extract repo_id from dataset URL " f"{dataset_link}: {e}")
+            logger.error(f"Failed to extract repo_id from dataset URL " f"{dataset_link}: {e}")
         except Exception as e:
-            logging.error(f"Failed to analyze dataset quality for " f"{dataset_link}: {e}")
+            logger.error(f"Failed to analyze dataset quality for " f"{dataset_link}: {e}")
 
         return {
             "dataset_quality": 0.0,
@@ -442,7 +443,7 @@ class MetricsCalculator:
 
         # Apply the formula from project plan
         score = (0.6 * has_dataset_info) + (0.4 * has_training_code)
-        logging.info(
+        logger.info(
             "METRICS: heuristic dataset_and_code score=%s dataset_link=%s code_link=%s",
             score,
             dataset_link,
@@ -458,7 +459,7 @@ class MetricsCalculator:
         Returns:
             Dictionary with default metric values and latencies
         """
-        logging.info("METRICS: default metrics returned (analysis failed)")
+        logger.info("METRICS: default metrics returned (analysis failed)")
         return {
             "bus_factor": 0.0,
             "bus_factor_latency": 0,
