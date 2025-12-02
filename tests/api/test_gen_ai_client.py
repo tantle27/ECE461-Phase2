@@ -115,8 +115,8 @@ class TestGenAIClient:
 
         # Verify both files were opened
         assert mock_open.call_count == 2
-        mock_open.assert_any_call("src/api/performance_claims_extraction_prompt.txt", "r", encoding="utf-8")
-        mock_open.assert_any_call("src/api/performance_claims_conversion_prompt.txt", "r", encoding="utf-8")
+        mock_open.assert_any_call("src/api/performance_claims_extraction_prompt.txt", encoding="utf-8")
+        mock_open.assert_any_call("src/api/performance_claims_conversion_prompt.txt", encoding="utf-8")
 
         # Verify HTTP calls were made twice
         assert mock_post.call_count == 2
@@ -283,7 +283,7 @@ class TestGenAIClient:
         assert isinstance(result, float)
 
         # Verify file was opened correctly
-        mock_open.assert_called_once_with("src/api/readme_clarity_ai_prompt.txt", "r", encoding="utf-8")
+        mock_open.assert_called_once_with("src/api/readme_clarity_ai_prompt.txt", encoding="utf-8")
 
     @patch.dict(os.environ, {"GENAI_API_KEY": "test_key"})
     @patch("aiohttp.ClientSession.post")

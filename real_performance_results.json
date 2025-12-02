@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "timestamp": "2025-12-01T16:01:43.910791",
+    "test_type": "Real Load Test Against Live Server",
+    "server_url": "http://localhost:5000",
+    "version": "1.0"
+  },
+  "performance_metrics": {
+    "test_duration": 21.372685194015503,
+    "total_requests": 300,
+    "successful_requests": 120,
+    "failed_requests": 180,
+    "success_rate": 40.0,
+    "throughput": 5.614643125591014,
+    "mean_latency": 2101.1934439341226,
+    "median_latency": 2074.528932571411,
+    "p95_latency": 2404.590058326721,
+    "p99_latency": 2493.150849342346,
+    "min_latency": 2025.7518291473389,
+    "max_latency": 2495.511770248413,
+    "std_latency": 98.67380826354652,
+    "endpoint_breakdown": {
+      "/health": {
+        "count": 60,
+        "mean": 2080.0200740496316,
+        "p95": 2190.52163362503,
+        "p99": 2457.067153453827
+      },
+      "/openapi": {
+        "count": 60,
+        "mean": 2122.3668138186135,
+        "p95": 2411.2067341804504,
+        "p99": 2492.852039337158
+      }
+    }
+  },
+  "data_summary": {
+    "raw_data_points": 120,
+    "endpoints_tested": 2
+  }
+}
