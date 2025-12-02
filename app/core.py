@@ -25,7 +25,7 @@ from werkzeug.utils import secure_filename
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage
-from app.scoring import ModelRating, _score_artifact_with_metrics
+from app.scoring import ModelRating, _score_artifact_with_metrics, rate_artifacts_concurrently
 
 logger = logging.getLogger(__name__)
 try:
@@ -1690,6 +1690,74 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             500,
         )
     return jsonify(_to_openapi_model_rating(rating)), 200
+
+
+@blueprint.route("/artifacts/models/rate", methods=["POST"])
+@_record_timing
+def rate_models_batch_route() -> tuple[Response, int] | Response:
+    """Batch-rate multiple model artifacts concurrently.
+
+    Request body: { "ids": ["id1", "id2", ...] }
+    Response: { "ratings": [ {<openapi rating>}, ... ] } preserving input order.
+    """
+    _require_auth()
+    try:
+        body = request.get_json(silent=True) or {}
+        ids = body.get("ids")
+        if not isinstance(ids, list) or not ids:
+            return jsonify({"message": "Provide JSON body with 'ids': [ ... ]"}), 400
+
+        # Prepare artifacts list preserving input order; skip missing with 404 item note
+        artifacts: list[Artifact] = []
+        missing_indices: list[int] = []
+        for idx, aid in enumerate(ids):
+            if not isinstance(aid, str) or not aid.strip():
+                missing_indices.append(idx)
+                continue
+            art = fetch_artifact("model", aid.strip())
+            if art is None:
+                missing_indices.append(idx)
+                continue
+            # Infer related links for better scoring
+            _infer_related_links(art)
+
+            # If cached and fresh, short-circuit
+            cached_rating = _rating_from_artifact_data(art)
+            if cached_rating is not None:
+                _RATINGS_CACHE[art.metadata.id] = cached_rating
+                artifacts.append(art)
+            else:
+                artifacts.append(art)
+
+        if not artifacts and missing_indices:
+            return jsonify({"message": "No valid artifacts found for provided ids", "missing": missing_indices}), 404
+
+        # Rate concurrently
+        ratings: list[ModelRating] = rate_artifacts_concurrently(artifacts)
+
+        # Persist each rating back to artifact and cache
+        openapi_ratings: list[dict[str, Any]] = []
+        for art, rating in zip(artifacts, ratings):
+            # Ensure phase 2 fields
+            rating = _ensure_phase_two_metrics(art, rating)
+            _RATINGS_CACHE[art.metadata.id] = rating
+            if isinstance(art.data, dict):
+                art.data["metrics"] = dict(rating.scores)
+                art.data["metrics_latencies"] = dict(rating.latencies)
+                art.data["trust_score"] = rating.scores.get("net_score", 0.0)
+                art.data["last_rated"] = rating.generated_at.isoformat() + "Z"
+                save_artifact(art)
+            _audit_add("model", art.metadata.id, "RATE", art.metadata.name)
+            openapi_ratings.append(_to_openapi_model_rating(rating))
+
+        # Build ordered response aligned to input ids; include None for missing if desired
+        return jsonify({"ratings": openapi_ratings, "missing": missing_indices}), 200
+    except Exception:
+        logger.exception("Batch rating failed")
+        return (
+            jsonify({"message": "The batch artifact rating encountered an error while computing metrics."}),
+            500,
+        )
 
 
 def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:

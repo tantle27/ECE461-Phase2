@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, cast
@@ -24,18 +25,6 @@ class ModelRating:
     latencies: dict[str, int]
     summary: dict[str, Any]
 
-
-def _fast_mode() -> bool:
-    """Check FAST_RATING_MODE dynamically to honor runtime env changes.
-    Default to true on Lambda unless explicitly disabled.
-    """
-    val = str(os.environ.get("FAST_RATING_MODE", "")).strip().lower()
-    if val in ("true", "1", "yes"):
-        return True
-    if val in ("false", "0", "no"):
-        return False
-    # No explicit setting: enable fast mode when running in Lambda to avoid timeouts
-    return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
 
 
@@ -136,42 +125,7 @@ def _build_model_rating(artifact, model_link: str, metrics: dict[str, Any], tota
     )
 
 
-def _generate_fast_metrics(code_link: Optional[str], dataset_link: Optional[str], model_link: str) -> dict[str, Any]:
-    """Generate heuristic metrics without expensive git operations (for FAST_RATING_MODE)."""
-    has_code = bool(code_link and code_link.strip())
-    has_dataset = bool(dataset_link and dataset_link.strip())
-    
-    # Generate reasonable non-zero metrics based on what links are available
-    metrics = {
-        "bus_factor": 0.6 if has_code else 0.3,
-        "bus_factor_latency": 50,
-        "code_quality": 0.7 if has_code else 0.4,
-        "code_quality_latency": 50,
-        "dataset_quality": 0.6 if has_dataset else 0.3,
-        "dataset_quality_latency": 50,
-        "dataset_and_code_score": 0.75 if (has_code and has_dataset) else (0.5 if (has_code or has_dataset) else 0.25),
-        "dataset_and_code_score_latency": 50,
-        "license": 0.8 if has_code else 0.5,
-        "license_latency": 50,
-        "performance_claims": 0.5,
-        "performance_claims_latency": 50,
-        "ramp_up_time": 0.6 if has_code else 0.3,
-        "ramp_up_time_latency": 50,
-        "reproducibility": 0.7 if (has_code and has_dataset) else 0.4,
-        "reproducibility_latency": 50,
-        "reviewedness": 0.5 if has_code else 0.0,
-        "reviewedness_latency": 50,
-        "tree_score": 0.0,
-        "tree_score_latency": 50,
-        "size_score": {
-            "raspberry_pi": 0.3,
-            "jetson_nano": 0.5,
-            "desktop_pc": 0.8,
-            "aws_server": 0.9,
-        },
-        "size_score_latency": 50,
-    }
-    return metrics
+# Heuristic fast metrics removed.
 
 
 def _score_artifact_with_metrics(artifact) -> ModelRating:
@@ -207,12 +161,7 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 
     start_time = time.time()
 
-    # Fast rating mode: return reasonable non-zero metrics without expensive git operations
-    if _fast_mode():
-        logger.info(f"FAST_RATING_MODE: Returning heuristic metrics for {artifact.metadata.id}")
-        metrics = _generate_fast_metrics(code_link, dataset_link, model_link_str)
-        total_latency_ms = int((time.time() - start_time) * 1000)
-        return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
+    # Always compute legitimate metrics via MetricsCalculator
 
     async def _collect() -> dict[str, Any]:
         calc = _get_metrics_calculator()
@@ -228,6 +177,39 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         {k: metrics.get(k) for k in ("license", "bus_factor", "code_quality", "dataset_quality")},
     )
     return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
+
+
+def _rate_one(artifact) -> ModelRating:
+    """Small wrapper to rate a single artifact, suitable for thread pool execution."""
+    return _score_artifact_with_metrics(artifact)
+
+
+def rate_artifacts_concurrently(artifacts: list[Any], max_workers: int | None = None) -> list[ModelRating]:
+    """Rate multiple artifacts concurrently using ThreadPoolExecutor.
+
+    - Uses thread pool to avoid ProcessPool limitations on Lambda.
+    - Returns a list of ModelRating in the same order as input artifacts.
+    - Exceptions are logged and skipped to keep other ratings proceeding.
+    """
+    if not artifacts:
+        return []
+    workers = max_workers or max(4, (os.cpu_count() or 4))
+    results: dict[int, ModelRating] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_rate_one, art): idx for idx, art in enumerate(artifacts)}
+        for fut in as_completed(futures):
+            idx = futures[fut]
+            try:
+                rating = fut.result()
+                results[idx] = rating
+            except Exception as exc:
+                logger.exception("Concurrent rating failed for idx=%s: %s", idx, exc)
+    # Preserve input order
+    ordered: list[ModelRating] = []
+    for i in range(len(artifacts)):
+        if i in results:
+            ordered.append(results[i])
+    return ordered
 
 
 def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) -> dict[str, Any]:
