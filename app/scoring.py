@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Optional, cast
 try:
     from app.secrets_loader import load_registry_secrets
 
@@ -135,15 +135,23 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         raise ValueError("Artifact data must be a JSON object with repository links")
 
     payload = artifact.data
-    code_link: str | None = payload.get("code_link") or payload.get("code") or None
-    dataset_link: str | None = payload.get("dataset_link") or payload.get("dataset") or None
+    code_link_raw = payload.get("code_link") or payload.get("code") or None
+    dataset_link_raw = payload.get("dataset_link") or payload.get("dataset") or None
     model_link = payload.get("model_link") or payload.get("model_url") or payload.get("model")
 
     if not model_link:
         raise ValueError("Artifact data must include 'model_link'")
 
-    # Type narrowing: model_link is now guaranteed to be str (not None)
-    model_link_str = cast(str, model_link)
+    # Type narrowing and ensure strings (not None) for MetricsCalculator
+    model_link_str = str(model_link).strip() if model_link else ""
+    code_link: Optional[str] = str(code_link_raw).strip() if code_link_raw else None
+    dataset_link: Optional[str] = str(dataset_link_raw).strip() if dataset_link_raw else None
+    
+    # Filter out empty strings
+    if code_link and not code_link:
+        code_link = None
+    if dataset_link and not dataset_link:
+        dataset_link = None
 
     logger.info(
         f"Scoring artifact {artifact.metadata.id}: code_link={code_link}, "
