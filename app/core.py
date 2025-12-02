@@ -455,6 +455,7 @@ def _store_key(artifact_type: str, artifact_id: str) -> str:
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
     artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
+    _infer_related_links(artifact)
     try:
         _ARTIFACT_STORE.save(
             artifact.metadata.type, artifact.metadata.id, artifact_to_dict(artifact),
@@ -884,6 +885,15 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
 
 
 _REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
+_URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+_CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org", "huggingface.co/spaces/")
+_DATA_URL_HINTS = (
+    "huggingface.co/datasets",
+    "kaggle.com",
+    "openml.org",
+    "datahub.io",
+    "datasets/",
+)
 
 
 def _regex_segments(text: str) -> list[str]:
@@ -1408,6 +1418,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
+    _infer_related_links(artifact)
     cached_rating = _rating_from_artifact_data(artifact)
     if cached_rating:
         _RATINGS_CACHE[artifact_id] = cached_rating
@@ -1591,6 +1602,70 @@ def _tree_score_for_artifact(artifact: Artifact) -> tuple[float, dict[str, float
         return 0.0, {}
     avg = sum(parent_scores.values()) / len(parent_scores)
     return avg, parent_scores
+
+
+def _extract_urls(text: str) -> list[str]:
+    if not text:
+        return []
+    return _URL_RE.findall(text)
+
+
+def _infer_related_links(artifact: Artifact) -> None:
+    if not isinstance(artifact.data, dict):
+        return
+    code_link = _coerce_text(artifact.data.get("code_link"))
+    dataset_link = _coerce_text(artifact.data.get("dataset_link"))
+    if code_link and dataset_link:
+        return
+
+    texts: list[str] = []
+    for key in ("readme", "README", "description", "summary"):
+        texts.append(_coerce_text(artifact.data.get(key)))
+    hf_blob = artifact.data.get("hf_data")
+    if isinstance(hf_blob, str):
+        texts.append(hf_blob)
+    elif isinstance(hf_blob, Mapping):
+        try:
+            texts.append(json.dumps(hf_blob))
+        except Exception:
+            pass
+
+    candidates: list[str] = []
+    for text in texts:
+        candidates.extend(_extract_urls(text))
+
+    for url in candidates:
+        lower = url.lower()
+        if not code_link and any(hint in lower for hint in _CODE_URL_HINTS):
+            code_link = url
+        if not dataset_link and any(hint in lower for hint in _DATA_URL_HINTS):
+            dataset_link = url
+        if code_link and dataset_link:
+            break
+
+    deps = artifact.data.get("dependencies")
+    if not dataset_link and isinstance(deps, list):
+        for dep in deps:
+            dep_str = _coerce_text(dep)
+            if dep_str and any(hint in dep_str.lower() for hint in _DATA_URL_HINTS):
+                dataset_link = dep_str
+                break
+
+    updated: list[str] = []
+    if code_link and not artifact.data.get("code_link"):
+        artifact.data["code_link"] = code_link
+        updated.append("code_link")
+    if dataset_link and not artifact.data.get("dataset_link"):
+        artifact.data["dataset_link"] = dataset_link
+        updated.append("dataset_link")
+
+    if updated:
+        logger.info(
+            "SCORE_FIX: inferred links id=%s fields=%s values=%s",
+            artifact.metadata.id,
+            updated,
+            {key: artifact.data.get(key) for key in updated},
+        )
 
 
 def _infer_reproducibility_score(artifact: Artifact, dataset_and_code: float | None) -> float:

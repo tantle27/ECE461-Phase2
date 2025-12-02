@@ -55,11 +55,11 @@ def is_code_repository(url: str) -> bool:
     if not url:
         return False
     parsed = urlparse(url.lower())
-    return (
-        "github.com" in parsed.netloc
-        or "gitlab.com" in parsed.netloc
-        or ("huggingface.co" in parsed.netloc and "/spaces/" in parsed.path)
-    )
+    if "github.com" in parsed.netloc or "gitlab.com" in parsed.netloc or "bitbucket.org" in parsed.netloc:
+        return True
+    if "huggingface.co" in parsed.netloc:
+        return True
+    return False
 
 
 def is_dataset_url(url: str) -> bool:
