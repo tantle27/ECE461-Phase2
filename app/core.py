@@ -455,12 +455,18 @@ def _store_key(artifact_type: str, artifact_id: str) -> str:
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
     artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
+    artifact_dict = artifact_to_dict(artifact)
     try:
         _ARTIFACT_STORE.save(
-            artifact.metadata.type, artifact.metadata.id, artifact_to_dict(artifact),
+            artifact.metadata.type, artifact.metadata.id, artifact_dict,
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
+    # Always keep adapter's memory store in sync for non-DynamoDB environments
+    try:
+        _ARTIFACT_STORE._memory_store[f"{artifact.metadata.type}:{artifact.metadata.id}"] = artifact_dict
+    except Exception:
+        logger.exception("Failed to sync adapter memory store")
     store_key = _store_key(artifact.metadata.type, artifact.metadata.id)
     _STORE[store_key] = artifact
     if store_key not in _ARTIFACT_ORDER:
