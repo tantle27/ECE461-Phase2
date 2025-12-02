@@ -228,17 +228,14 @@ def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) 
         "performance_claims",
         "dataset_and_code_score",
     ]
-    has_signal = any(metrics.get(key) not in (None, 0, 0.0, -1) for key in critical)
-    if has_signal:
+    if any(metrics.get(key) not in (None, 0, 0.0, -1) for key in critical):
         return metrics
     logger.warning(
-        "SCORE_FIX: metrics missing for %s (code=%s) – falling back to heuristic",
+        "SCORE_FIX: metrics missing for %s (code=%s) – keeping raw zeros",
         artifact.metadata.id,
         (artifact.data or {}).get("code_link"),
     )
-    fallback = _generate_lightweight_metrics(artifact, model_link)
-    fallback.update({k: v for k, v in metrics.items() if k not in fallback})
-    return fallback
+    return metrics
 
 
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)

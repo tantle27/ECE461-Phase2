@@ -886,6 +886,7 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
 
 _REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
+_MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\((https?://[^\s)]+)\)")
 _CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org", "huggingface.co/spaces/")
 _DATA_URL_HINTS = (
     "huggingface.co/datasets",
@@ -1607,7 +1608,40 @@ def _tree_score_for_artifact(artifact: Artifact) -> tuple[float, dict[str, float
 def _extract_urls(text: str) -> list[str]:
     if not text:
         return []
-    return _URL_RE.findall(text)
+    urls: list[str] = []
+    for match in _MARKDOWN_LINK_RE.findall(text):
+        urls.append(match)
+    for match in _URL_RE.findall(text):
+        urls.append(match)
+    cleaned: list[str] = []
+    for url in urls:
+        normalized = _normalize_url(url)
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _normalize_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    trimmed = url.strip().strip("()[]{}<>")
+    if not trimmed:
+        return None
+    if trimmed.startswith("www."):
+        trimmed = f"https://{trimmed}"
+    if trimmed.startswith("huggingface.co/"):
+        trimmed = f"https://{trimmed}"
+    return trimmed
+
+
+def _classify_url(url: str, context: str) -> str | None:
+    low = url.lower()
+    ctx = context.lower()
+    if any(hint in low for hint in _CODE_URL_HINTS) or "code" in ctx and "dataset" not in ctx:
+        return "code"
+    if any(hint in low for hint in _DATA_URL_HINTS) or "dataset" in ctx or "data" in ctx:
+        return "dataset"
+    return None
 
 
 def _infer_related_links(artifact: Artifact) -> None:
@@ -1630,15 +1664,16 @@ def _infer_related_links(artifact: Artifact) -> None:
         except Exception:
             pass
 
-    candidates: list[str] = []
+    candidates: list[tuple[str, str]] = []
     for text in texts:
-        candidates.extend(_extract_urls(text))
+        for url in _extract_urls(text):
+            candidates.append((url, text))
 
-    for url in candidates:
-        lower = url.lower()
-        if not code_link and any(hint in lower for hint in _CODE_URL_HINTS):
+    for url, ctx in candidates:
+        classification = _classify_url(url, ctx)
+        if not code_link and classification == "code":
             code_link = url
-        if not dataset_link and any(hint in lower for hint in _DATA_URL_HINTS):
+        if not dataset_link and classification == "dataset":
             dataset_link = url
         if code_link and dataset_link:
             break

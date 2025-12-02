@@ -12,6 +12,7 @@ from src.api.hugging_face_client import HuggingFaceClient
 from src.metrics.bus_factor_metric import BusFactorInput, BusFactorMetric
 from src.metrics.code_quality_metric import CodeQualityInput, CodeQualityMetric
 from src.metrics.dataset_quality_metric import DatasetQualityInput, DatasetQualityMetric
+from src.metrics.dataset_code_metric import DatasetCodeMetric, DatasetCodeInput
 from src.metrics.license_metric import LicenseInput, LicenseMetric
 from src.metrics.performance_claims_metric import PerformanceClaimsMetric, PerformanceInput
 from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
@@ -129,6 +130,7 @@ class MetricsCalculator:
         self.ramp_up_time_metric = RampUpTimeMetric(self.git_client, self.gen_ai_client)
         self.dataset_quality_metric = DatasetQualityMetric(self.hf_client)
         self.performance_claims_metric = PerformanceClaimsMetric(self.gen_ai_client)
+        self.dataset_code_metric = DatasetCodeMetric(self.git_client)
 
     async def _run_cpu_bound(self, func, *args) -> Any:
         """
@@ -165,12 +167,12 @@ class MetricsCalculator:
         Returns:
             Dictionary containing all computed metrics and their latencies
         """
-        logging.info(f"Starting async analysis for: {url}")
+        logging.info("METRICS: begin_repo_analysis url=%s", url)
 
         # Early exit for Hugging Face model URLs without code repository
         # These will have all zero scores anyway, no need to clone
         if is_model_url(url) and not is_code_repository(url):
-            logging.info(f"Skipping full analysis for HF model URL (no separate code repo): {url}")
+            logging.info("METRICS: skip repo clone (model-only) url=%s", url)
             return self._get_default_metrics()
 
         loop = asyncio.get_running_loop()
@@ -181,7 +183,7 @@ class MetricsCalculator:
             logging.error(f"Failed to clone repository: {url}")
             return self._get_default_metrics()
 
-        logging.info(f"Successfully cloned {url} to {repo_path}")
+        logging.info("METRICS: cloned repo url=%s path=%s", url, repo_path)
 
         try:
             # Extract repo_id if this is a Hugging Face dataset URL
@@ -213,6 +215,9 @@ class MetricsCalculator:
             reviewedness_task = self._run_cpu_bound(
                 self.git_client.estimate_reviewedness, repo_path, repo_url
             )
+            dataset_code_task = self._run_cpu_bound(
+                self.dataset_code_metric.calculate, DatasetCodeInput(repo_url=repo_path)
+            )
 
             (
                 (bus_factor_score, bus_lat),
@@ -224,6 +229,7 @@ class MetricsCalculator:
                 (size_score, size_lat),
                 (reproducibility_score, reproducibility_lat),
                 (reviewedness_score, reviewed_lat),
+                (dataset_code_score, dataset_code_lat),
             ) = await asyncio.gather(
                 bus_factor_task,
                 code_quality_task,
@@ -234,9 +240,10 @@ class MetricsCalculator:
                 size_task,
                 reproducibility_task,
                 reviewedness_task,
+                dataset_code_task,
             )
 
-            return {
+            results = {
                 "bus_factor": bus_factor_score,
                 "bus_factor_latency": bus_lat,
                 "code_quality": code_quality_score,
@@ -255,7 +262,25 @@ class MetricsCalculator:
                 "reproducibility_latency": reproducibility_lat,
                 "reviewedness": reviewedness_score,
                 "reviewedness_latency": reviewed_lat,
+                "dataset_code_score": dataset_code_score,
+                "dataset_code_score_latency": dataset_code_lat,
             }
+            logging.info(
+                "METRICS: repo_scores url=%s summary=%s",
+                url,
+                {
+                    "bus_factor": round(bus_factor_score, 3),
+                    "code_quality": round(code_quality_score, 3),
+                    "license": round(license_score, 3),
+                    "dataset_quality": round(dataset_quality_score, 3)
+                    if isinstance(dataset_quality_score, (int, float))
+                    else dataset_quality_score,
+                    "dataset_code_score": dataset_code_score,
+                    "reviewedness": reviewedness_score,
+                    "reproducibility": reproducibility_score,
+                },
+            )
+            return results
         finally:
             self.git_client.cleanup()
 
@@ -279,25 +304,28 @@ class MetricsCalculator:
             Dictionary containing all computed metrics and combined scores
         """
         logging.info(
-            "Analyzing entry - Code: %s, Dataset: %s, Model: %s", code_link, dataset_link, model_link,
+            "METRICS: analyze_entry code_link=%s dataset_link=%s model_link=%s",
+            code_link,
+            dataset_link,
+            model_link,
         )
 
         # Determine the primary repository to analyze
         primary_repo_url = None
         if code_link and is_code_repository(code_link):
             primary_repo_url = code_link
-            logging.info(f"Using code_link as primary repo: {code_link}")
+            logging.info("METRICS: primary repo from code_link=%s", code_link)
         elif is_code_repository(model_link):
             primary_repo_url = model_link
-            logging.info(f"Using model_link as primary repo (code_link not a repo): {model_link}")
+            logging.info("METRICS: primary repo from model_link=%s", model_link)
 
         # If no code repository available,
         # try to analyze the model URL as repository
         if not primary_repo_url:
             primary_repo_url = model_link
-            logging.info(f"Using model_link as fallback primary repo: {model_link}")
+            logging.info("METRICS: fallback primary repo=%s", model_link)
         else:
-            logging.info(f"Primary repo selected: {primary_repo_url}")
+            logging.info("METRICS: selected primary repo=%s", primary_repo_url)
 
         # Handle dataset tracking
         if dataset_link:
@@ -314,14 +342,33 @@ class MetricsCalculator:
             repo_metrics.update(dataset_quality_metrics)
 
         # Calculate dataset and code score
-        dataset_and_code_score = self._calculate_dataset_and_code_score(code_link, dataset_link, repo_metrics)
+        dataset_code = repo_metrics.get("dataset_code_score")
+        if dataset_code is not None:
+            dataset_and_code_score = dataset_code
+        else:
+            dataset_and_code_score = self._calculate_dataset_and_code_score(code_link, dataset_link, repo_metrics)
+            logging.info(
+                "SCORE_FIX: dataset_code_score missing; using heuristic for code=%s dataset=%s",
+                code_link,
+                dataset_link,
+            )
         repo_metrics["dataset_and_code_score"] = dataset_and_code_score
-        repo_metrics["dataset_and_code_score_latency"] = 0  # Placeholder
+        repo_metrics["dataset_and_code_score_latency"] = repo_metrics.get("dataset_code_score_latency", 0)
 
         tree_score = repo_metrics.get("tree_score")
         if tree_score is None:
             repo_metrics["tree_score"] = 0.0
             repo_metrics["tree_score_latency"] = 0
+        logging.info(
+            "METRICS: combined metrics model=%s net_inputs=%s",
+            model_link,
+            {
+                "dataset_code_score": repo_metrics.get("dataset_code_score"),
+                "dataset_quality": repo_metrics.get("dataset_quality"),
+                "code_link": code_link,
+                "dataset_link": dataset_link,
+            },
+        )
 
         return repo_metrics
 
@@ -394,7 +441,14 @@ class MetricsCalculator:
         has_training_code = 1.0 if (code_link and is_code_repository(code_link)) else 0.0
 
         # Apply the formula from project plan
-        return (0.6 * has_dataset_info) + (0.4 * has_training_code)
+        score = (0.6 * has_dataset_info) + (0.4 * has_training_code)
+        logging.info(
+            "METRICS: heuristic dataset_and_code score=%s dataset_link=%s code_link=%s",
+            score,
+            dataset_link,
+            code_link,
+        )
+        return score
 
     def _get_default_metrics(self) -> dict[str, Any]:
         """
@@ -404,6 +458,7 @@ class MetricsCalculator:
         Returns:
             Dictionary with default metric values and latencies
         """
+        logging.info("METRICS: default metrics returned (analysis failed)")
         return {
             "bus_factor": 0.0,
             "bus_factor_latency": 0,
@@ -425,4 +480,6 @@ class MetricsCalculator:
             "reviewedness_latency": 0,
             "tree_score": 0.0,
             "tree_score_latency": 0,
+            "dataset_code_score": None,
+            "dataset_code_score_latency": 0,
         }
