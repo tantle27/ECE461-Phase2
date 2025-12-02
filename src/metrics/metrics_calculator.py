@@ -51,15 +51,16 @@ def extract_hf_repo_id(url: str) -> str:
 
 def is_code_repository(url: str) -> bool:
     """
-    Determines if a URL is a code repository
-    (GitHub, GitLab, or Hugging Face Spaces).
+    Determines if a URL is a code repository (GitHub, GitLab, Bitbucket)
+    or a Hugging Face Space (treated as code). Plain Hugging Face model/dataset
+    pages are NOT code repositories.
     """
     if not url:
         return False
     parsed = urlparse(url.lower())
     if "github.com" in parsed.netloc or "gitlab.com" in parsed.netloc or "bitbucket.org" in parsed.netloc:
         return True
-    if "huggingface.co" in parsed.netloc:
+    if "huggingface.co" in parsed.netloc and "/spaces/" in parsed.path:
         return True
     return False
 
