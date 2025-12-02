@@ -1597,37 +1597,43 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         # Ensure a usable model_link exists for scoring
         if isinstance(artifact.data, dict):
             logger.info(
-                "RATE: Starting id=%s has_url=%s has_s3=%s has_path=%s",
+                "RATE: Checking links for id=%s keys=%s",
                 artifact_id,
-                bool(artifact.data.get("url")),
-                bool(artifact.data.get("s3_key") and artifact.data.get("s3_bucket")),
-                bool(artifact.data.get("path")),
+                sorted([k for k in artifact.data.keys() if "link" in k.lower() or "url" in k.lower() or k in ("s3_key", "path")])
             )
             # Prefer existing model_link/model_url; else try other fields
-            link_fields = ["model_link", "model_url", "model", "url", "s3_key", "path"]
+            link_fields = ["model_link", "model_url", "model", "url", "download_url", "s3_key", "path"]
             selected: str | None = None
+            selected_field: str | None = None
             for fld in link_fields:
                 v = artifact.data.get(fld)
                 if isinstance(v, str) and v.strip():
                     selected = v.strip()
+                    selected_field = fld
                     break
-            if not selected:
-                logger.error("RATE: No model link found for %s", artifact_id)
-                return jsonify({"message": "Artifact missing required model link for rating"}), 400
             
-            # Normalize into model_link if needed
-            if selected and not isinstance(artifact.data.get("model_link"), str):
+            # Normalize into model_link
+            if selected:
                 # If s3 or path provided, build URI
                 if artifact.data.get("s3_key") and artifact.data.get("s3_bucket"):
                     selected = f"s3://{artifact.data['s3_bucket']}/{artifact.data['s3_key']}"
-                elif artifact.data.get("path") and not selected.startswith("file://"):
+                    logger.info("RATE: Using S3 URI for %s: %s", artifact_id, selected)
+                elif artifact.data.get("path") and not (selected.startswith("file://") or selected.startswith("http://") or selected.startswith("https://")):
                     abs_path = (_UPLOAD_DIR.parent / artifact.data["path"]).resolve()
                     selected = f"file://{abs_path}"
+                    logger.info("RATE: Using file URI for %s: %s", artifact_id, selected)
+                else:
+                    logger.info("RATE: Using existing link for %s from field '%s': %s", artifact_id, selected_field, selected[:100])
+                
+                # Always set model_link for consistency
                 artifact.data["model_link"] = selected
                 # Only persist if not under heavy load (optional optimization)
                 if len(_RATINGS_CACHE) < 10:  # heuristic: not many concurrent ratings
                     save_artifact(artifact)
                 logger.info("RATE: Derived model_link for %s -> %s", artifact_id, selected)
+            else:
+                logger.error("RATE: No model link found for %s (keys=%s)", artifact_id, sorted(artifact.data.keys()))
+                return jsonify({"message": "Artifact missing required model link for rating"}), 400
 
         logger.info(
             "RATE: Computing metrics id=%s name=%s",
