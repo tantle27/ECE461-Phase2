@@ -37,4 +37,31 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
-    return awsgi.response(flask_app, transformed_event, context)
+    
+    # Check if awsgi.response is available (Lambda deployment may have incomplete awsgi package)
+    if hasattr(awsgi, 'response'):
+        return awsgi.response(flask_app, transformed_event, context)
+    
+    # Fallback: use Flask test client when awsgi.response is not available
+    log.warning("awsgi.response not found - using Flask test client fallback")
+    with flask_app.test_client() as client:
+        method = transformed_event.get("httpMethod", "GET")
+        path = transformed_event.get("path", "/")
+        headers = transformed_event.get("headers", {})
+        body = transformed_event.get("body")
+        query_string = transformed_event.get("queryStringParameters")
+        
+        response = client.open(
+            path=path,
+            method=method,
+            headers=headers,
+            data=body,
+            query_string=query_string
+        )
+        
+        return {
+            "statusCode": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.get_data(as_text=True),
+            "isBase64Encoded": False
+        }
