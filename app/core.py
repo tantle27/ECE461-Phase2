@@ -27,22 +27,6 @@ from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage
 from app.scoring import ModelRating, _score_artifact_with_metrics
 
-# Import utility functions
-try:
-    from src.metrics.metrics_calculator import extract_hf_repo_id
-except ImportError:
-    def extract_hf_repo_id(url: str) -> str:
-        """Fallback implementation for HF repo ID extraction"""
-        import re
-        url = url.rstrip("/")
-        dataset_match = re.search(r"huggingface\.co/datasets/([^/?#]+(?:/[^/?#]+)?)", url)
-        if dataset_match:
-            return dataset_match.group(1)
-        model_match = re.search(r"huggingface\.co/(?!spaces/)([^/?#]+(?:/[^/?#]+)?)", url)
-        if model_match:
-            return model_match.group(1)
-        raise ValueError(f"Invalid Hugging Face URL: {url}")
-
 logger = logging.getLogger(__name__)
 try:
     from app.audit_logging import audit_event, security_alert
@@ -471,7 +455,6 @@ def _store_key(artifact_type: str, artifact_id: str) -> str:
 def save_artifact(artifact: Artifact) -> Artifact:
     logger.info("Saving artifact %s/%s", artifact.metadata.type, artifact.metadata.id)
     artifact.data = _ensure_data_aliases(artifact.metadata.type, artifact.data)
-    _infer_related_links(artifact)
     try:
         _ARTIFACT_STORE.save(
             artifact.metadata.type, artifact.metadata.id, artifact_to_dict(artifact),
@@ -901,16 +884,12 @@ def _extract_readme_snippet(data: Mapping[str, Any] | None) -> str:
 
 
 _REGEX_META_CHAR_RE = re.compile(r"(?<!\\)[.^*+?{}\[\]|()]")
+
+# URL extraction patterns for link inference
 _URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\((https?://[^\s)]+)\)")
-_CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org", "huggingface.co/spaces/")
-_DATA_URL_HINTS = (
-    "huggingface.co/datasets",
-    "kaggle.com",
-    "openml.org",
-    "datahub.io",
-    "datasets/",
-)
+_CODE_URL_HINTS = ("github.com", "gitlab.com", "bitbucket.org")
+_DATA_URL_HINTS = ("huggingface.co/datasets", "kaggle.com", "openml.org", "datasets/")
 
 
 def _regex_segments(text: str) -> list[str]:
@@ -950,23 +929,157 @@ def _paginate_artifacts(items: list[Artifact], page: int, page_size: int) -> dic
     }
 
 
-def _parent_ids_from_artifact(artifact: Artifact) -> list[str]:
-    parents: set[str] = set()
-    data = artifact.data if isinstance(artifact.data, Mapping) else {}
+# ---------------------------------------------------------------------------
+# URL extraction and link inference helpers
+# ---------------------------------------------------------------------------
 
-    def _collect(value: Any) -> None:
-        if isinstance(value, str) and value.strip():
-            parents.add(value.strip())
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for entry in value:
-                if isinstance(entry, str) and entry.strip():
-                    parents.add(entry.strip())
 
-    for key in ("base_model", "base_model_id", "parent_model", "derived_from"):
-        _collect(data.get(key))
-    for key in ("parents", "dependencies", "lineage", "ancestors"):
-        _collect(data.get(key))
-    return sorted(parents)
+def _extract_urls(text: str) -> list[str]:
+    """Extract URLs from text including markdown links."""
+    if not text:
+        return []
+    urls: list[str] = []
+    # Extract markdown links first
+    for match in _MARKDOWN_LINK_RE.findall(text):
+        urls.append(match)
+    # Extract plain URLs
+    for match in _URL_RE.findall(text):
+        urls.append(match)
+    # Deduplicate and normalize
+    cleaned: list[str] = []
+    for url in urls:
+        normalized = _normalize_url(url)
+        if normalized and normalized not in cleaned:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _normalize_url(url: str | None) -> str | None:
+    """Normalize URLs by adding scheme and cleaning punctuation."""
+    if not url:
+        return None
+    trimmed = url.strip().strip("()[]{}<>")
+    if not trimmed:
+        return None
+    # Add scheme for common hosts
+    if trimmed.startswith("www."):
+        trimmed = f"https://{trimmed}"
+    if trimmed.startswith("huggingface.co/"):
+        trimmed = f"https://{trimmed}"
+    if trimmed.startswith("github.com/"):
+        trimmed = f"https://{trimmed}"
+    # Strip trailing punctuation
+    while trimmed and trimmed[-1] in ",.;:)":
+        trimmed = trimmed[:-1]
+    return trimmed
+
+
+def _classify_url(url: str, context: str) -> str | None:
+    """Classify a URL as 'code' or 'dataset' based on URL and context."""
+    low = url.lower()
+    ctx = context.lower()
+    
+    # Check for dataset URLs
+    if any(hint in low for hint in _DATA_URL_HINTS):
+        return "dataset"
+    # Check for code URLs
+    if any(hint in low for hint in _CODE_URL_HINTS):
+        return "code"
+    # Context-based fallback
+    if "dataset" in ctx or "data" in ctx:
+        return "dataset"
+    if "code" in ctx or "repository" in ctx:
+        return "code"
+    return None
+
+
+def _infer_related_links(artifact: Artifact) -> None:
+    """Extract and infer code_link and dataset_link from README-like fields."""
+    if not isinstance(artifact.data, dict):
+        return
+    
+    code_link = _coerce_text(artifact.data.get("code_link"))
+    dataset_link = _coerce_text(artifact.data.get("dataset_link"))
+    if code_link and dataset_link:
+        return  # Already have both
+    
+    # Collect text sources
+    texts: list[str] = []
+    for key in ("readme", "README", "description", "summary", "card_data"):
+        content = _coerce_text(artifact.data.get(key))
+        if content:
+            texts.append(content)
+    
+    # Check HuggingFace data
+    hf_blob = artifact.data.get("hf_data")
+    if isinstance(hf_blob, str):
+        texts.append(hf_blob)
+    elif isinstance(hf_blob, Mapping):
+        try:
+            texts.append(json.dumps(hf_blob))
+        except Exception:
+            pass
+    
+    # Extract and classify URLs
+    candidates: list[tuple[str, str]] = []
+    for text in texts:
+        for url in _extract_urls(text):
+            candidates.append((url, text))
+    
+    for url, ctx in candidates:
+        classification = _classify_url(url, ctx)
+        if not code_link and classification == "code":
+            code_link = url
+        if not dataset_link and classification == "dataset":
+            dataset_link = url
+        if code_link and dataset_link:
+            break
+    
+    # Update artifact if we found links
+    updated: list[str] = []
+    if code_link and not artifact.data.get("code_link"):
+        artifact.data["code_link"] = code_link
+        updated.append("code_link")
+    if dataset_link and not artifact.data.get("dataset_link"):
+        artifact.data["dataset_link"] = dataset_link
+        updated.append("dataset_link")
+    
+    if updated:
+        logger.info("Inferred links for %s: %s", artifact.metadata.id, updated)
+
+
+def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelRating:
+    """Add reproducibility, reviewedness, and tree_score if missing."""
+    scores = rating.scores
+    latencies = rating.latencies
+    
+    # Reproducibility
+    if "reproducibility" not in scores:
+        dataset_and_code = scores.get("dataset_and_code_score", 0.0)
+        if dataset_and_code >= 0.8:
+            scores["reproducibility"] = 1.0
+        elif dataset_and_code >= 0.4:
+            scores["reproducibility"] = 0.5
+        else:
+            scores["reproducibility"] = 0.0
+        latencies.setdefault("reproducibility", 0)
+    
+    # Reviewedness
+    if "reviewedness" not in scores:
+        data = artifact.data if isinstance(artifact.data, dict) else {}
+        code_link = _coerce_text(data.get("code_link") or data.get("url") or "")
+        if code_link and "github.com" in code_link.lower():
+            scores["reviewedness"] = 0.5
+        else:
+            scores["reviewedness"] = -1.0
+        latencies.setdefault("reviewedness", 0)
+    
+    # Tree score (simplified - no parent lookup for speed)
+    if "tree_score" not in scores:
+        scores["tree_score"] = 0.0
+        latencies.setdefault("tree_score", 0)
+    
+    return rating
 
 
 # ---------------------------------------------------------------------------
@@ -1308,7 +1421,7 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>", methods=["DELETE"])
 @_record_timing
 def delete_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     k = _store_key(artifact_type, artifact_id)
     if k not in _STORE:
         # try primary
@@ -1427,19 +1540,20 @@ def upload_create_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/model/<string:artifact_id>/rate", methods=["GET"])
 @_record_timing
 def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
-        logger.info("RATE: cache_hit id=%s net=%s", artifact_id, rating.scores.get('net_score'))
         return jsonify(_to_openapi_model_rating(rating)), 200
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
+    
+    # Infer code/dataset links from README if missing
     _infer_related_links(artifact)
+    
     cached_rating = _rating_from_artifact_data(artifact)
     if cached_rating:
         _RATINGS_CACHE[artifact_id] = cached_rating
-        logger.info("RATE: reused_stored_metrics id=%s net=%s", artifact_id, cached_rating.scores.get('net_score'))
         return jsonify(_to_openapi_model_rating(cached_rating)), 200
     try:
         # Ensure a usable model_link exists for scoring.
@@ -1512,23 +1626,16 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                 signal.alarm(0)
             except Exception:
                 pass
+        
+        # Ensure phase 2 metrics (reproducibility, reviewedness, tree_score)
         rating = _ensure_phase_two_metrics(artifact, rating)
-
+        
         logger.warning(
             "RATE: Scoring done id=%s net=%.3f keys=%s",
             artifact_id,
             float((rating.scores or {}).get("net_score", 0.0) or 0.0),
             sorted(list((rating.scores or {}).keys())),
         )
-        logger.info(
-            "SCORE_FIX: final rating id=%s net=%s reproducibility=%s reviewedness=%s tree=%s",
-            artifact_id,
-            rating.scores.get("net_score"),
-            rating.scores.get("reproducibility"),
-            rating.scores.get("reviewedness"),
-            rating.scores.get("tree_score"),
-        )
-
         _RATINGS_CACHE[artifact_id] = rating
 
         if isinstance(artifact.data, dict):
@@ -1584,288 +1691,10 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
         "name": artifact.metadata.name,
         "model_link": artifact.data.get("model_link"),
     }
-    parent_scores = artifact.data.get("parent_scores")
-    if isinstance(parent_scores, dict):
-        summary["parent_scores"] = parent_scores
     generated_at = last_rated_at or datetime.utcnow()
     return ModelRating(
         id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
     )
-
-
-def _tree_score_for_artifact(artifact: Artifact) -> tuple[float, dict[str, float]]:
-    parent_ids = _parent_ids_from_artifact(artifact)
-    if not parent_ids:
-        return 0.0, {}
-    parent_scores: dict[str, float] = {}
-    for parent_id in parent_ids:
-        parent = fetch_artifact(artifact.metadata.type, parent_id)
-        if not parent:
-            continue
-        score: float | None = None
-        if parent_id in _RATINGS_CACHE:
-            score = _RATINGS_CACHE[parent_id].scores.get("net_score")
-        if score is None:
-            cached = _rating_from_artifact_data(parent)
-            if cached:
-                score = cached.scores.get("net_score")
-        if score is None and isinstance(parent.data, dict):
-            trust = parent.data.get("trust_score")
-            if isinstance(trust, (int, float)):
-                score = float(trust)
-        if score is not None:
-            parent_scores[parent_id] = float(score)
-    if not parent_scores:
-        return 0.0, {}
-    avg = sum(parent_scores.values()) / len(parent_scores)
-    return avg, parent_scores
-
-
-def _extract_urls(text: str) -> list[str]:
-    if not text:
-        return []
-    urls: list[str] = []
-    # Extract markdown links
-    for match in _MARKDOWN_LINK_RE.findall(text):
-        urls.append(match)
-    # Extract plain URLs
-    for match in _URL_RE.findall(text):
-        urls.append(match)
-    # Look for common ML repository patterns
-    repo_patterns = [
-        r'github\.com/[\w\-./]+',
-        r'huggingface\.co/[\w\-./]+',
-        r'kaggle\.com/[\w\-./]+',
-        r'openml\.org/[\w\-./]+'
-    ]
-    for pattern in repo_patterns:
-        matches = re.findall(f'https?://{pattern}', text, re.IGNORECASE)
-        urls.extend(matches)
-    
-    cleaned: list[str] = []
-    for url in urls:
-        normalized = _normalize_url(url)
-        if normalized and normalized not in cleaned:
-            cleaned.append(normalized)
-    return cleaned
-
-
-def _normalize_url(url: str | None) -> str | None:
-    if not url:
-        return None
-    trimmed = url.strip().strip("()[]{}<>")
-    if not trimmed:
-        return None
-    # Add scheme for common hosts when missing
-    if trimmed.startswith("www."):
-        trimmed = f"https://{trimmed}"
-    if trimmed.startswith("huggingface.co/"):
-        trimmed = f"https://{trimmed}"
-    if trimmed.startswith("github.com/"):
-        trimmed = f"https://{trimmed}"
-    if trimmed.startswith("kaggle.com/") or trimmed.startswith("openml.org/"):
-        trimmed = f"https://{trimmed}"
-    # Strip likely trailing punctuation from inline text
-    while trimmed and trimmed[-1] in ",.;:)":
-        trimmed = trimmed[:-1]
-    return trimmed
-
-
-def _classify_url(url: str, context: str) -> str | None:
-    low = url.lower()
-    ctx = context.lower()
-    
-    # Check for dataset URLs first (more specific)
-    if any(hint in low for hint in _DATA_URL_HINTS):
-        return "dataset"
-    if any(word in ctx for word in ["dataset", "data", "corpus", "benchmark", "training data"]):
-        if "huggingface.co" in low and "/datasets/" in low:
-            return "dataset"
-        if any(site in low for site in ["kaggle.com", "openml.org", "archive.ics.uci.edu"]):
-            return "dataset"
-    
-    # Check for code repository URLs
-    if any(hint in low for hint in _CODE_URL_HINTS):
-        if "huggingface.co" in low and "/spaces/" in low:
-            return "code"
-        if any(site in low for site in ["github.com", "gitlab.com", "bitbucket.org"]):
-            return "code"
-        # Treat HF model pages (non-datasets) as code artifacts linkable for scoring
-        if "huggingface.co" in low and "/datasets/" not in low:
-            return "code"
-    
-    # Context-based classification
-    if any(word in ctx for word in ["code", "repository", "implementation", "source"]):
-        if "dataset" not in ctx:
-            return "code"
-    
-    return None
-
-
-def _infer_related_links(artifact: Artifact) -> None:
-    if not isinstance(artifact.data, dict):
-        return
-    code_link = _coerce_text(artifact.data.get("code_link"))
-    dataset_link = _coerce_text(artifact.data.get("dataset_link"))
-    if code_link and dataset_link:
-        return
-
-    # Collect text from multiple sources
-    texts: list[str] = []
-    for key in ("readme", "README", "description", "summary", "card_data"):
-        content = _coerce_text(artifact.data.get(key))
-        if content:
-            texts.append(content)
-    
-    # Check HuggingFace data
-    hf_blob = artifact.data.get("hf_data")
-    if isinstance(hf_blob, str):
-        texts.append(hf_blob)
-    elif isinstance(hf_blob, Mapping):
-        try:
-            # Extract readme from HF card data
-            readme_content = hf_blob.get("readme") or hf_blob.get("description") or hf_blob.get("card_data", {}).get("text")
-            if readme_content:
-                texts.append(str(readme_content))
-            texts.append(json.dumps(hf_blob))
-        except Exception:
-            pass
-    
-    # Try to fetch README from primary URL if it's a HuggingFace URL
-    primary_url = _coerce_text(artifact.data.get("url"))
-    if primary_url and "huggingface.co" in primary_url.lower():
-        try:
-            from src.api.hugging_face_client import HuggingFaceClient
-            hf_client = HuggingFaceClient()
-            repo_id = extract_hf_repo_id(primary_url)
-            if "/datasets/" in primary_url:
-                hf_data = hf_client.get_dataset_metadata(repo_id)
-            else:
-                hf_data = hf_client.get_model_metadata(repo_id)
-            if hf_data and isinstance(hf_data, dict):
-                readme_text = hf_data.get("readme") or hf_data.get("description")
-                if readme_text:
-                    texts.append(str(readme_text))
-        except Exception as e:
-            logger.debug("Could not fetch HF README for %s: %s", primary_url, e)
-
-    candidates: list[tuple[str, str]] = []
-    for text in texts:
-        if text:
-            for url in _extract_urls(text):
-                candidates.append((url, text))
-
-    # Classify and assign URLs
-    for url, ctx in candidates:
-        classification = _classify_url(url, ctx)
-        if not code_link and classification == "code":
-            code_link = url
-            logger.debug("Found code link: %s", url)
-        if not dataset_link and classification == "dataset":
-            dataset_link = url
-            logger.debug("Found dataset link: %s", url)
-        if code_link and dataset_link:
-            break
-
-    # Check dependencies for dataset links
-    deps = artifact.data.get("dependencies")
-    if not dataset_link and isinstance(deps, list):
-        for dep in deps:
-            dep_str = _coerce_text(dep)
-            if dep_str and any(hint in dep_str.lower() for hint in _DATA_URL_HINTS):
-                dataset_link = dep_str
-                break
-
-    # If this artifact is a dataset/code but no related links found,
-    # use the primary URL as the appropriate link
-    if not code_link and artifact.metadata.type == "code" and primary_url:
-        code_link = primary_url
-    if not dataset_link and artifact.metadata.type == "dataset" and primary_url:
-        dataset_link = primary_url
-
-    updated: list[str] = []
-    if code_link and not artifact.data.get("code_link"):
-        artifact.data["code_link"] = code_link
-        updated.append("code_link")
-    if dataset_link and not artifact.data.get("dataset_link"):
-        artifact.data["dataset_link"] = dataset_link
-        updated.append("dataset_link")
-
-    if updated:
-        logger.info(
-            "SCORE_FIX: inferred links id=%s fields=%s values=%s",
-            artifact.metadata.id,
-            updated,
-            {key: artifact.data.get(key) for key in updated},
-        )
-
-
-def _infer_reproducibility_score(artifact: Artifact, dataset_and_code: float | None) -> float:
-    if dataset_and_code is not None:
-        if dataset_and_code >= 0.8:
-            return 1.0
-        if dataset_and_code >= 0.4:
-            return 0.5
-        return 0.0
-    data = artifact.data if isinstance(artifact.data, dict) else {}
-    code_link = _coerce_text(data.get("code_link") or data.get("CodeLink") or "")
-    model_link = _coerce_text(data.get("model_link") or data.get("modelUrl") or data.get("url") or "")
-    has_code = bool(code_link)
-    has_model = bool(model_link)
-    if has_code and has_model:
-        return 1.0
-    if has_model or has_code:
-        return 0.5
-    return 0.0
-
-
-def _infer_reviewedness_score(artifact: Artifact) -> float:
-    data = artifact.data if isinstance(artifact.data, dict) else {}
-    code_link = _coerce_text(data.get("code_link") or data.get("CodeLink") or data.get("url") or "")
-    if not code_link or "github.com" not in code_link.lower():
-        return -1.0
-    if "pull" in code_link.lower():
-        return 0.8
-    return 0.5
-
-
-def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelRating:
-    scores = rating.scores
-    latencies = rating.latencies
-    dataset_and_code = scores.get("dataset_and_code_score")
-
-    added: list[str] = []
-
-    if "reproducibility" not in scores:
-        scores["reproducibility"] = _infer_reproducibility_score(artifact, dataset_and_code)
-        latencies.setdefault("reproducibility", 0)
-        added.append("reproducibility")
-    if "reproducibility_latency" not in latencies:
-        latencies["reproducibility_latency"] = 0
-
-    if "reviewedness" not in scores:
-        scores["reviewedness"] = _infer_reviewedness_score(artifact)
-        latencies.setdefault("reviewedness", 0)
-        added.append("reviewedness")
-    if "reviewedness_latency" not in latencies:
-        latencies["reviewedness_latency"] = 0
-
-    tree_score, parent_scores = _tree_score_for_artifact(artifact)
-    scores["tree_score"] = tree_score
-    latencies.setdefault("tree_score", 0)
-    if parent_scores:
-        rating.summary["parent_scores"] = parent_scores
-        if isinstance(artifact.data, dict):
-            artifact.data["parent_scores"] = parent_scores
-
-    if added:
-        logger.info(
-            "SCORE_FIX: synthesized metrics id=%s fields=%s",
-            artifact.metadata.id,
-            added,
-        )
-
-    return rating
 
 
 def _parse_timestamp(raw: Any) -> datetime | None:
@@ -1945,44 +1774,20 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
         response[alias] = response.get(internal, _score(internal))
         response[f"{alias}Latency"] = response.get(f"{internal}_latency", _latency(internal))
 
-    required_scores = ["bus_factor", "code_quality", "dataset_quality", "license", "performance_claims", "ramp_up_time", "dataset_and_code_score", "reproducibility", "reviewedness", "tree_score"]
-    missing_scores = [key for key in required_scores if key not in scores]
-    if missing_scores:
-        logger.warning("RATE: missing raw metrics id=%s fields=%s", rating.id, missing_scores)
-
-    zeroed = [key for key in required_scores if scores.get(key) in (None, 0, 0.0)]
-    if zeroed:
-        logger.info("RATE: zero scores id=%s fields=%s", rating.id, zeroed)
-
     return response
 
 
 # -------------------- Download (kept) & size cost --------------------
 
+
 @blueprint.route("/artifact/model/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
 def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     part = request.args.get("part", "all")
     art = fetch_artifact("model", artifact_id)
     if art is None:
         return jsonify({"message": "Artifact does not exist."}), 404
-
-    def _remote_download_response() -> tuple[Response, int] | Response:
-        if isinstance(art.data, dict):
-            remote_url = _coerce_text(art.data.get("download_url") or art.data.get("url"))
-            if remote_url:
-                payload = {
-                    "download_url": remote_url,
-                    "downloadUrl": remote_url,
-                    "DownloadURL": remote_url,
-                    "url": remote_url,
-                    "URL": remote_url,
-                }
-                _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
-                return jsonify(payload), 200
-        return jsonify({"message": "Model has no stored package path"}), 400
-
     if isinstance(art.data, dict) and _S3.enabled:
         s3_key = art.data.get("s3_key")
         s3_bucket = art.data.get("s3_bucket")
@@ -2011,10 +1816,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                                 zout.writestr(info, zin.read(info))
                     buf.seek(0)
                 resp = send_file(
-                    buf,
-                    as_attachment=True,
-                    download_name=f"{artifact_id}-{part}.zip",
-                    mimetype="application/zip",
+                    buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",
                 )
                 resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
                 _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -2024,23 +1826,16 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     rel = art.data.get("path")
     if not isinstance(rel, str) or not rel:
-        return _remote_download_response()
+        return jsonify({"message": "Model has no stored package path"}), 400
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
-        resp = _remote_download_response()
-        if isinstance(resp, tuple) and resp[1] == 200:
-            return resp
         return jsonify({"message": "Package not found on disk"}), 404
 
     size_bytes = zpath.stat().st_size
 
     if part == "all":
         resp = send_file(
-            str(zpath),
-            as_attachment=True,
-            download_name=zpath.name,
-            etag=True,
-            mimetype="application/zip",
+            str(zpath), as_attachment=True, download_name=zpath.name, etag=True, mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
         _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
@@ -2055,20 +1850,16 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     zout.writestr(info, zin.read(info))
         buf.seek(0)
 
-    resp = send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"{artifact_id}-{part}.zip",
-        mimetype="application/zip",
-    )
+    resp = send_file(buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",)
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
     _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
 
+
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
 @_record_timing
 def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     dependency = request.args.get("dependency", "false").lower() == "true"
 
     art = fetch_artifact(artifact_type, artifact_id)
@@ -2115,10 +1906,10 @@ def artifact_cost_route(artifact_type: str, artifact_id: str) -> tuple[Response,
         logger.exception("Failed to calculate artifact cost for %s", artifact_id)
         return jsonify({"message": "The artifact cost calculator encountered an error."}), 500
 
+
 def _calculate_artifact_size_mb(artifact) -> float:
     size_bytes = 0
     if isinstance(artifact.data, dict):
-        # Try to get actual size from uploaded files
         if artifact.data.get("size"):
             size_bytes = int(artifact.data.get("size", 0))
         elif artifact.data.get("s3_key") and _S3.enabled:
@@ -2130,68 +1921,27 @@ def _calculate_artifact_size_mb(artifact) -> float:
                     size_bytes = int(meta.get("size", 0))
             except Exception:
                 logger.warning("Failed to get S3 object size for %s", artifact.metadata.id)
-        elif artifact.data.get("path"):
+        if size_bytes == 0 and artifact.data.get("path"):
             rel = artifact.data.get("path")
             if isinstance(rel, str) and rel:
                 zpath = (_UPLOAD_DIR.parent / rel).resolve()
                 if zpath.exists():
                     size_bytes = zpath.stat().st_size
-        
-        # For URL-based artifacts without actual files, provide size estimates
-        if size_bytes == 0:
-            artifact_type = artifact.metadata.type
-            if artifact_type == "model":
-                # Default model size estimate (100-500MB range)
-                size_bytes = 250 * 1024 * 1024  # 250MB
-            elif artifact_type == "dataset":
-                # Default dataset size estimate (50-200MB range)  
-                size_bytes = 100 * 1024 * 1024  # 100MB
-            elif artifact_type == "code":
-                # Default code size estimate (1-10MB range)
-                size_bytes = 5 * 1024 * 1024   # 5MB
-            else:
-                size_bytes = 50 * 1024 * 1024  # 50MB default
-    
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
+
 # -------------------- Lineage --------------------
+
 
 @blueprint.route("/artifact/model/<string:artifact_id>/lineage", methods=["GET"])
 @_record_timing
 def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     art = fetch_artifact("model", artifact_id)
     if not art:
         return jsonify({"message": "Artifact does not exist."}), 404
-    
-    # Get parent IDs from artifact metadata
-    parents: list[str] = _parent_ids_from_artifact(art)
-    
-    nodes = [
-        {
-            "artifact_id": artifact_id,
-            "name": art.metadata.name,
-            "source": "metadata",
-        }
-    ]
-    for p in parents:
-        nodes.append(
-            {
-                "artifact_id": p,
-                "name": p,
-                "source": "metadata",
-            }
-        )
-    edges = [
-        {
-            "from_node_artifact_id": p,
-            "to_node_artifact_id": artifact_id,
-            "relationship": "derived_from",
-        }
-        for p in parents
-    ]
-    return jsonify({"nodes": nodes, "edges": edges}), 200
-
+    s3_key = art.data.get("s3_key") if isinstance(art.data, dict) else None
+    s3_ver = art.data.get("s3_version_id") if isinstance(art.data, dict) else None
     zbody: bytes | None = None
     zpath = None
     if s3_key and _S3.enabled:
@@ -2202,80 +1952,47 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
             zbody = None
     if zbody is None:
         rel = art.data.get("path")
-        if rel:
-            zpath = (_UPLOAD_DIR.parent / rel).resolve()
-            if not zpath.exists():
-                return jsonify({"message": "Artifact package not found"}), 404
-        else:
-            zpath = None
-
-    if zbody is not None or zpath is not None:
-        try:
-            zf_ctx = (
-                zipfile.ZipFile(io.BytesIO(zbody), "r")
-                if zbody is not None
-                else zipfile.ZipFile(str(zpath), "r")
+        if not rel:
+            return (
+                jsonify(
+                    {
+                        "message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."
+                    }
+                ),
+                400,
             )
-            with zf_ctx as zf:
-                cand = [n for n in zf.namelist() if n.endswith("config.json")]
-                for name in cand:
-                    try:
-                        cfg = json.loads(zf.read(name))
-                        for key in ("base_model", "architectures", "parents", "parent_model"):
-                            value = cfg.get(key)
-                            if isinstance(value, str) and value.strip():
-                                parents.add(value.strip())
-                            elif isinstance(value, list):
-                                for entry in value:
-                                    if isinstance(entry, str) and entry.strip():
-                                        parents.add(entry.strip())
-                    except Exception:
-                        continue
-        except Exception:
-            logger.exception("LINEAGE: Failed parsing config for %s", artifact_id)
+        zpath = (_UPLOAD_DIR.parent / rel).resolve()
+        if not zpath.exists():
+            return jsonify({"message": "Artifact package not found"}), 404
 
-    parents = sorted(parents)
-    id_to_artifact: dict[str, Artifact] = {artifact_id: art}
-    for stored in _STORE.values():
-        id_to_artifact.setdefault(stored.metadata.id, stored)
-
-    nodes: list[dict[str, Any]] = [
-        {
-            "artifact_id": artifact_id,
-            "name": art.metadata.name,
-            "type": art.metadata.type,
-            "source": "artifact",
-        }
-    ]
+    parents: list[str] = []
+    try:
+        zf_ctx = zipfile.ZipFile(io.BytesIO(zbody), "r") if zbody is not None else zipfile.ZipFile(str(zpath), "r")
+        with zf_ctx as zf:
+            cand = [n for n in zf.namelist() if n.endswith("config.json")]
+            for name in cand:
+                try:
+                    cfg = json.loads(zf.read(name))
+                    for key in ("base_model", "architectures", "parents", "parent_model"):
+                        v = cfg.get(key)
+                        if isinstance(v, str):
+                            parents.append(v)
+                        elif isinstance(v, list):
+                            parents += [x for x in v if isinstance(x, str)]
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    parents = sorted(set(parents))
+    nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "config_json"}]
     for p in parents:
-        resolved = id_to_artifact.get(p)
-        if resolved:
-            nodes.append(
-                {
-                    "artifact_id": resolved.metadata.id,
-                    "name": resolved.metadata.name,
-                    "type": resolved.metadata.type,
-                    "source": "artifact",
-                }
-            )
-        else:
-            nodes.append(
-                {
-                    "artifact_id": p,
-                    "name": p,
-                    "type": "unknown",
-                    "source": "metadata",
-                }
-            )
+        nodes.append({"artifact_id": p, "name": p, "source": "config_json"})
     edges = [
-        {
-            "from_node_artifact_id": p,
-            "to_node_artifact_id": artifact_id,
-            "relationship": "derived_from",
-        }
+        {"from_node_artifact_id": p, "to_node_artifact_id": artifact_id, "relationship": "derived_from",}
         for p in parents
     ]
     return jsonify({"nodes": nodes, "edges": edges}), 200
+
 
 # -------------------- License check (per-spec path) --------------------
 
@@ -2283,7 +2000,7 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/model/<string:artifact_id>/license-check", methods=["POST"])
 @_record_timing
 def model_license_check_route(artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     body = _json_body()
     gh_url = str(body.get("github_url", "")).strip()
     if not gh_url:
@@ -2515,7 +2232,7 @@ def by_regex_route() -> tuple[Response, int] | Response:
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/audit", methods=["GET"])
 @_record_timing
 def audit_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
-    # _require_auth()  # Comment out for autograder compatibility
+    _require_auth()
     _ = fetch_artifact(artifact_type, artifact_id)
     if not _ and _store_key(artifact_type, artifact_id) not in _STORE:
         return jsonify({"message": "Artifact does not exist."}), 404
