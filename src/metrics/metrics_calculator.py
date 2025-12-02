@@ -51,17 +51,26 @@ def extract_hf_repo_id(url: str) -> str:
 
 def is_code_repository(url: str) -> bool:
     """
-    Determines if a URL is a code repository (GitHub, GitLab, Bitbucket)
-    or a Hugging Face Space (treated as code). Plain Hugging Face model/dataset
-    pages are NOT code repositories.
+    Determines if a URL is a cloneable code repository:
+    - GitHub, GitLab, Bitbucket
+    - Hugging Face repos (models and spaces). Datasets are excluded here.
+
+    Note: Hugging Face model pages are backed by git repos and can be cloned
+    via HTTPS (with or without .git suffix). We treat them as code repos so
+    we can compute metrics (README, size, basic signals) instead of zeros.
     """
     if not url:
         return False
     parsed = urlparse(url.lower())
-    if "github.com" in parsed.netloc or "gitlab.com" in parsed.netloc or "bitbucket.org" in parsed.netloc:
+    host = parsed.netloc
+    path = parsed.path or ""
+    if any(h in host for h in ("github.com", "gitlab.com", "bitbucket.org")):
         return True
-    if "huggingface.co" in parsed.netloc and "/spaces/" in parsed.path:
-        return True
+    if "huggingface.co" in host:
+        # Exclude datasets from code repo classification
+        if "/datasets/" in path:
+            return False
+        return True  # models and spaces
     return False
 
 

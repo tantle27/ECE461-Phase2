@@ -7,17 +7,13 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, cast
+logger = logging.getLogger(__name__)
 try:
     from app.secrets_loader import load_registry_secrets
-
     load_registry_secrets()
 except Exception:
-    import logging
-
-    logging.exception("secrets_loader failed - continuing without Secrets Manager")
+    logger.exception("secrets_loader failed - continuing without Secrets Manager")
 from src.metrics.metrics_calculator import MetricsCalculator
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -142,7 +138,6 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     if not model_link:
         raise ValueError("Artifact data must include 'model_link'")
 
-    # Type narrowing and ensure strings (not None) for MetricsCalculator
     model_link_str = str(model_link).strip() if model_link else ""
     code_link: Optional[str] = str(code_link_raw).strip() if code_link_raw else None
     dataset_link: Optional[str] = str(dataset_link_raw).strip() if dataset_link_raw else None
