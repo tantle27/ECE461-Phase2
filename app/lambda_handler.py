@@ -38,4 +38,14 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
-    return awsgi.response(flask_app, transformed_event, context)
+    # awsgi.response expects (app, event, context) and returns response dict
+    try:
+        return awsgi.response(flask_app, transformed_event, context)
+    except Exception as e:
+        log.error("awsgi.response failed: %s", e, exc_info=True)
+        # Fallback response
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": '{"message": "Internal server error during request processing"}'
+        }
