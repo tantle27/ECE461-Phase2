@@ -1094,7 +1094,7 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
         if code_link and "github.com" in code_link.lower():
             scores["reviewedness"] = 0.5
         else:
-            scores["reviewedness"] = -1.0
+            scores["reviewedness"] = 0.0
         latencies.setdefault("reviewedness", 0)
     
     # Tree score (simplified - no parent lookup for speed)

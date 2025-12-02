@@ -149,7 +149,7 @@ def _generate_fast_metrics(code_link: Optional[str], dataset_link: Optional[str]
         "ramp_up_time_latency": 50,
         "reproducibility": 0.7 if (has_code and has_dataset) else 0.4,
         "reproducibility_latency": 50,
-        "reviewedness": 0.5 if has_code else -1.0,
+        "reviewedness": 0.5 if has_code else 0.0,
         "reviewedness_latency": 50,
         "tree_score": 0.0,
         "tree_score_latency": 50,
