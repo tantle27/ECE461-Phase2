@@ -1,7 +1,16 @@
 import logging
 from typing import Any
 
-import awsgi  # type: ignore[import-untyped]
+try:
+    import awsgi  # type: ignore[import-untyped]
+    USING_AWSGI = True
+    AWSGI_HAS_RESPONSE = hasattr(awsgi, 'response')
+    AWSGI_ATTRS = [x for x in dir(awsgi) if not x.startswith('_')]
+except ImportError:
+    USING_AWSGI = False
+    AWSGI_HAS_RESPONSE = False
+    AWSGI_ATTRS = []
+    logging.warning("awsgi not available, using direct WSGI invocation")
 
 from app.app import create_app
 
@@ -38,12 +47,28 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
+    
+    if not USING_AWSGI:
+        log.error("awsgi module not available - cannot process request")
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": '{"message": "WSGI adapter not configured"}'
+        }
+    
+    if not AWSGI_HAS_RESPONSE:
+        log.error(f"awsgi loaded but missing 'response' attribute. Available: {AWSGI_ATTRS}")
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": '{"message": "WSGI adapter incomplete - awsgi.response not found"}'
+        }
+    
     # awsgi.response expects (app, event, context) and returns response dict
     try:
         return awsgi.response(flask_app, transformed_event, context)
     except Exception as e:
         log.error("awsgi.response failed: %s", e, exc_info=True)
-        # Fallback response
         return {
             "statusCode": 500,
             "headers": {"Content-Type": "application/json"},
