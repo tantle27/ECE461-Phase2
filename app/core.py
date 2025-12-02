@@ -1020,10 +1020,17 @@ def _infer_related_links(artifact: Artifact) -> None:
         except Exception:
             pass
     
-    # Also check model_link itself - it might be a HF model page with embedded info
+    # Also check model_link itself - and infer code/dataset directly for HF URLs
     model_url = _coerce_text(artifact.data.get("model_link") or artifact.data.get("url"))
     if model_url:
         texts.append(model_url)
+        lower = model_url.lower()
+        if "huggingface.co" in lower:
+            if "/datasets/" in lower and not dataset_link:
+                dataset_link = model_url
+            elif "/spaces/" not in lower and not code_link:
+                # Treat regular HF model pages as code sources for metrics
+                code_link = model_url
     
     # Extract and classify URLs
     candidates: list[tuple[str, str]] = []

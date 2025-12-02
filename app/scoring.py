@@ -139,13 +139,17 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         raise ValueError("Artifact data must include 'model_link'")
 
     model_link_str = str(model_link).strip() if model_link else ""
-    code_link: Optional[str] = str(code_link_raw).strip() if code_link_raw else None
-    dataset_link: Optional[str] = str(dataset_link_raw).strip() if dataset_link_raw else None
-    
-    # Filter out empty strings
-    if code_link and not code_link:
+    code_link: Optional[str] = (
+        str(code_link_raw).strip() if isinstance(code_link_raw, str) else None
+    )
+    dataset_link: Optional[str] = (
+        str(dataset_link_raw).strip() if isinstance(dataset_link_raw, str) else None
+    )
+
+    # Coerce blank strings to None
+    if code_link == "":
         code_link = None
-    if dataset_link and not dataset_link:
+    if dataset_link == "":
         dataset_link = None
 
     logger.info(
