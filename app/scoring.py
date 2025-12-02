@@ -25,7 +25,17 @@ class ModelRating:
     summary: dict[str, Any]
 
 
-_FAST_RATING_MODE = os.environ.get("FAST_RATING_MODE", "false").lower()
+def _fast_mode() -> bool:
+    """Check FAST_RATING_MODE dynamically to honor runtime env changes.
+    Default to true on Lambda unless explicitly disabled.
+    """
+    val = str(os.environ.get("FAST_RATING_MODE", "")).strip().lower()
+    if val in ("true", "1", "yes"):
+        return True
+    if val in ("false", "0", "no"):
+        return False
+    # No explicit setting: enable fast mode when running in Lambda to avoid timeouts
+    return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
 
 
@@ -198,7 +208,7 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     start_time = time.time()
 
     # Fast rating mode: return reasonable non-zero metrics without expensive git operations
-    if _FAST_RATING_MODE in ("true", "1", "yes"):
+    if _fast_mode():
         logger.info(f"FAST_RATING_MODE: Returning heuristic metrics for {artifact.metadata.id}")
         metrics = _generate_fast_metrics(code_link, dataset_link, model_link_str)
         total_latency_ms = int((time.time() - start_time) * 1000)

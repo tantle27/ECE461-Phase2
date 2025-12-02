@@ -1,0 +1,8 @@
+/*    /index.html   200
+/health   https://YOUR_API_GATEWAY_URL/health   200
+/authenticate   https://YOUR_API_GATEWAY_URL/authenticate   200
+/reset   https://YOUR_API_GATEWAY_URL/reset   200
+/tracks   https://YOUR_API_GATEWAY_URL/tracks   200
+/artifact/*   https://YOUR_API_GATEWAY_URL/artifact/:splat   200
+/artifacts/*   https://YOUR_API_GATEWAY_URL/artifacts/:splat   200
+/upload   https://YOUR_API_GATEWAY_URL/upload   200

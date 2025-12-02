@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 import awsgi  # type: ignore[import-untyped]
 from app.app import create_app
+import os
 
 flask_app = create_app()
 log = logging.getLogger(__name__)
@@ -35,6 +36,11 @@ def _transform_lambda_function_url_event(event: Dict[str, Any]) -> Dict[str, Any
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """AWS Lambda handler that adapts API Gateway/Function URL events to Flask WSGI."""
     log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
+    # Default to FAST_RATING_MODE=true on Lambda unless explicitly disabled
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        frm = os.environ.get("FAST_RATING_MODE")
+        if not frm or frm.strip().lower() not in ("false", "0", "no"):
+            os.environ["FAST_RATING_MODE"] = "true"
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
     

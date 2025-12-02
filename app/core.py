@@ -1064,11 +1064,13 @@ def _infer_related_links(artifact: Artifact) -> None:
     
     if updated:
         logger.info("Inferred links for %s: %s", artifact.metadata.id, updated)
-        # Persist immediately so scoring sees the updated links
-        try:
-            save_artifact(artifact)
-        except Exception:
-            logger.exception("Failed to save inferred links")
+        # Optionally defer persistence during high-concurrency rating to reduce contention
+        defer = str(os.environ.get("DEFER_PERSIST_DURING_RATING", "true")).lower() in ("true", "1", "yes")
+        if not defer:
+            try:
+                save_artifact(artifact)
+            except Exception:
+                logger.exception("Failed to save inferred links")
 
 
 def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelRating:
