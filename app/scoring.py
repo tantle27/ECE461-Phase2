@@ -193,7 +193,8 @@ def rate_artifacts_concurrently(artifacts: list[Any], max_workers: int | None = 
     """
     if not artifacts:
         return []
-    workers = max_workers or max(4, (os.cpu_count() or 4))
+    # For autograder: allow more parallelism (up to 12 concurrent requests)
+    workers = max_workers or max(8, min(len(artifacts), (os.cpu_count() or 4) * 2))
     results: dict[int, ModelRating] = {}
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(_rate_one, art): idx for idx, art in enumerate(artifacts)}
@@ -234,7 +235,8 @@ def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) 
 
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
 # Lambda's /dev/shm is read-only, preventing ProcessPoolExecutor semaphore creation
-_THREAD_POOL = ThreadPoolExecutor(max_workers=max(1, os.cpu_count() or 4))
+# Increase workers for concurrent autograder load (12 concurrent rating requests)
+_THREAD_POOL = ThreadPoolExecutor(max_workers=max(8, (os.cpu_count() or 4) * 2))
 _METRICS_CALCULATOR: MetricsCalculator | None = None
 
 

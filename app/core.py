@@ -1574,30 +1574,34 @@ def upload_create_route() -> tuple[Response, int] | Response:
 @_record_timing
 def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
+    
+    # Check memory cache first
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
         return jsonify(_to_openapi_model_rating(rating)), 200
+    
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
     
-    # Infer code/dataset links from README if missing
-    _infer_related_links(artifact)
-    
+    # Check if we have fresh cached metrics in artifact data
     cached_rating = _rating_from_artifact_data(artifact)
     if cached_rating:
         _RATINGS_CACHE[artifact_id] = cached_rating
         return jsonify(_to_openapi_model_rating(cached_rating)), 200
+    
+    # Only infer links if we need to compute new rating (not cached)
+    _infer_related_links(artifact)
+    
     try:
-        # Ensure a usable model_link exists for scoring.
+        # Ensure a usable model_link exists for scoring
         if isinstance(artifact.data, dict):
-            logger.warning(
-                "RATE: Pre-check id=%s has_url=%s has_s3=%s has_path=%s keys=%s",
+            logger.info(
+                "RATE: Starting id=%s has_url=%s has_s3=%s has_path=%s",
                 artifact_id,
                 bool(artifact.data.get("url")),
                 bool(artifact.data.get("s3_key") and artifact.data.get("s3_bucket")),
                 bool(artifact.data.get("path")),
-                sorted(list(artifact.data.keys())),
             )
             # Prefer existing model_link/model_url; else try other fields
             link_fields = ["model_link", "model_url", "model", "url", "s3_key", "path"]
@@ -1610,6 +1614,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             if not selected:
                 logger.error("RATE: No model link found for %s", artifact_id)
                 return jsonify({"message": "Artifact missing required model link for rating"}), 400
+            
             # Normalize into model_link if needed
             if selected and not isinstance(artifact.data.get("model_link"), str):
                 # If s3 or path provided, build URI
@@ -1619,55 +1624,28 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     abs_path = (_UPLOAD_DIR.parent / artifact.data["path"]).resolve()
                     selected = f"file://{abs_path}"
                 artifact.data["model_link"] = selected
-                save_artifact(artifact)
-                logger.warning("RATE: Derived model_link for %s -> %s", artifact_id, selected)
+                # Only persist if not under heavy load (optional optimization)
+                if len(_RATINGS_CACHE) < 10:  # heuristic: not many concurrent ratings
+                    save_artifact(artifact)
+                logger.info("RATE: Derived model_link for %s -> %s", artifact_id, selected)
 
-        logger.warning(
-            "RATE: Scoring start id=%s name=%s model_link=%s",
+        logger.info(
+            "RATE: Computing metrics id=%s name=%s",
             artifact_id,
             artifact.metadata.name,
-            (artifact.data or {}).get("model_link") if isinstance(artifact.data, dict) else None,
         )
-        # Add timeout protection around scoring
-        try:
-            import signal
-
-            def _timeout_handler(signum, frame):
-                raise TimeoutError("Rating computation exceeded time limit")
-
-            signal.signal(signal.SIGALRM, _timeout_handler)
-            signal.alarm(50)
-        except Exception:
-            # If signals aren't available (e.g., non-main thread), continue without alarm
-            pass
-
-        try:
-            rating = _score_artifact_with_metrics(artifact)
-        except TimeoutError:
-            try:
-                import signal
-
-                signal.alarm(0)
-            except Exception:
-                pass
-            logger.error("RATE: Timeout scoring %s", artifact_id)
-            return jsonify({"message": "Rating computation exceeded time limit"}), 500
-        finally:
-            try:
-                import signal
-
-                signal.alarm(0)
-            except Exception:
-                pass
+        
+        # Score the artifact (MetricsCalculator has its own internal timeouts)
+        # Remove signal-based timeout as it's not thread-safe under concurrent requests
+        rating = _score_artifact_with_metrics(artifact)
         
         # Ensure phase 2 metrics (reproducibility, reviewedness, tree_score)
         rating = _ensure_phase_two_metrics(artifact, rating)
         
-        logger.warning(
-            "RATE: Scoring done id=%s net=%.3f keys=%s",
+        logger.info(
+            "RATE: Completed id=%s net=%.3f",
             artifact_id,
             float((rating.scores or {}).get("net_score", 0.0) or 0.0),
-            sorted(list((rating.scores or {}).keys())),
         )
         _RATINGS_CACHE[artifact_id] = rating
 
@@ -1682,7 +1660,7 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
         logger.warning("RATE: ValueError for %s: %s", artifact_id, exc)
         return jsonify({"message": str(exc)}), 400
     except Exception:
-        logger.exception("Failed to score artifact %s", artifact_id)
+        logger.exception("RATE: Failed to score artifact %s", artifact_id)
         return (
             jsonify(
                 {"message": "The artifact rating system encountered an error while computing at least one metric."}
