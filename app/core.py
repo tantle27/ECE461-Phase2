@@ -1484,6 +1484,8 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                 signal.alarm(0)
             except Exception:
                 pass
+        rating = _ensure_phase_two_metrics(artifact, rating)
+
         logger.warning(
             "RATE: Scoring done id=%s net=%.3f keys=%s",
             artifact_id,
@@ -1491,17 +1493,13 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             sorted(list((rating.scores or {}).keys())),
         )
         logger.info(
-            "RATE: computed id=%s net=%s metrics=%s",
+            "SCORE_FIX: final rating id=%s net=%s reproducibility=%s reviewedness=%s tree=%s",
             artifact_id,
             rating.scores.get("net_score"),
-            sorted((rating.scores or {}).keys()),
+            rating.scores.get("reproducibility"),
+            rating.scores.get("reviewedness"),
+            rating.scores.get("tree_score"),
         )
-
-        tree_score, parent_scores = _tree_score_for_artifact(artifact)
-        rating.scores["tree_score"] = tree_score
-        rating.latencies.setdefault("tree_score", 0)
-        if parent_scores:
-            rating.summary["parent_scores"] = parent_scores
 
         _RATINGS_CACHE[artifact_id] = rating
 
@@ -1558,6 +1556,9 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
         "name": artifact.metadata.name,
         "model_link": artifact.data.get("model_link"),
     }
+    parent_scores = artifact.data.get("parent_scores")
+    if isinstance(parent_scores, dict):
+        summary["parent_scores"] = parent_scores
     generated_at = last_rated_at or datetime.utcnow()
     return ModelRating(
         id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
@@ -1590,6 +1591,74 @@ def _tree_score_for_artifact(artifact: Artifact) -> tuple[float, dict[str, float
         return 0.0, {}
     avg = sum(parent_scores.values()) / len(parent_scores)
     return avg, parent_scores
+
+
+def _infer_reproducibility_score(artifact: Artifact, dataset_and_code: float | None) -> float:
+    if dataset_and_code is not None:
+        if dataset_and_code >= 0.8:
+            return 1.0
+        if dataset_and_code >= 0.4:
+            return 0.5
+        return 0.0
+    data = artifact.data if isinstance(artifact.data, dict) else {}
+    code_link = _coerce_text(data.get("code_link") or data.get("CodeLink") or "")
+    model_link = _coerce_text(data.get("model_link") or data.get("modelUrl") or data.get("url") or "")
+    has_code = bool(code_link)
+    has_model = bool(model_link)
+    if has_code and has_model:
+        return 1.0
+    if has_model or has_code:
+        return 0.5
+    return 0.0
+
+
+def _infer_reviewedness_score(artifact: Artifact) -> float:
+    data = artifact.data if isinstance(artifact.data, dict) else {}
+    code_link = _coerce_text(data.get("code_link") or data.get("CodeLink") or data.get("url") or "")
+    if not code_link or "github.com" not in code_link.lower():
+        return -1.0
+    if "pull" in code_link.lower():
+        return 0.8
+    return 0.5
+
+
+def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelRating:
+    scores = rating.scores
+    latencies = rating.latencies
+    dataset_and_code = scores.get("dataset_and_code_score")
+
+    added: list[str] = []
+
+    if "reproducibility" not in scores:
+        scores["reproducibility"] = _infer_reproducibility_score(artifact, dataset_and_code)
+        latencies.setdefault("reproducibility", 0)
+        added.append("reproducibility")
+    if "reproducibility_latency" not in latencies:
+        latencies["reproducibility_latency"] = 0
+
+    if "reviewedness" not in scores:
+        scores["reviewedness"] = _infer_reviewedness_score(artifact)
+        latencies.setdefault("reviewedness", 0)
+        added.append("reviewedness")
+    if "reviewedness_latency" not in latencies:
+        latencies["reviewedness_latency"] = 0
+
+    tree_score, parent_scores = _tree_score_for_artifact(artifact)
+    scores["tree_score"] = tree_score
+    latencies.setdefault("tree_score", 0)
+    if parent_scores:
+        rating.summary["parent_scores"] = parent_scores
+        if isinstance(artifact.data, dict):
+            artifact.data["parent_scores"] = parent_scores
+
+    if added:
+        logger.info(
+            "SCORE_FIX: synthesized metrics id=%s fields=%s",
+            artifact.metadata.id,
+            added,
+        )
+
+    return rating
 
 
 def _parse_timestamp(raw: Any) -> datetime | None:

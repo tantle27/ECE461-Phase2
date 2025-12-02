@@ -201,14 +201,44 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     if _should_use_lightweight_metrics():
         metrics = _generate_lightweight_metrics(artifact, model_link_str)
         total_latency_ms = int((time.time() - start_time) * 1000) or 5
+        logger.info("SCORE_FIX: lightweight metrics for %s", artifact.metadata.id)
     else:
-        logger.info("Using full metrics calculation for artifact %s", artifact.metadata.id)
         async def _collect() -> dict[str, Any]:
-            return await _METRICS_CALCULATOR.analyze_entry(code_link, dataset_link, model_link_str, set(),)
+            return await _METRICS_CALCULATOR.analyze_entry(code_link, dataset_link, model_link_str, set())
 
         metrics = _run_async(_collect())
         total_latency_ms = int((time.time() - start_time) * 1000)
+        metrics = _ensure_nonzero_metrics(artifact, model_link_str, metrics)
+    logger.info(
+        "SCORE_FIX: metrics summary id=%s keys=%s critical=%s",
+        artifact.metadata.id,
+        sorted(metrics.keys()),
+        {k: metrics.get(k) for k in ("license", "bus_factor", "code_quality", "dataset_quality")},
+    )
     return _build_model_rating(artifact, model_link_str, metrics, total_latency_ms)
+
+
+def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) -> dict[str, Any]:
+    critical = [
+        "bus_factor",
+        "code_quality",
+        "license",
+        "ramp_up_time",
+        "dataset_quality",
+        "performance_claims",
+        "dataset_and_code_score",
+    ]
+    has_signal = any(metrics.get(key) not in (None, 0, 0.0, -1) for key in critical)
+    if has_signal:
+        return metrics
+    logger.warning(
+        "SCORE_FIX: metrics missing for %s (code=%s) – falling back to heuristic",
+        artifact.metadata.id,
+        (artifact.data or {}).get("code_link"),
+    )
+    fallback = _generate_lightweight_metrics(artifact, model_link)
+    fallback.update({k: v for k, v in metrics.items() if k not in fallback})
+    return fallback
 
 
 # MetricsCalculator instance (use ThreadPoolExecutor for Lambda compatibility)
