@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, cast
 
 import yaml
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, Response, jsonify, request, send_file, redirect
 from werkzeug.utils import secure_filename
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
@@ -1826,9 +1826,18 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     rel = art.data.get("path")
     if not isinstance(rel, str) or not rel:
+        # No S3 or local path; check if the artifact has a direct URL
+        url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
+        if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+            # Redirect to the external URL
+            return redirect(url, code=302)
         return jsonify({"message": "Model has no stored package path"}), 400
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
+        # Local file missing; check if external URL available as fallback
+        url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
+        if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+            return redirect(url, code=302)
         return jsonify({"message": "Package not found on disk"}), 404
 
     size_bytes = zpath.stat().st_size
@@ -1927,6 +1936,12 @@ def _calculate_artifact_size_mb(artifact) -> float:
                 zpath = (_UPLOAD_DIR.parent / rel).resolve()
                 if zpath.exists():
                     size_bytes = zpath.stat().st_size
+        # If still no size, and artifact has an external URL, estimate a nominal size
+        if size_bytes == 0:
+            url = artifact.data.get("url") or artifact.data.get("download_url") or artifact.data.get("model_link")
+            if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+                # Heuristic: return a nominal cost for external URL-only artifacts (e.g., 10MB)
+                return 10.0
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
 
 
@@ -1953,6 +1968,12 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     if zbody is None:
         rel = art.data.get("path")
         if not rel:
+            # No S3, no local path; check if we have a URL (won't have lineage info)
+            url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
+            if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+                # URL-only artifact: no lineage data available
+                nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "url_only"}]
+                return jsonify({"nodes": nodes, "edges": []}), 200
             return (
                 jsonify(
                     {
@@ -1963,6 +1984,11 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
             )
         zpath = (_UPLOAD_DIR.parent / rel).resolve()
         if not zpath.exists():
+            # Check if external URL exists for fallback
+            url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
+            if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+                nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "url_only"}]
+                return jsonify({"nodes": nodes, "edges": []}), 200
             return jsonify({"message": "Artifact package not found"}), 404
 
     parents: list[str] = []
