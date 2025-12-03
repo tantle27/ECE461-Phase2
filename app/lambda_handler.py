@@ -37,4 +37,4 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     log.info("Lambda invocation: %s", event.get("rawPath") or event.get("path", "/"))
     # Transform Lambda Function URL events to API Gateway format
     transformed_event = _transform_lambda_function_url_event(event)
-    return awsgi.response(flask_app, transformed_event, context)
+    return awsgi.response(flask_app, transformed_event)
