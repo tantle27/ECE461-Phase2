@@ -96,6 +96,8 @@ _DEFAULT_USER = {
     "role": "admin",
 }
 _AUTH_SECRET = os.environ.get("AUTH_SECRET", _DEFAULT_USER["password"])
+print("core.py: Using AUTH_SECRET of length", len(_AUTH_SECRET))
+print(_AUTH_SECRET)
 _REGEX_MAX_PATTERN_LENGTH = 500
 _REGEX_MAX_TIME_SECONDS = 2.0
 _REGEX_MAX_ARTIFACTS = 1000
@@ -1705,6 +1707,49 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
             # Infer related links for better scoring
             _infer_related_links(art)
 
+            if isinstance(art.data, dict):
+                try:
+                    # Prefer existing fields; fall back to s3/path
+                    link_fields = [
+                        "model_link",
+                        "model_url",
+                        "model",
+                        "url",
+                        "download_url",
+                        "downloadUrl",
+                        "DownloadURL",
+                        "s3_key",
+                        "path",
+                    ]
+                    selected: str | None = None
+                    selected_field: str | None = None
+                    for fld in link_fields:
+                        v = art.data.get(fld)
+                        if isinstance(v, str) and v.strip():
+                            selected = v.strip()
+                            selected_field = fld
+                            break
+                    if selected:
+                        # Build S3 or file URI when applicable
+                        if art.data.get("s3_key") and art.data.get("s3_bucket"):
+                            selected = f"s3://{art.data['s3_bucket']}/{art.data['s3_key']}"
+                        elif art.data.get("path") and not (
+                            selected.startswith("file://")
+                            or selected.startswith("http://")
+                            or selected.startswith("https://")
+                        ):
+                            abs_path = (_UPLOAD_DIR.parent / art.data["path"]).resolve()
+                            selected = f"file://{abs_path}"
+                        art.data["model_link"] = selected
+                    else:
+                        logger.warning(
+                            "BATCH RATE: No model link found for %s (keys=%s)",
+                            art.metadata.id,
+                            sorted(list(art.data.keys())),
+                        )
+                except Exception:
+                    logger.exception("BATCH RATE: Failed to normalize model_link for %s", art.metadata.id)
+
             # If cached and fresh, short-circuit
             cached_rating = _rating_from_artifact_data(art)
             if cached_rating is not None:
@@ -1721,6 +1766,15 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
 
         # Persist each rating back to artifact and cache
         openapi_ratings: list[dict[str, Any]] = []
+        
+        # Handle length mismatch if some ratings failed
+        if len(ratings) != len(artifacts):
+            logger.warning(
+                "BATCH RATE: Rating count mismatch: %d artifacts, %d ratings. Proceeding with successful ratings only.",
+                len(artifacts),
+                len(ratings),
+            )
+        
         for art, rating in zip(artifacts, ratings):
             # Ensure phase 2 fields
             rating = _ensure_phase_two_metrics(art, rating)
@@ -1733,6 +1787,14 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
                 save_artifact(art)
             _audit_add("model", art.metadata.id, "RATE", art.metadata.name)
             openapi_ratings.append(_to_openapi_model_rating(rating))
+
+        # If no ratings succeeded, return specific error
+        if not openapi_ratings:
+            logger.error("BATCH RATE: All %d artifacts failed to rate", len(artifacts))
+            return (
+                jsonify({"message": "All artifacts failed to rate. Check artifact data and try again."}),
+                500,
+            )
 
         # Build ordered response aligned to input ids; include None for missing if desired
         return jsonify({"ratings": openapi_ratings, "missing": missing_indices}), 200

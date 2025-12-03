@@ -199,7 +199,39 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 
 def _rate_one(artifact) -> ModelRating:
     """Small wrapper to rate a single artifact, suitable for thread pool execution."""
-    return _score_artifact_with_metrics(artifact)
+    try:
+        return _score_artifact_with_metrics(artifact)
+    except Exception as exc:
+        # On failure, return a minimal fallback rating to preserve order
+        logger.exception("Rating failed for artifact %s: %s", artifact.metadata.id, exc)
+        # Create minimal fallback rating with zeros
+        fallback_scores = {
+            "bus_factor": 0.0,
+            "code_quality": 0.0,
+            "dataset_quality": 0.0,
+            "dataset_and_code_score": 0.0,
+            "license": 0.0,
+            "performance_claims": 0.0,
+            "ramp_up_time": 0.0,
+            "reproducibility": 0.0,
+            "reviewedness": 0.0,
+            "tree_score": 0.0,
+            "net_score": 0.0,
+        }
+        fallback_latencies = {k + "_latency": 0 for k in fallback_scores}
+        fallback_latencies["net_score"] = 0
+        return ModelRating(
+            id=artifact.metadata.id,
+            generated_at=datetime.utcnow(),
+            scores=fallback_scores,
+            latencies=fallback_latencies,
+            summary={
+                "category": artifact.metadata.type.upper(),
+                "name": artifact.metadata.name,
+                "model_link": artifact.data.get("model_link") if isinstance(artifact.data, dict) else None,
+                "error": str(exc)[:200],  # Include truncated error for debugging
+            },
+        )
 
 
 def rate_artifacts_concurrently(artifacts: list[Any], max_workers: int | None = None) -> list[ModelRating]:
