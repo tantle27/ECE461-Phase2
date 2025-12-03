@@ -127,20 +127,37 @@ class GitClient:
     def analyze_commits(self, repo_path: str) -> CommitStats:
         try:
             from git import Repo  # type: ignore
-        except Exception:
+        except Exception as e:
+            logging.error("GitPython not available: %s", e)
             return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
 
         try:
+            if not os.path.exists(repo_path):
+                logging.warning("analyze_commits: repo_path does not exist: %s", repo_path)
+                return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
+            
             repo = Repo(repo_path)
+            
+            # Try to fetch more commits if this is a shallow clone
             try:
-                if repo.git.rev_parse("--is-shallow-repository") == "true":
+                is_shallow = repo.git.rev_parse("--is-shallow-repository") == "true"
+                if is_shallow:
+                    logging.info("analyze_commits: shallow repo detected, attempting to fetch more commits")
                     since = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
                     repo.git.fetch("--depth=100", f"--shallow-since={since}")
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("analyze_commits: fetch failed (non-critical): %s", e)
 
+            # First try: commits from last 365 days
             since_date = datetime.now() - timedelta(days=365)
             commits = list(repo.iter_commits(since=since_date, max_count=100))
+            
+            # If no commits found, try without date filter (shallow repos may not have date info)
+            if len(commits) == 0:
+                logging.info("analyze_commits: no commits with date filter, trying without filter")
+                commits = list(repo.iter_commits(max_count=100))
+            
+            logging.info("analyze_commits: found %d commits in %s", len(commits), repo_path)
 
             contribs: dict[str, int] = {}
             for c in commits:
@@ -150,13 +167,15 @@ class GitClient:
 
             total = len(commits)
             if total == 0:
+                logging.warning("analyze_commits: no commits found after all attempts")
                 return CommitStats(0, {}, 0.0)
 
             concentration = sum((n / total) ** 2 for n in contribs.values())
             bus = max(0.0, min(1.0, 1.0 - concentration))
+            logging.info("analyze_commits: %d commits, %d contributors, bus_factor=%.3f", total, len(contribs), bus)
             return CommitStats(total, dict(sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)), bus)
         except Exception as e:
-            logging.error("commit analysis failed: %s", e)
+            logging.error("commit analysis failed for %s: %s", repo_path, e)
             return CommitStats(0, {}, 0.0)
 
     def analyze_code_quality(self, repo_path: str) -> CodeQualityStats:

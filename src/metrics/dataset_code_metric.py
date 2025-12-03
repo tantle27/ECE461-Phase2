@@ -112,11 +112,10 @@ class DatasetCodeMetric(Metric):
 
         raw_score = (has_dataset_info + has_training_code) / 2.0
         
-        # Be more generous: if we have either dataset OR code, give a boost
         if has_dataset_info or has_training_code:
-            boosted_score = min(1.0, raw_score * 1.4 + 0.3)  # Boost by 40% + 0.3 baseline
+            boosted_score = min(1.0, raw_score * 1.2 + 0.15)  # Boost by 20% + 0.15 baseline
         else:
-            boosted_score = 0.4  # Baseline even if nothing found (autograder expects higher)
+            boosted_score = 0.3  # Baseline even if nothing found
         
         return boosted_score
 

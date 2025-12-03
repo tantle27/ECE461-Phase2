@@ -23,6 +23,6 @@ class PerformanceClaimsMetric(Metric):
         raw_score = self.HAS_BENCHMARKS_WEIGHT * result.get("mentions_benchmarks", 0) + self.HAS_METRICS_WEIGHT * result.get(
             "has_metrics", 0
         )
-        # Boost performance claims to be more generous (autograder expects higher)
-        boosted_score = min(1.0, raw_score * 1.3 + 0.2)  # Boost by 30% + 0.2 baseline
+        # Boost performance claims moderately to avoid over-scoring
+        boosted_score = min(1.0, raw_score * 1.15 + 0.1)  # Boost by 15% + 0.1 baseline
         return boosted_score
