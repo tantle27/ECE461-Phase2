@@ -125,8 +125,6 @@ def _build_model_rating(artifact, model_link: str, metrics: dict[str, Any], tota
     )
 
 
-# Heuristic fast metrics removed.
-
 
 def _score_artifact_with_metrics(artifact) -> ModelRating:
     if not isinstance(artifact.data, dict):
@@ -135,10 +133,19 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
     payload = artifact.data
     code_link_raw = payload.get("code_link") or payload.get("code") or None
     dataset_link_raw = payload.get("dataset_link") or payload.get("dataset") or None
-    model_link = payload.get("model_link") or payload.get("model_url") or payload.get("model")
+    # Accept multiple aliases for the model link to be robust under concurrent load
+    model_link = (
+        payload.get("model_link")
+        or payload.get("model_url")
+        or payload.get("model")
+        or payload.get("url")
+        or payload.get("download_url")
+        or payload.get("downloadUrl")
+        or payload.get("DownloadURL")
+    )
 
     if not model_link:
-        raise ValueError("Artifact data must include 'model_link'")
+        raise ValueError("Artifact data must include a model link (e.g., model_link or url)")
 
     model_link_str = str(model_link).strip() if model_link else ""
     code_link: Optional[str] = (
