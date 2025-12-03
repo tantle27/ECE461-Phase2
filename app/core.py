@@ -1191,15 +1191,8 @@ except Exception:
 @blueprint.route("/health", methods=["GET"])
 def health() -> tuple[Response, int]:
     # Autograder expects a JSON body with ok:true
-    gh_token = os.environ.get("GH_TOKEN")
-    fast_mode = os.environ.get("FAST_RATING_MODE", "false")
-    diagnostics = {
-        "gh_token_present": bool(gh_token),
-        "gh_token_length": len(gh_token) if gh_token else 0,
-        "gh_token_prefix": gh_token[:4] if gh_token and len(gh_token) >= 4 else None,
-        "fast_rating_mode": fast_mode,
-    }
-    return jsonify{"ok": True, 200}
+
+    return jsonify({"ok": True}), 200
 
 
 @blueprint.route("/health/components", methods=["GET"])
