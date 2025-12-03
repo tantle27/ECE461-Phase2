@@ -1874,7 +1874,7 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
     if (
         _RATING_CACHE_TTL_SECONDS > 0
         and last_rated_at
-        and datetime.utcnow() - last_rated_at > timedelta(seconds=_RATING_CACHE_TTL_SECONDS)
+        and datetime.now(timezone.utc) - last_rated_at > timedelta(seconds=_RATING_CACHE_TTL_SECONDS)
     ):
         return None
     latencies_raw = artifact.data.get("metrics_latencies")
@@ -1895,7 +1895,7 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
         "name": artifact.metadata.name,
         "model_link": artifact.data.get("model_link"),
     }
-    generated_at = last_rated_at or datetime.utcnow()
+    generated_at = last_rated_at or datetime.now(timezone.utc)
     return ModelRating(
         id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
     )
