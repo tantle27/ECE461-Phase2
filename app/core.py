@@ -2050,22 +2050,28 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
 # -------------------- Download (kept) & size cost --------------------
 
 
-@blueprint.route("/artifact/model/<string:artifact_id>/download", methods=["GET"])
+
+@blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
-def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
+def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
+    """Generic download route for any artifact type.
+
+    Serves stored bundles from S3 or local disk. Does not redirect to external URLs.
+    """
     _require_auth()
     part = request.args.get("part", "all")
-    art = fetch_artifact("model", artifact_id)
+    art = fetch_artifact(artifact_type, artifact_id)
     if art is None:
         return jsonify({"message": "Artifact does not exist."}), 404
+
+    # Try S3 first
     if isinstance(art.data, dict) and _S3.enabled:
         s3_key = art.data.get("s3_key")
         s3_bucket = art.data.get("s3_bucket")
         if isinstance(s3_key, str) and s3_bucket:
-            key = s3_key
             ver = art.data.get("s3_version_id")
             try:
-                body, meta = _S3.get_object(key, ver)
+                body, meta = _S3.get_object(s3_key, ver)
                 size_bytes = int(meta.get("size", len(body)))
                 if part == "all":
                     resp = send_file(
@@ -2075,7 +2081,7 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                         mimetype=meta.get("content_type") or "application/zip",
                     )
                     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-                    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+                    _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
                     return resp
                 with zipfile.ZipFile(io.BytesIO(body), "r") as zin:
                     buf = io.BytesIO()
@@ -2089,28 +2095,26 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",
                 )
                 resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-                _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+                _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
                 return resp
             except Exception:
                 logger.exception("Failed to serve from S3; falling back to local if available")
 
-    rel = art.data.get("path")
+    # Local disk
+    rel = art.data.get("path") if isinstance(art.data, dict) else None
     if not isinstance(rel, str) or not rel:
-        # No S3 or local path; this system should not redirect to external URLs per spec.
-        return jsonify({"message": "Model has no stored package path"}), 400
+        return jsonify({"message": "Artifact has no stored package path"}), 400
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
-        # Local file missing; do not redirect externally. Per spec, serve only stored packages.
         return jsonify({"message": "Package not found on disk"}), 404
 
     size_bytes = zpath.stat().st_size
-
     if part == "all":
         resp = send_file(
             str(zpath), as_attachment=True, download_name=zpath.name, etag=True, mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-        _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+        _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
         return resp
 
     with zipfile.ZipFile(str(zpath), "r") as zin:
@@ -2122,11 +2126,10 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     zout.writestr(info, zin.read(info))
         buf.seek(0)
 
-    resp = send_file(buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",)
+    resp = send_file(buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip")
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
-    _audit_add("model", artifact_id, "DOWNLOAD", art.metadata.name)
+    _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
-
 
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
 @_record_timing
