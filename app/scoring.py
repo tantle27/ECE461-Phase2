@@ -143,6 +143,17 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         or payload.get("downloadUrl")
         or payload.get("DownloadURL")
     )
+    
+    # If still no model_link, construct from s3_key or path
+    if not model_link:
+        s3_key = payload.get("s3_key")
+        s3_bucket = payload.get("s3_bucket")
+        if s3_key and s3_bucket:
+            model_link = f"s3://{s3_bucket}/{s3_key}"
+        else:
+            path = payload.get("path")
+            if path:
+                model_link = f"file://{path}"
 
     if not model_link:
         raise ValueError("Artifact data must include a model link (e.g., model_link or url)")
