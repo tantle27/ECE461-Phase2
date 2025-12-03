@@ -22,6 +22,7 @@ from typing import Any, BinaryIO, cast
 import yaml
 from flask import Blueprint, Response, jsonify, request, send_file, redirect
 from werkzeug.utils import secure_filename
+import requests
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage
@@ -471,6 +472,14 @@ def _normalize_artifact_request(
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     metadata_block = _ensure_metadata_aliases(artifact.metadata)
     data_block = _ensure_data_aliases(artifact.metadata.type, artifact.data)
+    # Per spec, always provide an internal download_url for retrieving stored bundles
+    try:
+        internal_dl = f"/artifact/{artifact.metadata.type}/{artifact.metadata.id}/download"
+        data_block["download_url"] = internal_dl
+        data_block["downloadUrl"] = internal_dl
+        data_block["DownloadURL"] = internal_dl
+    except Exception:
+        pass
     artifact.data = data_block  # keep in-memory copy normalized for future lookups
     return {
         "id": artifact.metadata.id,
@@ -1340,7 +1349,64 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     if _duplicate_url_exists(artifact_type, url_value):
         return jsonify({"message": "Artifact exists already."}), 409
 
+    # Best-effort ingestion: fetch from provided URL and store a zip bundle
     artifact = Artifact(metadata=metadata, data=data)
+    try:
+        src_url = data.get("url")
+        if isinstance(src_url, str) and src_url.startswith(("http://", "https://")):
+            # Download source content (lightweight scrape) and package into a zip
+            resp = requests.get(src_url, timeout=20)
+            resp.raise_for_status()
+            html_bytes = resp.content
+            meta_json = json.dumps({
+                "source_url": src_url,
+                "ingested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "type": artifact_type,
+                "name": metadata.name,
+            }).encode("utf-8")
+
+            # Build zip bundle in memory
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                zout.writestr("source.html", html_bytes)
+                zout.writestr("metadata.json", meta_json)
+            buf.seek(0)
+
+            bundle_name = f"{secure_filename(metadata.name or 'artifact')}.zip"
+            if _S3.enabled:
+                key_rel = f"uploads/{artifact_type}/{metadata.id}/{bundle_name}"
+                try:
+                    meta = _S3.put_file(buf, key_rel, "application/zip")
+                    artifact.data["s3_bucket"] = meta["bucket"]
+                    artifact.data["s3_key"] = meta["key"]
+                    artifact.data["s3_version_id"] = meta.get("version_id")
+                    artifact.data["content_type"] = meta.get("content_type") or "application/zip"
+                    artifact.data["size"] = int(meta.get("size", 0))
+                except Exception:
+                    logger.exception("S3 put failed during ingest; falling back to local storage")
+                    dest = _UPLOAD_DIR / bundle_name
+                    try:
+                        with open(dest, "wb") as f:
+                            f.write(buf.getvalue())
+                        artifact.data["path"] = str(dest.relative_to(_UPLOAD_DIR.parent))
+                        artifact.data["content_type"] = "application/zip"
+                        artifact.data["size"] = dest.stat().st_size
+                    except Exception:
+                        logger.exception("Failed to persist bundle locally during ingest")
+            else:
+                dest = _UPLOAD_DIR / bundle_name
+                try:
+                    with open(dest, "wb") as f:
+                        f.write(buf.getvalue())
+                    artifact.data["path"] = str(dest.relative_to(_UPLOAD_DIR.parent))
+                    artifact.data["content_type"] = "application/zip"
+                    artifact.data["size"] = dest.stat().st_size
+                except Exception:
+                    logger.exception("Failed to persist bundle locally during ingest")
+        else:
+            logger.warning("CREATE: Provided url is not http(s); skipping ingestion fetch")
+    except Exception:
+        logger.exception("CREATE: Ingestion fetch failed; continuing with metadata-only record")
     save_artifact(artifact)
     _audit_add(artifact_type, artifact.metadata.id, "CREATE", artifact.metadata.name)
     return jsonify(artifact_to_dict(artifact)), 201
@@ -2030,18 +2096,11 @@ def download_model_route(artifact_id: str) -> tuple[Response, int] | Response:
 
     rel = art.data.get("path")
     if not isinstance(rel, str) or not rel:
-        # No S3 or local path; check if the artifact has a direct URL
-        url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
-        if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
-            # Redirect to the external URL
-            return redirect(url, code=302)
+        # No S3 or local path; this system should not redirect to external URLs per spec.
         return jsonify({"message": "Model has no stored package path"}), 400
     zpath = (_UPLOAD_DIR.parent / rel).resolve()
     if not zpath.exists():
-        # Local file missing; check if external URL available as fallback
-        url = art.data.get("url") or art.data.get("download_url") or art.data.get("model_link")
-        if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
-            return redirect(url, code=302)
+        # Local file missing; do not redirect externally. Per spec, serve only stored packages.
         return jsonify({"message": "Package not found on disk"}), 404
 
     size_bytes = zpath.stat().st_size
@@ -2142,8 +2201,23 @@ def _calculate_artifact_size_mb(artifact) -> float:
                     size_bytes = zpath.stat().st_size
         # If still no size, and artifact has an external URL, estimate a nominal size
         if size_bytes == 0:
-            url = artifact.data.get("url") or artifact.data.get("download_url") or artifact.data.get("model_link")
-            if isinstance(url, str) and url.strip() and (url.startswith("http://") or url.startswith("https://")):
+            url = None
+            for key in (
+                "url",
+                "download_url",
+                "downloadUrl",
+                "DownloadURL",
+                "model_link",
+                "modelLink",
+                "model_url",
+                "modelUrl",
+                "link",
+            ):
+                val = artifact.data.get(key)
+                if isinstance(val, str) and val.strip() and (val.startswith("http://") or val.startswith("https://")):
+                    url = val.strip()
+                    break
+            if url:
                 # Heuristic: return a nominal cost for external URL-only artifacts (e.g., 10MB)
                 return 10.0
     return size_bytes / (1024 * 1024) if size_bytes > 0 else 0.0
