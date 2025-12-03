@@ -96,8 +96,8 @@ _DEFAULT_USER = {
     "role": "admin",
 }
 _AUTH_SECRET = os.environ.get("AUTH_SECRET", _DEFAULT_USER["password"])
-print("core.py: Using AUTH_SECRET of length", len(_AUTH_SECRET))
-print(_AUTH_SECRET)
+# print("core.py: Using AUTH_SECRET of length", len(_AUTH_SECRET))
+# print(_AUTH_SECRET)
 _REGEX_MAX_PATTERN_LENGTH = 500
 _REGEX_MAX_TIME_SECONDS = 2.0
 _REGEX_MAX_ARTIFACTS = 1000
@@ -301,9 +301,40 @@ _METADATA_FIELD_NAMES = {
     "artifactType",
 }
 _TYPE_URL_ALIASES = {
-    "model": ["model_link", "modelLink", "model_url", "modelUrl"],
-    "dataset": ["dataset_link", "datasetLink", "dataset_url", "datasetUrl"],
-    "code": ["code_link", "codeLink", "repo_url", "repoUrl"],
+    # Ensure broad alias coverage so persisted/retrieved artifacts always expose data.url
+    "model": [
+        "model_link",
+        "modelLink",
+        "model_url",
+        "modelUrl",
+        # Common generic download aliases that may appear for models
+        "download_url",
+        "downloadUrl",
+        "DownloadURL",
+        "link",
+    ],
+    "dataset": [
+        "dataset_link",
+        "datasetLink",
+        "dataset_url",
+        "datasetUrl",
+        # Generic aliases
+        "download_url",
+        "downloadUrl",
+        "DownloadURL",
+        "link",
+    ],
+    "code": [
+        "code_link",
+        "codeLink",
+        "repo_url",
+        "repoUrl",
+        # Generic aliases
+        "download_url",
+        "downloadUrl",
+        "DownloadURL",
+        "link",
+    ],
 }
 
 
@@ -1080,6 +1111,31 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
     scores = rating.scores
     latencies = rating.latencies
     
+    # Clamp any known scalar scores into [0.0, 1.0]
+    for key in (
+        "bus_factor",
+        "code_quality",
+        "dataset_quality",
+        "dataset_and_code_score",
+        "license",
+        "performance_claims",
+        "ramp_up_time",
+        "reproducibility",
+        "reviewedness",
+        "tree_score",
+        "net_score",
+    ):
+        if key in scores and isinstance(scores[key], (int, float)):
+            try:
+                val = float(scores[key])
+                if val < 0.0:
+                    val = 0.0
+                elif val > 1.0:
+                    val = 1.0
+                scores[key] = val
+            except Exception:
+                pass
+
     # Reproducibility
     if "reproducibility" not in scores:
         dataset_and_code = scores.get("dataset_and_code_score", 0.0)
@@ -1092,14 +1148,22 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
         latencies.setdefault("reproducibility", 0)
     
     # Reviewedness
+    data = artifact.data if isinstance(artifact.data, dict) else {}
+    code_link = _coerce_text(data.get("code_link") or data.get("url") or "")
     if "reviewedness" not in scores:
-        data = artifact.data if isinstance(artifact.data, dict) else {}
-        code_link = _coerce_text(data.get("code_link") or data.get("url") or "")
         if code_link and "github.com" in code_link.lower():
             scores["reviewedness"] = 0.5
         else:
             scores["reviewedness"] = 0.0
         latencies.setdefault("reviewedness", 0)
+    else:
+        # Normalize any negative reviewedness to a reasonable baseline
+        try:
+            rv = float(scores.get("reviewedness", 0.0))
+            if rv < 0.0:
+                scores["reviewedness"] = 0.5 if (code_link and "github.com" in code_link.lower()) else 0.0
+        except Exception:
+            pass
     
     # Tree score (simplified - no parent lookup for speed)
     if "tree_score" not in scores:
@@ -1135,7 +1199,7 @@ def health() -> tuple[Response, int]:
         "gh_token_prefix": gh_token[:4] if gh_token and len(gh_token) >= 4 else None,
         "fast_rating_mode": fast_mode,
     }
-    return jsonify({"ok": True, "diagnostics": diagnostics}), 200
+    return jsonify{"ok": True, 200}
 
 
 @blueprint.route("/health/components", methods=["GET"])
