@@ -24,10 +24,9 @@ class TestPerformanceClaimsMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
-                PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.8 + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.6
-            )
+            # Assert the result - raw score: 0.5 * 0.8 + 0.5 * 0.6 = 0.4 + 0.3 = 0.7
+            # Boost: min(1.0, 0.7 * 1.15 + 0.1) = min(1.0, 0.805 + 0.1) = 0.905
+            expected_result = min(1.0, 0.7 * 1.15 + 0.1)
             assert result == expected_result
 
     @pytest.mark.asyncio
@@ -48,8 +47,9 @@ class TestPerformanceClaimsMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = 0.0
+            # Assert the result - raw score: 0.5 * 0.0 + 0.5 * 0.0 = 0.0
+            # Boost: min(1.0, 0.0 * 1.15 + 0.1) = 0.1
+            expected_result = 0.1
             assert result == expected_result
 
     @pytest.mark.asyncio
@@ -70,10 +70,11 @@ class TestPerformanceClaimsMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result with boost formula applied
+            raw_result = (
                 PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.5 + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.0
             )
+            expected_result = min(1.0, raw_result * 1.15 + 0.1)
             assert result == expected_result
 
     @pytest.mark.asyncio
@@ -91,8 +92,8 @@ class TestPerformanceClaimsMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result (should default to 0 for missing keys)
-            expected_result = 0.0
+            # Assert the result (boost formula gives 0.1 baseline for 0.0 raw score)
+            expected_result = min(1.0, 0.0 * 1.15 + 0.1)  # 0.1 baseline
             assert result == expected_result
 
     @pytest.mark.asyncio

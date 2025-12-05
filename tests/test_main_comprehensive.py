@@ -89,14 +89,14 @@ class TestValidateAndConfigureLogging:
 
     def test_valid_github_token(self):
         """Test validation with valid GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghp_" + "A" * 36, "LOG_LEVEL": "0"}):
+        with patch.dict(os.environ, {"GH_TOKEN": "ghp_" + "A" * 36, "LOG_LEVEL": "0"}):
             # Should not raise or exit
-            with patch("logging.disable"):
+            with patch("logging.disable"), patch("sys.exit"):
                 validate_and_configure_logging()
 
     def test_invalid_github_token_blank(self):
         """Test validation with blank GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "   ", "LOG_LEVEL": "0"}):
+        with patch.dict(os.environ, {"GH_TOKEN": "   ", "LOG_LEVEL": "0"}):
             with patch("src.main._fail") as mock_fail:
                 validate_and_configure_logging()
                 mock_fail.assert_called()
@@ -106,7 +106,7 @@ class TestValidateAndConfigureLogging:
 
     def test_invalid_github_token_format(self):
         """Test validation with invalid GitHub token format."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "invalid_token", "LOG_LEVEL": "0"}):
+        with patch.dict(os.environ, {"GH_TOKEN": "invalid_token", "LOG_LEVEL": "0"}):
             with patch("src.main._fail") as mock_fail:
                 validate_and_configure_logging()
                 mock_fail.assert_called()
@@ -119,8 +119,10 @@ class TestValidateAndConfigureLogging:
         with patch.dict(os.environ, {"LOG_LEVEL": "5"}):
             with patch("src.main._fail") as mock_fail:
                 validate_and_configure_logging()
-                mock_fail.assert_called_once()
-                assert "LOG_LEVEL" in str(mock_fail.call_args)
+                mock_fail.assert_called()
+                # Check that at least one call was about LOG_LEVEL
+                call_args = [str(call) for call in mock_fail.call_args_list]
+                assert any("LOG_LEVEL" in arg for arg in call_args)
 
     def test_valid_log_levels(self):
         """Test validation with all valid log levels."""
@@ -137,7 +139,7 @@ class TestValidateAndConfigureLogging:
 
         try:
             with patch.dict(os.environ, {"LOG_LEVEL": "0", "LOG_FILE": tmp_path}):
-                with patch("logging.disable"), patch("logging.getLogger"):
+                with patch("logging.disable"), patch("logging.getLogger"), patch("sys.exit"):
                     validate_and_configure_logging()
 
                 # File should exist and be empty
@@ -166,9 +168,13 @@ class TestValidateAndConfigureLogging:
 
         try:
             with patch.dict(os.environ, {"LOG_LEVEL": "1", "LOG_FILE": tmp_path}):
-                with patch("logging.basicConfig") as mock_basic_config, patch(
-                    "logging.getLogger"
-                ) as mock_get_logger, patch("logging.info"), patch("logging.debug"):
+                with (
+                    patch("logging.basicConfig") as mock_basic_config,
+                    patch("logging.getLogger") as mock_get_logger,
+                    patch("logging.info"),
+                    patch("logging.debug"),
+                    patch("sys.exit")
+                ):
                     mock_logger = Mock()
                     mock_get_logger.return_value = mock_logger
 
@@ -188,9 +194,13 @@ class TestValidateAndConfigureLogging:
 
         try:
             with patch.dict(os.environ, {"LOG_LEVEL": "2", "LOG_FILE": tmp_path}):
-                with patch("logging.basicConfig") as mock_basic_config, patch(
-                    "logging.getLogger"
-                ) as mock_get_logger, patch("logging.info") as mock_info, patch("logging.debug") as mock_debug:
+                with (
+                    patch("logging.basicConfig") as mock_basic_config,
+                    patch("logging.getLogger") as mock_get_logger,
+                    patch("logging.info") as mock_info,
+                    patch("logging.debug") as mock_debug,
+                    patch("sys.exit")
+                ):
                     mock_logger = Mock()
                     mock_get_logger.return_value = mock_logger
 

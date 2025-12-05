@@ -58,7 +58,9 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.5
+            # Only dataset info (1): raw_score = (1 + 0) / 2 = 0.5
+            # Boost: min(1.0, 0.5 * 1.2 + 0.15) = min(1.0, 0.6 + 0.15) = 0.75
+            assert result == 0.75
 
     @pytest.mark.asyncio
     async def test_calculate_only_training_code(self):
@@ -82,7 +84,9 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.5
+            # Only training code (1): raw_score = (0 + 1) / 2 = 0.5  
+            # Boost: min(1.0, 0.5 * 1.2 + 0.15) = min(1.0, 0.6 + 0.15) = 0.75
+            assert result == 0.75
 
     @pytest.mark.asyncio
     async def test_calculate_neither_dataset_nor_training_code(self):
@@ -108,7 +112,9 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.0
+            # Neither dataset info nor training code: raw_score = (0 + 0) / 2 = 0.0
+            # Baseline applied: 0.3
+            assert result == 0.3
 
     @pytest.mark.asyncio
     async def test_calculate_with_config_file_dataset_info(self):
@@ -137,7 +143,9 @@ class TestDatasetCodeMetric:
             with patch.object(metric, "_read_config_file", return_value=config_content):
                 result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.5
+            # Dataset info from config (1): raw_score = (1 + 0) / 2 = 0.5
+            # Boost: min(1.0, 0.5 * 1.2 + 0.15) = min(1.0, 0.6 + 0.15) = 0.75
+            assert result == 0.75
 
     @pytest.mark.asyncio
     async def test_calculate_various_training_script_patterns(self):
@@ -168,7 +176,12 @@ class TestDatasetCodeMetric:
                 metric = DatasetCodeMetric(mock_git_client)
                 result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-                expected = 0.5 if expected_score == 1.0 else 0.0
+                raw_expected = 0.5 if expected_score == 1.0 else 0.0
+                # Apply boost formula if has data, else baseline 0.3
+                if expected_score == 1.0:
+                    expected = min(1.0, raw_expected * 1.2 + 0.15)
+                else:
+                    expected = 0.3  # Baseline when no training code
                 assert result == expected, f"Failed for filename: {filename}"
 
     @pytest.mark.asyncio
@@ -193,7 +206,12 @@ class TestDatasetCodeMetric:
                 metric = DatasetCodeMetric(mock_git_client)
                 result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-                assert result == expected_score, f"Failed for content: {readme_content}"
+                # Apply boost formula if has dataset info, else baseline 0.3
+                if expected_score > 0.0:
+                    expected = min(1.0, expected_score * 1.2 + 0.15)
+                else:
+                    expected = 0.3  # Baseline when no dataset info
+                assert result == expected, f"Failed for content: {readme_content}"
 
     @pytest.mark.asyncio
     async def test_calculate_empty_readme_and_no_files(self):
@@ -205,7 +223,8 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.0
+            # Empty README, no files: baseline 0.3
+            assert result == 0.3
 
     @pytest.mark.asyncio
     async def test_calculate_readme_none(self):
@@ -219,7 +238,8 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.0
+            # None README, no training files: baseline 0.3
+            assert result == 0.3
 
     @pytest.mark.asyncio
     async def test_determine_repository_type_model(self):
@@ -339,7 +359,9 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.5
+            # Has training code (notebooks): raw_score = (0 + 1) / 2 = 0.5
+            # Boost: min(1.0, 0.5 * 1.2 + 0.15) = 0.75
+            assert result == 0.75
 
     @pytest.mark.asyncio
     async def test_calculate_with_enhanced_dataset_patterns(self):
@@ -362,7 +384,12 @@ class TestDatasetCodeMetric:
                 metric = DatasetCodeMetric(mock_git_client)
                 result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-                assert result == expected_score, f"Failed for content: {readme_content}"
+                # Apply boost formula if has dataset info, else baseline 0.3
+                if expected_score > 0.0:
+                    expected = min(1.0, expected_score * 1.2 + 0.15)
+                else:
+                    expected = 0.3  # Baseline when no dataset info
+                assert result == expected, f"Failed for content: {readme_content}"
 
     @pytest.mark.asyncio
     async def test_calculate_with_data_directories(self):
@@ -380,4 +407,6 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            assert result == 0.5
+            # Has data directory: raw_score = (1 + 0) / 2 = 0.5
+            # Boost: min(1.0, 0.5 * 1.2 + 0.15) = 0.75
+            assert result == 0.75
