@@ -27,12 +27,12 @@ export default function SignInPage() {
       ) : (
         <form onSubmit={submit} className="bg-white p-4 rounded shadow space-y-3">
           <div>
-            <label className="block text-sm text-gray-700">Username</label>
-            <input value={username} onChange={e => setUsername(e.target.value)} className="mt-1 p-2 border rounded w-full" />
+            <label htmlFor="username" className="block text-sm text-gray-700">Username</label>
+            <input id="username" value={username} onChange={e => setUsername(e.target.value)} className="mt-1 p-2 border rounded w-full" />
           </div>
           <div>
-            <label className="block text-sm text-gray-700">Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 p-2 border rounded w-full" />
+            <label htmlFor="password" className="block text-sm text-gray-700">Password</label>
+            <input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 p-2 border rounded w-full" />
           </div>
           <div>
             <button disabled={loading} className="px-3 py-2 bg-blue-700 text-white rounded">Sign In</button>
