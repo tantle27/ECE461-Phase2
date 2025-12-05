@@ -7,6 +7,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlparse, urlunparse
 
 
@@ -126,20 +127,37 @@ class GitClient:
     def analyze_commits(self, repo_path: str) -> CommitStats:
         try:
             from git import Repo  # type: ignore
-        except Exception:
+        except Exception as e:
+            logging.error("GitPython not available: %s", e)
             return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
 
         try:
+            if not os.path.exists(repo_path):
+                logging.warning("analyze_commits: repo_path does not exist: %s", repo_path)
+                return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
+            
             repo = Repo(repo_path)
+            
+            # Try to fetch more commits if this is a shallow clone
             try:
-                if repo.git.rev_parse("--is-shallow-repository") == "true":
+                is_shallow = repo.git.rev_parse("--is-shallow-repository") == "true"
+                if is_shallow:
+                    logging.info("analyze_commits: shallow repo detected, attempting to fetch more commits")
                     since = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
                     repo.git.fetch("--depth=100", f"--shallow-since={since}")
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("analyze_commits: fetch failed (non-critical): %s", e)
 
+            # First try: commits from last 365 days
             since_date = datetime.now() - timedelta(days=365)
             commits = list(repo.iter_commits(since=since_date, max_count=100))
+            
+            # If no commits found, try without date filter (shallow repos may not have date info)
+            if len(commits) == 0:
+                logging.info("analyze_commits: no commits with date filter, trying without filter")
+                commits = list(repo.iter_commits(max_count=100))
+            
+            logging.info("analyze_commits: found %d commits in %s", len(commits), repo_path)
 
             contribs: dict[str, int] = {}
             for c in commits:
@@ -149,13 +167,15 @@ class GitClient:
 
             total = len(commits)
             if total == 0:
+                logging.warning("analyze_commits: no commits found after all attempts")
                 return CommitStats(0, {}, 0.0)
 
             concentration = sum((n / total) ** 2 for n in contribs.values())
             bus = max(0.0, min(1.0, 1.0 - concentration))
+            logging.info("analyze_commits: %d commits, %d contributors, bus_factor=%.3f", total, len(contribs), bus)
             return CommitStats(total, dict(sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)), bus)
         except Exception as e:
-            logging.error("commit analysis failed: %s", e)
+            logging.error("commit analysis failed for %s: %s", repo_path, e)
             return CommitStats(0, {}, 0.0)
 
     def analyze_code_quality(self, repo_path: str) -> CodeQualityStats:
@@ -257,3 +277,88 @@ class GitClient:
             except Exception as e:
                 logging.warning("cleanup failed for %s: %s", d, e)
         self.temp_dirs.clear()
+
+    def has_github_repository(self, repo_url: str | None = None) -> bool:
+        if not repo_url:
+            return False
+        return "github.com" in repo_url.lower()
+
+    def analyze_pull_requests(self, repo_path: str) -> dict[str, Any]:
+        stats: dict[str, Any] = {
+            "total_code_lines": 0,
+            "reviewed_code_lines": 0,
+            "pull_requests": [],
+        }
+        try:
+            from git import Repo  # type: ignore
+
+            repo = Repo(repo_path)
+            commits = list(repo.iter_commits(max_count=200))
+            for commit in commits:
+                total_lines = 0
+                try:
+                    total_lines = int(commit.stats.total.get("lines", 0))
+                except Exception:
+                    total_lines = 0
+                stats["total_code_lines"] += total_lines
+                message_lower = (commit.message or "").lower()
+                is_merge = len(commit.parents or []) > 1
+                reviewed = is_merge or "reviewed-by" in message_lower or "merge pull request" in message_lower
+                if reviewed:
+                    stats["reviewed_code_lines"] += total_lines
+                stats["pull_requests"].append(
+                    {
+                        "id": commit.hexsha,
+                        "reviewed": reviewed,
+                        "lines_added": total_lines,
+                    }
+                )
+        except Exception as exc:
+            logging.error("pull request analysis failed: %s", exc)
+        return stats
+
+    def estimate_reviewedness(self, repo_path: str, repo_url: str | None = None) -> float:
+        if repo_url and not self.has_github_repository(repo_url):
+            return -1.0
+        analysis = self.analyze_pull_requests(repo_path)
+        total_lines = analysis.get("total_code_lines", 0)
+        pull_requests = analysis.get("pull_requests", []) or []
+        if total_lines <= 0 or not pull_requests:
+            return -1.0
+        reviewed_lines = analysis.get("reviewed_code_lines", 0)
+        return max(0.0, min(1.0, reviewed_lines / total_lines))
+
+    def estimate_reproducibility(self, repo_path: str) -> float:
+        try:
+            if not os.path.exists(repo_path):
+                return 0.0
+            readme = (self.read_readme(repo_path) or "").lower()
+            install_indicators = [
+                "pip install",
+                "conda install",
+                "requirements.txt",
+                "pip3 install",
+                "docker pull",
+            ]
+            run_indicators = [
+                "python ",
+                "python3 ",
+                "hf",
+                "transformers",
+                "usage",
+                "quickstart",
+            ]
+            has_install = any(token in readme for token in install_indicators)
+            has_run = any(token in readme for token in run_indicators)
+            repo_path_obj = Path(repo_path)
+            has_examples = any((repo_path_obj / name).exists() for name in ("examples", "notebooks"))
+            has_requirements = any((repo_path_obj / file).exists() for file in ("requirements.txt", "environment.yml"))
+
+            if (has_install or has_requirements) and (has_run or has_examples):
+                return 1.0
+            if has_install or has_run or has_examples or has_requirements:
+                return 0.5
+            return 0.0
+        except Exception as exc:
+            logging.error("reproducibility analysis failed: %s", exc)
+            return 0.0

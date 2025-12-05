@@ -9,7 +9,14 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from src.metrics.metrics_calculator import MetricsCalculator
+try:
+    from app.secrets_loader import load_registry_secrets
 
+    load_registry_secrets()
+except Exception:
+    import logging
+
+    logging.exception("secrets_loader failed - continuing without Secrets Manager")
 # ----------------- helpers -----------------
 
 _GH_TOKEN_PATTERNS = [
@@ -49,7 +56,7 @@ def validate_and_configure_logging() -> None:
         failure) — simply disable logging so other tests (URL command) can still pass.
     """
     # token checks
-    tok = os.environ.get("GITHUB_TOKEN")
+    tok = os.environ.get("GH_TOKEN")
     if tok is not None:
         if not tok.strip():
             _fail("Invalid GitHub token (blank).")
@@ -200,8 +207,10 @@ async def analyze_entry(
 ) -> dict[str, Any]:
     code_link, dataset_link, model_link = entry
     start_time = time.time()
-
-    github_token = os.environ.get("GITHUB_TOKEN")
+    try:
+        github_token = os.environ.get("GH_TOKEN")
+    except KeyError:
+        github_token = None
     calculator = MetricsCalculator(process_pool, github_token)
     local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
