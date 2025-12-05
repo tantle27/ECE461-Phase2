@@ -6,6 +6,7 @@ for local development.
 """
 
 import json
+import re
 import logging
 import os
 import time
@@ -38,11 +39,15 @@ dynamodb_client = None
 if USE_DYNAMODB:
     try:
         import boto3
-
-        dynamodb_resource = boto3.resource("dynamodb", region_name=REGION)
-        dynamodb_table = dynamodb_resource.Table(TABLE_NAME)
-        dynamodb_client = boto3.client("dynamodb", region_name=REGION)
-        logger.info(f"DynamoDB enabled: table={TABLE_NAME}, region={REGION}")
+        # Validate table name to avoid injection/invalid names
+        if not re.match(r"^[A-Za-z0-9_.-]{3,255}$", TABLE_NAME):
+            logger.error("Invalid DYNAMODB_TABLE_NAME, disabling DynamoDB integration: %s", TABLE_NAME)
+            USE_DYNAMODB = False
+        else:
+            dynamodb_resource = boto3.resource("dynamodb", region_name=REGION)
+            dynamodb_table = dynamodb_resource.Table(TABLE_NAME)
+            dynamodb_client = boto3.client("dynamodb", region_name=REGION)
+            logger.info(f"DynamoDB enabled: table={TABLE_NAME}, region={REGION}")
     except Exception as e:
         logger.error(f"Failed to initialize DynamoDB: {e}")
         USE_DYNAMODB = False
