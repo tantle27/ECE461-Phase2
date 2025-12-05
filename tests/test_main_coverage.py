@@ -86,13 +86,13 @@ class TestLoggingValidation:
 
     def test_validate_logging_blank_github_token(self):
         """Test validation fails with blank GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "   "}):
+        with patch.dict(os.environ, {"GH_TOKEN": "   "}):
             with pytest.raises(SystemExit):
                 validate_and_configure_logging()
 
     def test_validate_logging_invalid_github_token(self):
         """Test validation fails with invalid GitHub token."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "invalid_token"}):
+        with patch.dict(os.environ, {"GH_TOKEN": "invalid_token"}):
             with pytest.raises(SystemExit):
                 validate_and_configure_logging()
 

@@ -106,7 +106,7 @@ class TestValidateAndConfigureLogging:
 
     def test_invalid_github_token_format(self):
         """Test validation with invalid GitHub token format."""
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "invalid_token", "LOG_LEVEL": "0"}):
+        with patch.dict(os.environ, {"GH_TOKEN": "invalid_token", "LOG_LEVEL": "0"}):
             with patch("src.main._fail") as mock_fail:
                 validate_and_configure_logging()
                 mock_fail.assert_called()
