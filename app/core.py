@@ -474,7 +474,7 @@ def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     data_block = _ensure_data_aliases(artifact.metadata.type, artifact.data)
     # Per spec, always provide an internal download_url for retrieving stored bundles
     try:
-        internal_dl = f"/artifact/{artifact.metadata.type}/{artifact.metadata.id}/download"
+        internal_dl = f"/artifacts/{artifact.metadata.type}/{artifact.metadata.id}/download"
         data_block["download_url"] = internal_dl
         data_block["downloadUrl"] = internal_dl
         data_block["DownloadURL"] = internal_dl
@@ -2051,7 +2051,7 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
 
 
 
-@blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/download", methods=["GET"])
+@blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
 def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
     """Generic download route for any artifact type.
