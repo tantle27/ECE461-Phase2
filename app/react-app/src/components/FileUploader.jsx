@@ -40,16 +40,17 @@ export default function FileUploader() {
 
         <div className="grid md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Artifact Type *</label>
-            <select value={artifactType} onChange={e => setArtifactType(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
+            <label htmlFor="fileUploaderType" className="block text-sm font-medium text-gray-700 mb-1">Artifact Type *</label>
+            <select id="fileUploaderType" value={artifactType} onChange={e => setArtifactType(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
               <option value="model">Model</option>
               <option value="dataset">Dataset</option>
               <option value="code">Code</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Artifact ID</label>
+            <label htmlFor="fileUploaderId" className="block text-sm font-medium text-gray-700 mb-1">Artifact ID</label>
             <input 
+              id="fileUploaderId"
               value={artifactId} 
               onChange={e => setArtifactId(e.target.value)} 
               className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" 
@@ -57,8 +58,9 @@ export default function FileUploader() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
+            <label htmlFor="fileUploaderName" className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
             <input 
+              id="fileUploaderName"
               value={artifactName} 
               onChange={e => setArtifactName(e.target.value)} 
               className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" 

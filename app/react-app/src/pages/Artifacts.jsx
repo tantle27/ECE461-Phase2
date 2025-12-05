@@ -246,8 +246,8 @@ export default function ArtifactsPage() {
         <h3 className="text-lg font-semibold mb-4 text-gray-900">Browse Artifacts</h3>
         <form onSubmit={listArtifacts} className="grid md:grid-cols-5 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-            <select value={listType} onChange={e => setListType(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
+            <label htmlFor="listTypeFilter" className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <select id="listTypeFilter" value={listType} onChange={e => setListType(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500">
               <option value="">All Types</option>
               <option value="model">Model</option>
               <option value="dataset">Dataset</option>
@@ -255,12 +255,12 @@ export default function ArtifactsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Page</label>
-            <input type="number" min={1} value={listPage} onChange={e => setListPage(parseInt(e.target.value || '1'))} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
+            <label htmlFor="listPageInput" className="block text-sm font-medium text-gray-700 mb-1">Page</label>
+            <input id="listPageInput" type="number" min={1} value={listPage} onChange={e => setListPage(parseInt(e.target.value || '1'))} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
-            <input type="number" min={1} max={100} value={listPageSize} onChange={e => setListPageSize(parseInt(e.target.value || '10'))} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
+            <label htmlFor="listPageSizeInput" className="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
+            <input id="listPageSizeInput" type="number" min={1} max={100} value={listPageSize} onChange={e => setListPageSize(parseInt(e.target.value || '10'))} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex items-end">
             <button className="w-full px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800" type="submit">
@@ -295,12 +295,12 @@ export default function ArtifactsPage() {
             <form onSubmit={updateSelected} className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <input value={updateName} onChange={e => setUpdateName(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
+                  <label htmlFor="updateNameInput" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input id="updateNameInput" value={updateName} onChange={e => setUpdateName(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">URL</label>
-                  <input value={updateUrl} onChange={e => setUpdateUrl(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
+                  <label htmlFor="updateUrlInput" className="block text-sm font-medium text-gray-700 mb-1">URL</label>
+                  <input id="updateUrlInput" value={updateUrl} onChange={e => setUpdateUrl(e.target.value)} className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div className="flex gap-3">
@@ -444,16 +444,16 @@ function GetByIdForm({ onFetch }) {
   return (
     <form onSubmit={submit} className="bg-white p-4 rounded shadow flex gap-2 items-end">
       <div>
-        <label className="block text-sm text-gray-700">Type</label>
-        <select value={type} onChange={e => setType(e.target.value)} className="mt-1 p-2 border rounded">
+        <label htmlFor="getByIdType" className="block text-sm text-gray-700">Type</label>
+        <select id="getByIdType" value={type} onChange={e => setType(e.target.value)} className="mt-1 p-2 border rounded">
           <option value="model">Model</option>
           <option value="dataset">Dataset</option>
           <option value="code">Code</option>
         </select>
       </div>
       <div className="flex-1">
-        <label className="block text-sm text-gray-700">ID</label>
-        <input value={id} onChange={e => setId(e.target.value)} className="mt-1 p-2 border rounded w-full" />
+        <label htmlFor="getByIdInput" className="block text-sm text-gray-700">ID</label>
+        <input id="getByIdInput" value={id} onChange={e => setId(e.target.value)} className="mt-1 p-2 border rounded w-full" />
       </div>
       <div>
         <button className="px-3 py-2 bg-blue-700 text-white rounded">Fetch</button>
