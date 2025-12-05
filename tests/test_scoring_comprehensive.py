@@ -23,7 +23,7 @@ import pytest
 
 # Import from app.scoring
 from app.scoring import (
-    _METRICS_CALCULATOR,
+    _get_metrics_calculator,
     ModelRating,
     _build_model_rating,
     _calculate_net_score,
@@ -347,7 +347,7 @@ class TestArtifactScoring:
             data={"code_link": "https://github.com/example/repo"},  # Missing model_link
         )
 
-        with pytest.raises(ValueError, match="Artifact data must include 'model_link'"):
+        with pytest.raises(ValueError, match="Artifact data must include a model link"):
             _score_artifact_with_metrics(invalid_artifact)
 
     def test_score_artifact_alternative_model_link_fields(self):
@@ -366,7 +366,8 @@ class TestArtifactScoring:
 
         mock_metrics = {"license": 0.8, "ramp_up_time": 0.6, "license_latency": 100}
 
-        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             # Both should work
@@ -390,7 +391,8 @@ class TestArtifactScoring:
 
         mock_metrics = {"license": 0.8}
 
-        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             _score_artifact_with_metrics(artifact)
@@ -404,8 +406,7 @@ class TestArtifactScoring:
             assert args[3] == set()  # Empty set for additional parameter
 
     @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
-    @patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock)
-    def test_score_artifact_successful_scoring(self, mock_analyze):
+    def test_score_artifact_successful_scoring(self):
         """Test successful artifact scoring."""
         mock_metrics = {
             "license": 0.9,
@@ -419,37 +420,40 @@ class TestArtifactScoring:
             "ramp_up_time_latency": 200,
             "bus_factor_latency": 150,
         }
-        mock_analyze.return_value = mock_metrics
 
-        start_time = time.time()
-        rating = _score_artifact_with_metrics(self.artifact)
-        end_time = time.time()
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+            mock_analyze.return_value = mock_metrics
 
-        # Verify the rating was built correctly
-        assert rating.id == "test-model"
-        assert isinstance(rating.generated_at, datetime)
-        # License score gets adjusted by net score calculation, so check it's close
-        assert abs(rating.scores["license"] - 0.9) < 0.1
-        assert rating.scores["ramp_up_time"] == 0.7
-        assert "net_score" in rating.scores
+            start_time = time.time()
+            rating = _score_artifact_with_metrics(self.artifact)
+            end_time = time.time()
 
-        assert rating.latencies["license"] == 100
-        assert rating.latencies["ramp_up_time"] == 200
+            # Verify the rating was built correctly
+            assert rating.id == "test-model"
+            assert isinstance(rating.generated_at, datetime)
+            # License score gets adjusted by net score calculation, so check it's close
+            assert abs(rating.scores["license"] - 0.9) < 0.1
+            assert rating.scores["ramp_up_time"] == 0.7
+            assert "net_score" in rating.scores
 
-        # Verify total latency is reasonable (should be execution time in ms)
-        total_latency_ms = rating.latencies["net_score"]
-        expected_latency_ms = (end_time - start_time) * 1000
-        assert total_latency_ms >= 0
-        assert total_latency_ms < expected_latency_ms + 1000  # Allow for overhead
+            assert rating.latencies["license"] == 100
+            assert rating.latencies["ramp_up_time"] == 200
 
-        # Verify analyze_entry was called correctly
-        mock_analyze.assert_called_once_with(
-            "https://github.com/example/repo", "https://example.com/dataset", "https://example.com/model", set(),
-        )
+            # Verify total latency is reasonable (should be execution time in ms)
+            total_latency_ms = rating.latencies["net_score"]
+            expected_latency_ms = (end_time - start_time) * 1000
+            assert total_latency_ms >= 0
+            assert total_latency_ms < expected_latency_ms + 1000  # Allow for overhead
+
+            # Verify analyze_entry was called correctly
+            mock_analyze.assert_called_once_with(
+                "https://github.com/example/repo", "https://example.com/dataset",
+                "https://example.com/model", set(),
+            )
 
     @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
-    @patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock)
-    def test_score_artifact_with_none_links(self, mock_analyze):
+    def test_score_artifact_with_none_links(self):
         """Test scoring artifact with None code/dataset links."""
         artifact = MockArtifact(
             metadata=MockArtifactMetadata(id="test", name="test", type="model", version="1.0"),
@@ -457,23 +461,27 @@ class TestArtifactScoring:
         )
 
         mock_metrics = {"license": 0.8}
-        mock_analyze.return_value = mock_metrics
 
-        _score_artifact_with_metrics(artifact)
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+            mock_analyze.return_value = mock_metrics
 
-        # Verify analyze_entry was called with None for missing links
-        mock_analyze.assert_called_once_with(
-            None, None, "https://example.com/model", set()
-        )
+            _score_artifact_with_metrics(artifact)
+
+            # Verify analyze_entry was called with None for missing links
+            mock_analyze.assert_called_once_with(
+                None, None, "https://example.com/model", set()
+            )
 
     @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
-    @patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock)
-    def test_score_artifact_metrics_exception(self, mock_analyze):
+    def test_score_artifact_metrics_exception(self):
         """Test scoring artifact when metrics calculation raises exception."""
-        mock_analyze.side_effect = Exception("Metrics calculation failed")
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+            mock_analyze.side_effect = Exception("Metrics calculation failed")
 
-        with pytest.raises(Exception, match="Metrics calculation failed"):
-            _score_artifact_with_metrics(self.artifact)
+            with pytest.raises(Exception, match="Metrics calculation failed"):
+                _score_artifact_with_metrics(self.artifact)
 
 
 class TestThreadPoolAndCalculatorInitialization:
@@ -491,10 +499,11 @@ class TestThreadPoolAndCalculatorInitialization:
 
     def test_metrics_calculator_initialization(self):
         """Test MetricsCalculator is properly initialized."""
-        from app.scoring import _METRICS_CALCULATOR
+        from app.scoring import _get_metrics_calculator
         from src.metrics.metrics_calculator import MetricsCalculator
 
-        assert isinstance(_METRICS_CALCULATOR, MetricsCalculator)
+        calculator = _get_metrics_calculator()
+        assert isinstance(calculator, MetricsCalculator)
 
     @patch.dict("os.environ", {"GH_TOKEN": "test-token"})
     def test_metrics_calculator_with_github_token(self):
@@ -564,7 +573,8 @@ class TestIntegrationScenarios:
             "dataset_quality_latency": 125,
         }
 
-        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.return_value = mock_metrics
 
             rating = _score_artifact_with_metrics(artifact)
@@ -601,11 +611,14 @@ class TestIntegrationScenarios:
     def test_error_recovery_and_logging(self):
         """Test error scenarios are properly handled and logged."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(id="error-test", name="test", type="model", version="1.0"),
+            metadata=MockArtifactMetadata(
+                id="error-test", name="test", type="model", version="1.0"
+            ),
             data={"model_link": "https://example.com/broken-model"},
         )
 
-        with patch.object(_METRICS_CALCULATOR, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
+        calculator = _get_metrics_calculator()
+        with patch.object(calculator, "analyze_entry", new_callable=AsyncMock) as mock_analyze:
             mock_analyze.side_effect = ValueError("Network error")
 
             # The function may catch exceptions and return default values instead of propagating

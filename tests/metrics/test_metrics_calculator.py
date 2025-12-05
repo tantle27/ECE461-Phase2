@@ -53,6 +53,10 @@ This project is licensed under the MIT License.
         "desktop_pc": 1.0,
         "aws_server": 1.0,
     }
+    mock_git.analyze_ramp_up_time.return_value = {
+        "has_examples": True,
+        "has_dependencies": True,
+    }
 
     # Mock GenAI client responses (async methods)
     mock_genai.get_performance_claims = AsyncMock(return_value={"has_metrics": 1, "mentions_benchmarks": 1})
@@ -71,7 +75,8 @@ This project is licensed under the MIT License.
         result = await calculator.analyze_repository("http://test.url")
 
     # Assert
-    assert result["bus_factor"] == 0.5
+    # Bus factor boost: min(1.0, 0.5 * 1.8 + 0.35) = min(1.0, 1.25) = 1.0
+    assert result["bus_factor"] == 1.0
     assert result["code_quality"] == 1.0
     assert result["license"] == 1.0
     assert "performance_claims" in result

@@ -35,7 +35,8 @@ class TestCodeQualityMetric:
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
         # No tests, no errors: 0.6 * 1.0 + 0.4 * 0.0 = 0.6
-        expected = 0.6
+        # Boost: min(1.0, 0.6 * 1.05 + 0.05) = min(1.0, 0.63 + 0.05) = 0.68
+        expected = 0.68
         assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -49,7 +50,8 @@ class TestCodeQualityMetric:
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
         # With lint errors and tests: 0.6 * 0.5 + 0.4 * 1.0 = 0.3 + 0.4 = 0.7
-        expected = 0.7
+        # Boost: min(1.0, 0.7 * 1.05 + 0.05) = min(1.0, 0.735 + 0.05) = 0.785
+        expected = 0.785
         assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -63,7 +65,8 @@ class TestCodeQualityMetric:
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
         # Max lint errors with tests: 0.6 * 0.0 + 0.4 * 1.0 = 0.4
-        expected = 0.4
+        # Boost: min(1.0, 0.4 * 1.05 + 0.05) = min(1.0, 0.42 + 0.05) = 0.47
+        expected = 0.47
         assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -77,7 +80,8 @@ class TestCodeQualityMetric:
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
         # No tests, some errors: 0.6 * 0.75 + 0.4 * 0.0 = 0.45
-        expected = 0.45
+        # Boost: min(1.0, 0.45 * 1.05 + 0.05) = min(1.0, 0.4725 + 0.05) = 0.5225
+        expected = 0.5225
         assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -91,7 +95,8 @@ class TestCodeQualityMetric:
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
         # Worst case: 0.6 * 0.0 + 0.4 * 0.0 = 0.0
-        expected = 0.0
+        # Boost: min(1.0, 0.0 * 1.05 + 0.05) = min(1.0, 0.05) = 0.05
+        expected = 0.05
         assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -111,9 +116,9 @@ class TestCodeQualityMetric:
             metric = CodeQualityMetric()
             result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
-            # With tests and some errors: 0.6 * 0.6
-            # + 0.4 * 1.0 = 0.36 + 0.4 = 0.76
-            expected = 0.76
+            # With tests and some errors: 0.6 * 0.6 + 0.4 * 1.0 = 0.36 + 0.4 = 0.76
+            # Boost: min(1.0, 0.76 * 1.05 + 0.05) = min(1.0, 0.798 + 0.05) = 0.848
+            expected = 0.848
             assert abs(result - expected) < 1e-6
 
     @pytest.mark.asyncio
@@ -126,7 +131,9 @@ class TestCodeQualityMetric:
         metric = CodeQualityMetric(mock_git_client)
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
 
-        expected = CodeQualityMetric.LINT_WEIGHT * 1.0 + CodeQualityMetric.TESTS_WEIGHT * 1.0
+        raw_expected = CodeQualityMetric.LINT_WEIGHT * 1.0 + CodeQualityMetric.TESTS_WEIGHT * 1.0
+        # Apply boost: min(1.0, raw_expected * 1.05 + 0.05)
+        expected = min(1.0, raw_expected * 1.05 + 0.05)
         assert abs(result - expected) < 1e-6
         assert CodeQualityMetric.LINT_WEIGHT == 0.6
         assert CodeQualityMetric.TESTS_WEIGHT == 0.4

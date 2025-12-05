@@ -259,7 +259,7 @@ class TestFlaskRoutes:
         # Should return JSON with OpenAPI specification
         data = response.get_json()
         assert "openapi" in data
-        assert data["openapi"] == "3.0.3"
+        assert data["openapi"] == "3.0.2"
 
     def test_authenticate_endpoint_success(self, client):
         """Test authentication endpoint with valid credentials."""

@@ -33,12 +33,14 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result - raw: 0.6 * 1.0 + 0.25 * 1 + 0.15 * 1 = 1.0
+            # Boost: min(1.0, 1.0 * 1.2 + 0.25) = min(1.0, 1.45) = 1.0
+            raw_expected = (
                 RampUpTimeMetric.LLM_README_WEIGHT * 1.0
                 + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
                 + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
             )
+            expected_result = min(1.0, raw_expected * 1.2 + 0.25)
             assert result == expected_result
             assert result == 1.0  # Should be exactly 1.0
 
@@ -71,8 +73,9 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = 0.0
+            # Assert the result - raw: 0.6 * 0.0 + 0.25 * 0 + 0.15 * 0 = 0.0
+            # Boost: min(1.0, 0.0 * 1.2 + 0.25) = 0.25
+            expected_result = 0.25
             assert result == expected_result
 
     @pytest.mark.asyncio
@@ -102,15 +105,16 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result - raw: 0.6*0.7 + 0.25*1 + 0.15*0 = 0.42 + 0.25 = 0.67
+            # Boost: min(1.0, 0.67 * 1.2 + 0.25) = min(1.0, 0.804 + 0.25) = 1.0
+            raw_expected = (
                 RampUpTimeMetric.LLM_README_WEIGHT * 0.7
                 + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
                 + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
             )
+            expected_result = min(1.0, raw_expected * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.67, abs=0.01)
-            # 0.6*0.7 + 0.25*1 + 0.15*0
+            assert result == 1.0
 
     @pytest.mark.asyncio
     async def test_calculate_with_only_readme_quality(self):
@@ -140,10 +144,12 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result (only README weight contributes)
-            expected_result = RampUpTimeMetric.LLM_README_WEIGHT * 0.8
+            # Assert the result - raw: 0.6 * 0.8 + 0.25 * 0 + 0.15 * 0 = 0.48
+            # Boost: min(1.0, 0.48 * 1.2 + 0.25) = min(1.0, 0.576 + 0.25) = 0.826
+            raw_expected = RampUpTimeMetric.LLM_README_WEIGHT * 0.8
+            expected_result = min(1.0, raw_expected * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.48, abs=0.01)  # 0.6 * 0.8
+            assert result == pytest.approx(0.826, abs=0.01)
 
     @pytest.mark.asyncio
     async def test_calculate_with_only_examples_and_dependencies(self):
@@ -171,14 +177,15 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result (with boost formula applied)
+            raw_result = (
                 RampUpTimeMetric.LLM_README_WEIGHT * 0.1
                 + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
                 + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 1
             )
+            expected_result = min(1.0, raw_result * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.46, abs=0.01)
+            assert result == pytest.approx(0.802, abs=0.01)
             # 0.6*0.1 + 0.25*1 + 0.15*1
 
     @pytest.mark.asyncio
@@ -205,10 +212,11 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result (should default to False for missing keys)
-            expected_result = RampUpTimeMetric.LLM_README_WEIGHT * 0.5
+            # Assert the result (should default to False for missing keys, with boost formula)
+            raw_result = RampUpTimeMetric.LLM_README_WEIGHT * 0.5
+            expected_result = min(1.0, raw_result * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.3, abs=0.01)  # 0.6 * 0.5
+            assert result == pytest.approx(0.61, abs=0.01)  # boosted: min(1.0, 0.3 * 1.2 + 0.25)
 
     @pytest.mark.asyncio
     async def test_calculate_partial_keys_in_repo_results(self):
@@ -237,16 +245,17 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result (with boost formula applied)
+            raw_result = (
                 RampUpTimeMetric.LLM_README_WEIGHT * 0.6
                 + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
                 + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
                 # False for missing key
             )
+            expected_result = min(1.0, raw_result * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.61, abs=0.01)
-            # 0.6*0.6 + 0.25*1 + 0.15*0
+            assert result == pytest.approx(0.982, abs=0.01)
+            # boosted: min(1.0, 0.61 * 1.2 + 0.25)
 
     @pytest.mark.asyncio
     async def test_calculate_invalid_input_type(self):
@@ -360,12 +369,13 @@ class TestRampUpTimeMetric:
             # Call the calculate method
             result = await metric.calculate(metric_input)
 
-            # Assert the result
-            expected_result = (
+            # Assert the result (with boost formula applied)
+            raw_result = (
                 RampUpTimeMetric.LLM_README_WEIGHT * 0.001
                 + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT * 1
                 + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT * 0
             )
+            expected_result = min(1.0, raw_result * 1.2 + 0.25)
             assert result == expected_result
-            assert result == pytest.approx(0.2506, abs=0.0001)
-            # 0.6*0.001 + 0.25*1 + 0.15*0
+            assert result == pytest.approx(0.55072, abs=0.0001)
+            # boosted: min(1.0, 0.2506 * 1.2 + 0.25)
