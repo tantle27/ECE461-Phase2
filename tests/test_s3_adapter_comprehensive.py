@@ -331,7 +331,9 @@ class TestS3StorageFileOperations:
 
         # Verify call
         mock_client.generate_presigned_url.assert_called_once_with(
-            ClientMethod="get_object", Params={"Bucket": "test-bucket", "Key": "test.txt"}, ExpiresIn=7200,
+            ClientMethod="get_object",
+            Params={"Bucket": "test-bucket", "Key": "uploads/test.txt"},
+            ExpiresIn=7200,
         )
 
     @patch("app.s3_adapter.s3_client")
@@ -358,7 +360,9 @@ class TestS3StorageFileOperations:
 
         self.storage.delete_object("test.txt")
 
-        mock_client.delete_object.assert_called_once_with(Bucket="test-bucket", Key="test.txt")
+        mock_client.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="uploads/test.txt"
+        )
 
     @patch("app.s3_adapter.s3_client")
     @patch("app.s3_adapter.S3_BUCKET", "test-bucket")
