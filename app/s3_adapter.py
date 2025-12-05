@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any, BinaryIO
 
 logger = logging.getLogger(__name__)
@@ -53,23 +54,47 @@ class S3Storage:
         self.prefix = S3_PREFIX
 
     def _key(self, relpath: str) -> str:
-        rel = relpath.lstrip("/")
+        rel = relpath.strip()
+        # Normalize path separators and reject backslashes
+        rel = rel.replace("\\", "/").lstrip("/")
+        # Reject path traversal
+        parts = [p for p in rel.split("/") if p]
+        if any(p == ".." for p in parts):
+            raise ValueError("Invalid S3 key: path traversal not allowed")
+        # Allow only a safe subset of characters in each path segment
+        for p in parts:
+            if not re.match(r"^[A-Za-z0-9_.\-]+$", p):
+                raise ValueError("Invalid S3 key: contains unexpected characters")
+            if len(p) > 255:
+                raise ValueError("Invalid S3 key: segment too long")
+        key = "/".join(parts)
         if self.prefix:
-            return f"{self.prefix}/{rel}"
-        return rel
+            return f"{self.prefix}/{key}" if key else self.prefix
+        return key
 
     def put_file(self, fileobj: BinaryIO, key_rel: str, content_type: str | None = None,) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
             logger.error("S3Storage.put_file failed precondition.")
             raise RuntimeError("S3Storage not enabled")
-        logger.info("S3Storage.put_file: bucket=%s key=%s", self.bucket, self._key(key_rel))
+        # Validate and build safe key
+        try:
+            safe_key = self._key(key_rel)
+        except ValueError as e:
+            logger.warning("S3Storage.put_file: invalid key_rel provided: %s", e)
+            raise
+        logger.info("S3Storage.put_file: bucket=%s key=%s", self.bucket, safe_key)
         params: dict[str, Any] = {
             "Bucket": self.bucket,
-            "Key": self._key(key_rel),
+            "Key": safe_key,
             "Body": fileobj,
         }
         if content_type:
-            params["ContentType"] = content_type
+            # Basic validation for content_type to avoid control characters
+            ct = str(content_type).strip()
+            if len(ct) > 255 or not re.match(r"^[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+/[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+$", ct):
+                logger.warning("S3Storage.put_file: rejecting malformed content_type: %s", content_type)
+                raise ValueError("Malformed content_type")
+            params["ContentType"] = ct
         if S3_SSE:
             params["ServerSideEncryption"] = S3_SSE
             if S3_SSE == "aws:kms" and S3_KMS_KEY_ID:
@@ -124,7 +149,12 @@ class S3Storage:
     def generate_presigned_url(self, key: str, expires_in: int = 3600, version_id: str | None = None) -> str:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
-        params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}
+        # Validate key before generating presigned URL
+        try:
+            safe_key = self._key(key)
+        except ValueError:
+            raise ValueError("Invalid S3 key")
+        params: dict[str, Any] = {"Bucket": self.bucket, "Key": safe_key}
         if version_id:
             params["VersionId"] = version_id
         return s3_client.generate_presigned_url(ClientMethod="get_object", Params=params, ExpiresIn=expires_in,)
@@ -132,7 +162,12 @@ class S3Storage:
     def delete_object(self, key: str, version_id: str | None = None) -> None:
         if not self.enabled or not s3_client or not self.bucket:
             return
-        params: dict[str, Any] = {"Bucket": self.bucket, "Key": key}
+        try:
+            safe_key = self._key(key)
+        except ValueError:
+            logger.warning("S3Storage.delete_object: invalid key provided")
+            return
+        params: dict[str, Any] = {"Bucket": self.bucket, "Key": safe_key}
         if version_id:
             params["VersionId"] = version_id
         try:
