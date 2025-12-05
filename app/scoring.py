@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import time
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures import as_completed
 from dataclasses import dataclass
@@ -179,14 +180,42 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 
     start_time = time.time()
 
-    # Always compute legitimate metrics via MetricsCalculator
+    # Memoize MetricsCalculator results to avoid re-computing for identical inputs
+    cache_key = f"{code_link or ''}|{dataset_link or ''}|{model_link_str}"
+    cached_metrics: dict[str, Any] | None = None
+    cached_latency_ms: int | None = None
+    if _SCORE_CACHE_TTL_SECONDS > 0:
+        with _SCORE_CACHE_LOCK:
+            entry = _SCORE_CACHE.get(cache_key)
+            if entry:
+                ts, cached_metrics, cached_latency_ms = entry
+                if time.time() - ts > _SCORE_CACHE_TTL_SECONDS:
+                    cached_metrics = None
+                    cached_latency_ms = None
+                else:
+                    logger.info("SCORE_CACHE: hit for %s", cache_key)
+    if cached_metrics is None:
+        # Always compute legitimate metrics via MetricsCalculator
+        async def _collect() -> dict[str, Any]:
+            calc = _get_metrics_calculator()
+            return await calc.analyze_entry(code_link, dataset_link, model_link_str, set())
 
-    async def _collect() -> dict[str, Any]:
-        calc = _get_metrics_calculator()
-        return await calc.analyze_entry(code_link, dataset_link, model_link_str, set())
+        metrics = _run_async(_collect())
+        total_latency_ms = int((time.time() - start_time) * 1000)
+        if _SCORE_CACHE_TTL_SECONDS > 0:
+            with _SCORE_CACHE_LOCK:
+                # Simple bounded cache eviction (pop oldest arbitrary item when full)
+                if len(_SCORE_CACHE) >= _SCORE_CACHE_MAX:
+                    try:
+                        oldest_key = next(iter(_SCORE_CACHE.keys()))
+                        _SCORE_CACHE.pop(oldest_key, None)
+                    except StopIteration:
+                        pass
+                _SCORE_CACHE[cache_key] = (time.time(), metrics, total_latency_ms)
+    else:
+        metrics = cached_metrics or {}
+        total_latency_ms = cached_latency_ms or int((time.time() - start_time) * 1000)
 
-    metrics = _run_async(_collect())
-    total_latency_ms = int((time.time() - start_time) * 1000)
     metrics = _ensure_nonzero_metrics(artifact, model_link_str, metrics)
     logger.info(
         "SCORE_FIX: metrics summary id=%s keys=%s critical=%s",
@@ -300,6 +329,12 @@ def _ensure_nonzero_metrics(artifact, model_link: str, metrics: dict[str, Any]) 
 # Increase workers for concurrent autograder load (12 concurrent rating requests)
 _THREAD_POOL = ThreadPoolExecutor(max_workers=max(8, (os.cpu_count() or 4) * 2))
 _METRICS_CALCULATOR: MetricsCalculator | None = None
+
+# In-process memoization of expensive MetricsCalculator results to cut repeated rating latency
+_SCORE_CACHE_TTL_SECONDS = int(os.environ.get("SCORE_CACHE_TTL_SECONDS", "900"))
+_SCORE_CACHE_MAX = int(os.environ.get("SCORE_CACHE_MAX", "128"))
+_SCORE_CACHE: dict[str, tuple[float, dict[str, Any], int]] = {}
+_SCORE_CACHE_LOCK = threading.Lock()
 
 
 def _get_metrics_calculator() -> MetricsCalculator:
