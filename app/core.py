@@ -472,14 +472,31 @@ def _normalize_artifact_request(
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     metadata_block = _ensure_metadata_aliases(artifact.metadata)
     data_block = _ensure_data_aliases(artifact.metadata.type, artifact.data)
-    # Per spec, always provide an internal download_url for retrieving stored bundles
+    
+    # Generate S3 pre-signed download URL if artifact is stored in S3
     try:
-        internal_dl = f"/artifacts/{artifact.metadata.type}/{artifact.metadata.id}/download"
-        data_block["download_url"] = internal_dl
-        data_block["downloadUrl"] = internal_dl
-        data_block["DownloadURL"] = internal_dl
-    except Exception:
-        pass
+        if isinstance(data_block, dict):
+            s3_key = data_block.get("s3_key")
+            s3_version_id = data_block.get("s3_version_id")
+            if s3_key and _S3.enabled:
+                # Generate pre-signed URL valid for 1 hour
+                presigned_url = _S3.generate_presigned_url(
+                    key=s3_key,
+                    expires_in=3600,
+                    version_id=s3_version_id
+                )
+                data_block["download_url"] = presigned_url
+                data_block["downloadUrl"] = presigned_url
+                data_block["DownloadURL"] = presigned_url
+            elif not data_block.get("download_url"):
+                # Fallback to internal API endpoint if no S3 key
+                internal_dl = f"/artifacts/{artifact.metadata.type}/{artifact.metadata.id}/download"
+                data_block["download_url"] = internal_dl
+                data_block["downloadUrl"] = internal_dl
+                data_block["DownloadURL"] = internal_dl
+    except Exception as e:
+        logger.warning("Failed to generate download_url for %s: %s", artifact.metadata.id, e)
+    
     artifact.data = data_block  # keep in-memory copy normalized for future lookups
     return {
         "id": artifact.metadata.id,
