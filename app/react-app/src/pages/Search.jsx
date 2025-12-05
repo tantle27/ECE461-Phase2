@@ -98,10 +98,11 @@ export default function Search() {
         {searchType === 'name' && (
           <form onSubmit={searchByName} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="searchNameInput" className="block text-sm font-medium text-gray-700 mb-2">
                 Artifact Name (exact match, case-insensitive)
               </label>
               <input 
+                id="searchNameInput"
                 value={name} 
                 onChange={e => setName(e.target.value)} 
                 className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -121,10 +122,11 @@ export default function Search() {
         {searchType === 'regex' && (
           <form onSubmit={searchByRegex} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="searchRegexInput" className="block text-sm font-medium text-gray-700 mb-2">
                 Regex Pattern (searches name and readme fields)
               </label>
               <input 
+                id="searchRegexInput"
                 value={regex} 
                 onChange={e => setRegex(e.target.value)} 
                 className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
