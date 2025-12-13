@@ -150,7 +150,9 @@ class TestGenAIClientChatMethod:
                     AsyncMock(status=500, text=AsyncMock(return_value="Server error")),
                     AsyncMock(
                         status=200,
-                        json=AsyncMock(return_value={"choices": [{"message": {"content": "Success"}}]}),
+                        json=AsyncMock(
+                            return_value={"choices": [{"message": {"content": "Success"}}]}
+                        ),
                     ),
                 ]
 
@@ -185,7 +187,9 @@ class TestGenAIClientChatMethod:
             client = GenAIClient()
 
             with patch("aiohttp.ClientSession.post") as mock_post:
-                mock_post.return_value.__aenter__.side_effect = aiohttp.ClientError("Connection error")
+                mock_post.return_value.__aenter__.side_effect = aiohttp.ClientError(
+                    "Connection error"
+                )
 
                 with patch("asyncio.sleep"):  # Speed up the test
                     with pytest.raises(Exception, match="GenAI chat failed after retries"):
@@ -234,7 +238,8 @@ class TestGenAIClientPerformanceClaims:
 
             # Mock the chat method to return JSON response
             json_response = (
-                '{"mentions_benchmarks": 1.0, "has_metrics": 1.0, ' '"claims": ["95% accuracy"], "score": 0.8}'
+                '{"mentions_benchmarks": 1.0, "has_metrics": 1.0, '
+                '"claims": ["95% accuracy"], "score": 0.8}'
             )
             mock_chat_responses = ["Extracted performance claims", json_response]
 

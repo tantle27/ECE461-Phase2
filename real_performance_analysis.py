@@ -53,7 +53,12 @@ class RealPerformanceAnalyzer:
             ("/artifact/byName/test-package", "GET", None),
         ]
 
-        results = {"response_times": [], "success_count": 0, "failure_count": 0, "endpoint_results": {}}
+        results = {
+            "response_times": [],
+            "success_count": 0,
+            "failure_count": 0,
+            "endpoint_results": {},
+        }
 
         start_time = time.time()
 
@@ -90,7 +95,9 @@ class RealPerformanceAnalyzer:
                 "total_requests": results["success_count"] + results["failure_count"],
                 "successful_requests": results["success_count"],
                 "failed_requests": results["failure_count"],
-                "success_rate": (results["success_count"] / (results["success_count"] + results["failure_count"]))
+                "success_rate": (
+                    results["success_count"] / (results["success_count"] + results["failure_count"])
+                )
                 * 100,
                 "throughput": results["success_count"] / total_time,
                 # Latency metrics
@@ -135,7 +142,11 @@ class RealPerformanceAnalyzer:
             response_time = (time.time() - start_time) * 1000  # Convert to ms
 
             if response.status_code < 400:
-                return {"response_time": response_time, "status_code": response.status_code, "endpoint": endpoint}
+                return {
+                    "response_time": response_time,
+                    "status_code": response.status_code,
+                    "endpoint": endpoint,
+                }
             else:
                 logger.warning(f"HTTP error {response.status_code} for {endpoint}")
                 return None
@@ -186,7 +197,9 @@ class RealPerformanceAnalyzer:
             )
 
         # Response time distribution histogram
-        ax2.hist(metrics["raw_response_times"], bins=30, alpha=0.7, color="skyblue", edgecolor="black")
+        ax2.hist(
+            metrics["raw_response_times"], bins=30, alpha=0.7, color="skyblue", edgecolor="black"
+        )
         ax2.axvline(
             metrics["mean_latency"],
             color="red",
@@ -284,10 +297,16 @@ class RealPerformanceAnalyzer:
         times = metrics["raw_response_times"][:500]  # Limit for clarity
         plt.scatter(range(len(times)), times, alpha=0.6, s=20, c="#3498db")
         plt.axhline(
-            metrics["mean_latency"], color="red", linestyle="--", label=f'Mean: {metrics["mean_latency"]:.1f}ms'
+            metrics["mean_latency"],
+            color="red",
+            linestyle="--",
+            label=f'Mean: {metrics["mean_latency"]:.1f}ms',
         )
         plt.axhline(
-            metrics["p95_latency"], color="orange", linestyle="--", label=f'P95: {metrics["p95_latency"]:.1f}ms'
+            metrics["p95_latency"],
+            color="orange",
+            linestyle="--",
+            label=f'P95: {metrics["p95_latency"]:.1f}ms',
         )
         plt.xlabel("Request Number (Sequential)")
         plt.ylabel("Response Time (ms)")

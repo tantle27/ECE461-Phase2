@@ -95,7 +95,10 @@ class TestUtilityFunctions:
 
     def test_payload_sections_with_metadata(self):
         """Test _payload_sections with metadata."""
-        payload = {"metadata": {"Name": "test", "Version": "1.0"}, "data": {"readme": "test readme"}}
+        payload = {
+            "metadata": {"Name": "test", "Version": "1.0"},
+            "data": {"readme": "test readme"},
+        }
         content, metadata = _payload_sections(payload)
         # Should process the payload into sections
         assert len(content) >= 1 or len(metadata) >= 1
@@ -283,23 +286,33 @@ class TestRegexAndSearchFunctions:
     def test_safe_name_match_simple(self):
         """Test _safe_name_match with simple patterns."""
         pattern = re.compile(r"test")
-        result1 = _safe_name_match(pattern, "test", exact_match=True, raw_pattern="test", context="testing")
-        result2 = _safe_name_match(pattern, "other", exact_match=True, raw_pattern="test", context="testing")
+        result1 = _safe_name_match(
+            pattern, "test", exact_match=True, raw_pattern="test", context="testing"
+        )
+        result2 = _safe_name_match(
+            pattern, "other", exact_match=True, raw_pattern="test", context="testing"
+        )
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)
 
     def test_safe_name_match_with_pattern(self):
         """Test _safe_name_match with regex pattern."""
         pattern = re.compile(r"test.*")
-        result1 = _safe_name_match(pattern, "test123", exact_match=False, raw_pattern="test.*", context="testing")
-        result2 = _safe_name_match(pattern, "other", exact_match=False, raw_pattern="test.*", context="testing")
+        result1 = _safe_name_match(
+            pattern, "test123", exact_match=False, raw_pattern="test.*", context="testing"
+        )
+        result2 = _safe_name_match(
+            pattern, "other", exact_match=False, raw_pattern="test.*", context="testing"
+        )
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)
 
     def test_safe_text_search_success(self):
         """Test _safe_text_search with successful search."""
         pattern = re.compile(r"test")
-        result1 = _safe_text_search(pattern, "this is a test", raw_pattern="test", context="testing")
+        result1 = _safe_text_search(
+            pattern, "this is a test", raw_pattern="test", context="testing"
+        )
         result2 = _safe_text_search(pattern, "no match here", raw_pattern="test", context="testing")
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)
@@ -395,7 +408,10 @@ class TestDataProcessingFunctions:
 
     def test_artifact_from_raw_basic(self):
         """Test _artifact_from_raw with basic data."""
-        raw_data = {"metadata": {"Name": "test", "Version": "1.0"}, "data": {"readme": "test content"}}
+        raw_data = {
+            "metadata": {"Name": "test", "Version": "1.0"},
+            "data": {"readme": "test content"},
+        }
         result = _artifact_from_raw(raw_data, "package", "default-id")
 
         assert isinstance(result, type(result))  # Should return an Artifact object

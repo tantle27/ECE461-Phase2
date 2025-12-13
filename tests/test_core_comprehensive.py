@@ -41,7 +41,9 @@ class TestDataModels:
 
     def test_artifact_metadata_creation(self):
         """Test ArtifactMetadata dataclass creation."""
-        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
+        metadata = ArtifactMetadata(
+            id="test-id", name="test-package", type="model", version="1.0.0"
+        )
 
         assert metadata.id == "test-id"
         assert metadata.name == "test-package"
@@ -50,7 +52,9 @@ class TestDataModels:
 
     def test_artifact_creation_default_data(self):
         """Test Artifact creation with default data field."""
-        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
+        metadata = ArtifactMetadata(
+            id="test-id", name="test-package", type="model", version="1.0.0"
+        )
         artifact = Artifact(metadata=metadata)
 
         assert artifact.metadata == metadata
@@ -58,7 +62,9 @@ class TestDataModels:
 
     def test_artifact_creation_with_data(self):
         """Test Artifact creation with custom data."""
-        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
+        metadata = ArtifactMetadata(
+            id="test-id", name="test-package", type="model", version="1.0.0"
+        )
         data = {"url": "https://github.com/test/repo", "description": "Test package"}
         artifact = Artifact(metadata=metadata, data=data)
 
@@ -78,7 +84,11 @@ class TestDataModels:
     def test_artifact_query_custom_values(self):
         """Test ArtifactQuery with custom values."""
         query = ArtifactQuery(
-            artifact_type="model", name="test-package", types=["model", "dataset"], page=2, page_size=50
+            artifact_type="model",
+            name="test-package",
+            types=["model", "dataset"],
+            page=2,
+            page_size=50,
         )
 
         assert query.artifact_type == "model"
@@ -238,7 +248,9 @@ class TestMetadataAndDataAliases:
 
     def test_ensure_metadata_aliases(self):
         """Test _ensure_metadata_aliases creates all expected aliases."""
-        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.2.3")
+        metadata = ArtifactMetadata(
+            id="test-id", name="test-package", type="model", version="1.2.3"
+        )
 
         result = _ensure_metadata_aliases(metadata)
 
@@ -388,7 +400,9 @@ class TestStorageOperations:
 
         # Add test artifacts
         for i in range(3):
-            metadata = ArtifactMetadata(id=f"test-id-{i}", name=f"package-{i}", type="model", version="1.0")
+            metadata = ArtifactMetadata(
+                id=f"test-id-{i}", name=f"package-{i}", type="model", version="1.0"
+            )
             artifact = Artifact(metadata=metadata)
             save_artifact(artifact)
 
@@ -407,7 +421,10 @@ class TestStorageOperations:
         for artifact_type in ["model", "dataset"]:
             for i in range(2):
                 metadata = ArtifactMetadata(
-                    id=f"{artifact_type}-{i}", name=f"package-{i}", type=artifact_type, version="1.0"
+                    id=f"{artifact_type}-{i}",
+                    name=f"package-{i}",
+                    type=artifact_type,
+                    version="1.0",
                 )
                 artifact = Artifact(metadata=metadata)
                 save_artifact(artifact)

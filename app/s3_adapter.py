@@ -99,7 +99,9 @@ class S3Storage:
             if len(ct) > 255 or not re.match(
                 r"^[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+/[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+$", ct
             ):
-                logger.warning("S3Storage.put_file: rejecting malformed content_type: %s", content_type)
+                logger.warning(
+                    "S3Storage.put_file: rejecting malformed content_type: %s", content_type
+                )
                 raise ValueError("Malformed content_type")
             params["ContentType"] = ct
         if S3_SSE:
@@ -153,7 +155,9 @@ class S3Storage:
         }
         return body, meta
 
-    def generate_presigned_url(self, key: str, expires_in: int = 3600, version_id: str | None = None) -> str:
+    def generate_presigned_url(
+        self, key: str, expires_in: int = 3600, version_id: str | None = None
+    ) -> str:
         if not self.enabled or not s3_client or not self.bucket:
             raise RuntimeError("S3Storage not enabled")
         # Validate key before generating presigned URL

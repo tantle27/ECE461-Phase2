@@ -1,6 +1,13 @@
 """Simple working tests for core.py functions to improve coverage."""
 
-from app.core import _AUDIT_LOG, _STORE, _is_dangerous_regex, _parse_bearer, _safe_int, reset_storage
+from app.core import (
+    _AUDIT_LOG,
+    _STORE,
+    _is_dangerous_regex,
+    _parse_bearer,
+    _safe_int,
+    reset_storage,
+)
 
 
 class TestRegexSafety:

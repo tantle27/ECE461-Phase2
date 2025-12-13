@@ -128,7 +128,11 @@ class TestValidateAndConfigureLogging:
         """Test validation with all valid log levels."""
         for level in ["0", "1", "2"]:
             with patch.dict(os.environ, {"LOG_LEVEL": level}, clear=True):
-                with patch("logging.disable"), patch("logging.basicConfig"), patch("logging.getLogger"):
+                with (
+                    patch("logging.disable"),
+                    patch("logging.basicConfig"),
+                    patch("logging.getLogger"),
+                ):
                     # Should not raise or exit
                     validate_and_configure_logging()
 
@@ -217,7 +221,10 @@ class TestValidateAndConfigureLogging:
     def test_log_level_without_file_disables_logging(self):
         """Test LOG_LEVEL>0 without LOG_FILE disables logging."""
         with patch.dict(os.environ, {"LOG_LEVEL": "1"}, clear=True):
-            with patch("logging.disable") as mock_disable, patch("logging.getLogger") as mock_get_logger:
+            with (
+                patch("logging.disable") as mock_disable,
+                patch("logging.getLogger") as mock_get_logger,
+            ):
                 mock_logger = Mock()
                 mock_get_logger.return_value = mock_logger
 
@@ -369,7 +376,11 @@ class TestParseUrlFile:
             tmp_path = tmp_file.name
 
         try:
-            with patch("logging.info"), patch("logging.debug"), patch("logging.warning") as mock_warning:
+            with (
+                patch("logging.info"),
+                patch("logging.debug"),
+                patch("logging.warning") as mock_warning,
+            ):
                 entries = parse_url_file(tmp_path)
 
             assert len(entries) == 0  # No valid entries
@@ -385,7 +396,11 @@ class TestParseUrlFile:
             tmp_path = tmp_file.name
 
         try:
-            with patch("logging.info"), patch("logging.debug"), patch("logging.warning") as mock_warning:
+            with (
+                patch("logging.info"),
+                patch("logging.debug"),
+                patch("logging.warning") as mock_warning,
+            ):
                 parse_url_file(tmp_path)
 
             mock_warning.assert_called()
@@ -439,7 +454,13 @@ class TestCalculateNetScore:
             "dataset_quality": 0.4,  # 0.05 weight
         }
         expected = (
-            (1.0 * 0.30) + (0.5 * 0.20) + (0.0 * 0.15) + (1.0 * 0.10) + (0.8 * 0.15) + (0.6 * 0.05) + (0.4 * 0.05)
+            (1.0 * 0.30)
+            + (0.5 * 0.20)
+            + (0.0 * 0.15)
+            + (1.0 * 0.10)
+            + (0.8 * 0.15)
+            + (0.6 * 0.05)
+            + (0.4 * 0.05)
         )
         score = calculate_net_score(metrics)
         assert abs(score - expected) < 0.001

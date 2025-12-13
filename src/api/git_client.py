@@ -30,7 +30,9 @@ class GitClient:
         self.temp_dirs: list[str] = []
         token = GH_TOKEN or os.environ.get("GH_TOKEN") or None
         self.GH_TOKEN = token.strip() if token else None
-        self.git_bin = os.environ.get("GIT_PYTHON_GIT_EXECUTABLE") or shutil.which("git") or "/usr/bin/git"
+        self.git_bin = (
+            os.environ.get("GIT_PYTHON_GIT_EXECUTABLE") or shutil.which("git") or "/usr/bin/git"
+        )
 
     # ---------- URL helpers ----------
 
@@ -146,7 +148,9 @@ class GitClient:
             try:
                 is_shallow = repo.git.rev_parse("--is-shallow-repository") == "true"
                 if is_shallow:
-                    logging.info("analyze_commits: shallow repo detected, attempting to fetch more commits")
+                    logging.info(
+                        "analyze_commits: shallow repo detected, attempting to fetch more commits"
+                    )
                     since = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
                     repo.git.fetch("--depth=100", f"--shallow-since={since}")
             except Exception as e:
@@ -176,8 +180,15 @@ class GitClient:
 
             concentration = sum((n / total) ** 2 for n in contribs.values())
             bus = max(0.0, min(1.0, 1.0 - concentration))
-            logging.info("analyze_commits: %d commits, %d contributors, bus_factor=%.3f", total, len(contribs), bus)
-            return CommitStats(total, dict(sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)), bus)
+            logging.info(
+                "analyze_commits: %d commits, %d contributors, bus_factor=%.3f",
+                total,
+                len(contribs),
+                bus,
+            )
+            return CommitStats(
+                total, dict(sorted(contribs.items(), key=lambda kv: kv[1], reverse=True)), bus
+            )
         except Exception as e:
             logging.error("commit analysis failed for %s: %s", repo_path, e)
             return CommitStats(0, {}, 0.0)
@@ -195,7 +206,9 @@ class GitClient:
             try:
                 py_files = list(p.rglob("*.py"))
                 if py_files:
-                    mains = [f for f in py_files if "/test" not in str(f) and "/tests/" not in str(f)]
+                    mains = [
+                        f for f in py_files if "/test" not in str(f) and "/tests/" not in str(f)
+                    ]
                     files = (mains[:30] + py_files[:20])[:50]
                     if files:
                         res = subprocess.run(
@@ -226,8 +239,14 @@ class GitClient:
             if not os.path.exists(repo_path):
                 return {"has_examples": False, "has_dependencies": False}
             p = Path(repo_path)
-            has_examples = any(any(p.rglob(f"{pat}*")) for pat in ["examples", "notebooks", "demo.py", "example.py"])
-            has_deps = any((p / f).exists() for f in ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"])
+            has_examples = any(
+                any(p.rglob(f"{pat}*"))
+                for pat in ["examples", "notebooks", "demo.py", "example.py"]
+            )
+            has_deps = any(
+                (p / f).exists()
+                for f in ["requirements.txt", "pyproject.toml", "setup.py", "Pipfile"]
+            )
             return {"has_examples": has_examples, "has_dependencies": has_deps}
         except Exception as e:
             logging.error("ramp-up analysis failed: %s", e)
@@ -307,7 +326,11 @@ class GitClient:
                 stats["total_code_lines"] += total_lines
                 message_lower = (commit.message or "").lower()
                 is_merge = len(commit.parents or []) > 1
-                reviewed = is_merge or "reviewed-by" in message_lower or "merge pull request" in message_lower
+                reviewed = (
+                    is_merge
+                    or "reviewed-by" in message_lower
+                    or "merge pull request" in message_lower
+                )
                 if reviewed:
                     stats["reviewed_code_lines"] += total_lines
                 stats["pull_requests"].append(
@@ -355,8 +378,12 @@ class GitClient:
             has_install = any(token in readme for token in install_indicators)
             has_run = any(token in readme for token in run_indicators)
             repo_path_obj = Path(repo_path)
-            has_examples = any((repo_path_obj / name).exists() for name in ("examples", "notebooks"))
-            has_requirements = any((repo_path_obj / file).exists() for file in ("requirements.txt", "environment.yml"))
+            has_examples = any(
+                (repo_path_obj / name).exists() for name in ("examples", "notebooks")
+            )
+            has_requirements = any(
+                (repo_path_obj / file).exists() for file in ("requirements.txt", "environment.yml")
+            )
 
             if (has_install or has_requirements) and (has_run or has_examples):
                 return 1.0

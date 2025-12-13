@@ -86,7 +86,9 @@ def _build_model_rating(
         "tree_score_latency": "tree_score",
     }
 
-    scores: dict[str, Any] = {key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None}
+    scores: dict[str, Any] = {
+        key: metrics.get(key) for key in metric_keys if metrics.get(key) is not None
+    }
 
     # Add placeholder scores for OpenAPI spec compliance (if not present)
     if "reproducibility" not in scores:
@@ -165,7 +167,9 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
 
     model_link_str = str(model_link).strip() if model_link else ""
     code_link: str | None = str(code_link_raw).strip() if isinstance(code_link_raw, str) else None
-    dataset_link: str | None = str(dataset_link_raw).strip() if isinstance(dataset_link_raw, str) else None
+    dataset_link: str | None = (
+        str(dataset_link_raw).strip() if isinstance(dataset_link_raw, str) else None
+    )
 
     # Coerce blank strings to None
     if code_link == "":
@@ -229,13 +233,17 @@ def _rate_one(artifact) -> ModelRating:
             summary={
                 "category": artifact.metadata.type.upper(),
                 "name": artifact.metadata.name,
-                "model_link": artifact.data.get("model_link") if isinstance(artifact.data, dict) else None,
+                "model_link": (
+                    artifact.data.get("model_link") if isinstance(artifact.data, dict) else None
+                ),
                 "error": str(exc)[:200],  # Include truncated error for debugging
             },
         )
 
 
-def rate_artifacts_concurrently(artifacts: list[Any], max_workers: int | None = None) -> list[ModelRating]:
+def rate_artifacts_concurrently(
+    artifacts: list[Any], max_workers: int | None = None
+) -> list[ModelRating]:
     """Rate multiple artifacts concurrently using ThreadPoolExecutor.
 
     - Uses thread pool to avoid ProcessPool limitations on Lambda.
@@ -308,6 +316,8 @@ def _get_metrics_calculator() -> MetricsCalculator:
     global _METRICS_CALCULATOR
     if _METRICS_CALCULATOR is None:
         gh_token = os.environ.get("GH_TOKEN")
-        logger.info("Initializing MetricsCalculator with GH_TOKEN=%s", "present" if gh_token else "missing")
+        logger.info(
+            "Initializing MetricsCalculator with GH_TOKEN=%s", "present" if gh_token else "missing"
+        )
         _METRICS_CALCULATOR = MetricsCalculator(cast(ProcessPoolExecutor, _THREAD_POOL), gh_token)
     return _METRICS_CALCULATOR

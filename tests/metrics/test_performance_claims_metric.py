@@ -16,10 +16,14 @@ class TestPerformanceClaimsMetric:
         }
 
         # Patch the GenAIClient to use the mock
-        with patch("src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client):
+        with patch(
+            "src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client
+        ):
             metric = PerformanceClaimsMetric()
             # Create test data
-            metric_input = PerformanceInput(readme_text="This is a README with benchmarks and metrics.")
+            metric_input = PerformanceInput(
+                readme_text="This is a README with benchmarks and metrics."
+            )
 
             # Call the calculate method
             result = await metric.calculate(metric_input)
@@ -39,7 +43,9 @@ class TestPerformanceClaimsMetric:
         }
 
         # Patch the GenAIClient to use the mock
-        with patch("src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client):
+        with patch(
+            "src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client
+        ):
             metric = PerformanceClaimsMetric()
             # Create test data
             metric_input = PerformanceInput(readme_text="")
@@ -62,9 +68,13 @@ class TestPerformanceClaimsMetric:
         }
 
         # Patch the GenAIClient to use the mock
-        with patch("src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client):
+        with patch(
+            "src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client
+        ):
             # Create test data
-            metric_input = PerformanceInput(readme_text="This README mentions benchmarks but no metrics.")
+            metric_input = PerformanceInput(
+                readme_text="This README mentions benchmarks but no metrics."
+            )
             metric = PerformanceClaimsMetric()
 
             # Call the calculate method
@@ -72,7 +82,8 @@ class TestPerformanceClaimsMetric:
 
             # Assert the result with boost formula applied
             raw_result = (
-                PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.5 + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.0
+                PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.5
+                + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.0
             )
             expected_result = min(1.0, raw_result * 1.15 + 0.1)
             assert result == expected_result
@@ -84,7 +95,9 @@ class TestPerformanceClaimsMetric:
         mock_gen_ai_client.get_performance_claims.return_value = {}
 
         # Patch the GenAIClient to use the mock
-        with patch("src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client):
+        with patch(
+            "src.metrics.performance_claims_metric.GenAIClient", return_value=mock_gen_ai_client
+        ):
             # Create test data
             metric_input = PerformanceInput(readme_text="Some README text")
             metric = PerformanceClaimsMetric()

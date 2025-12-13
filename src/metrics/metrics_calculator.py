@@ -100,7 +100,11 @@ def is_model_url(url: str) -> bool:
     if not url:
         return False
     parsed = urlparse(url.lower())
-    return "huggingface.co" in parsed.netloc and "/datasets/" not in parsed.path and "/spaces/" not in parsed.path
+    return (
+        "huggingface.co" in parsed.netloc
+        and "/datasets/" not in parsed.path
+        and "/spaces/" not in parsed.path
+    )
 
 
 class MetricsCalculator:
@@ -189,7 +193,9 @@ class MetricsCalculator:
 
         loop = asyncio.get_running_loop()
 
-        repo_path = await loop.run_in_executor(self.thread_pool, self.git_client.clone_repository, url)
+        repo_path = await loop.run_in_executor(
+            self.thread_pool, self.git_client.clone_repository, url
+        )
 
         if not repo_path:
             logger.error(f"Failed to clone repository: {url}")
@@ -205,11 +211,15 @@ class MetricsCalculator:
                     repo_id = extract_hf_repo_id(url)
                 except ValueError as e:
                     logger.error(str(e))
-            bus_factor_task = self._run_cpu_bound(self.bus_factor_metric.calculate, BusFactorInput(repo_url=repo_path))
+            bus_factor_task = self._run_cpu_bound(
+                self.bus_factor_metric.calculate, BusFactorInput(repo_url=repo_path)
+            )
             code_quality_task = self._run_cpu_bound(
                 self.code_quality_metric.calculate, CodeQualityInput(repo_url=repo_path)
             )
-            license_task = self._run_cpu_bound(self.license_metric.calculate, LicenseInput(repo_url=repo_path))
+            license_task = self._run_cpu_bound(
+                self.license_metric.calculate, LicenseInput(repo_url=repo_path)
+            )
             readme_text = self.git_client.read_readme(repo_path) or ""
             ramp_up_task = self._run_cpu_bound(
                 self.ramp_up_time_metric.calculate,
@@ -217,15 +227,25 @@ class MetricsCalculator:
             )
             dataset_quality_task = self._run_cpu_bound(
                 self.dataset_quality_metric.calculate,
-                (DatasetQualityInput(repo_id=repo_id) if repo_id else DatasetQualityInput(repo_id="")),
+                (
+                    DatasetQualityInput(repo_id=repo_id)
+                    if repo_id
+                    else DatasetQualityInput(repo_id="")
+                ),
             )
             performance_claims_task = self._run_cpu_bound(
                 self.performance_claims_metric.calculate, PerformanceInput(readme_text=readme_text)
             )
-            size_task = self._run_cpu_bound(self.size_metric.calculate, SizeInput(repo_url=repo_path))
+            size_task = self._run_cpu_bound(
+                self.size_metric.calculate, SizeInput(repo_url=repo_path)
+            )
 
-            reproducibility_task = self._run_cpu_bound(self.git_client.estimate_reproducibility, repo_path)
-            reviewedness_task = self._run_cpu_bound(self.git_client.estimate_reviewedness, repo_path, url)
+            reproducibility_task = self._run_cpu_bound(
+                self.git_client.estimate_reproducibility, repo_path
+            )
+            reviewedness_task = self._run_cpu_bound(
+                self.git_client.estimate_reviewedness, repo_path, url
+            )
             dataset_code_task = self._run_cpu_bound(
                 self.dataset_code_metric.calculate, DatasetCodeInput(repo_url=repo_path)
             )
@@ -350,7 +370,9 @@ class MetricsCalculator:
 
         # Analyze the primary repository
         repo_metrics = (
-            await self.analyze_repository(primary_repo_url) if primary_repo_url else self._get_default_metrics()
+            await self.analyze_repository(primary_repo_url)
+            if primary_repo_url
+            else self._get_default_metrics()
         )
 
         # Add dataset quality analysis if we have a dataset
@@ -363,14 +385,18 @@ class MetricsCalculator:
         if dataset_code is not None:
             dataset_and_code_score = dataset_code
         else:
-            dataset_and_code_score = self._calculate_dataset_and_code_score(code_link, dataset_link, repo_metrics)
+            dataset_and_code_score = self._calculate_dataset_and_code_score(
+                code_link, dataset_link, repo_metrics
+            )
             logger.info(
                 "SCORE_FIX: dataset_code_score missing; using heuristic for code=%s dataset=%s",
                 code_link,
                 dataset_link,
             )
         repo_metrics["dataset_and_code_score"] = dataset_and_code_score
-        repo_metrics["dataset_and_code_score_latency"] = repo_metrics.get("dataset_code_score_latency", 0)
+        repo_metrics["dataset_and_code_score_latency"] = repo_metrics.get(
+            "dataset_code_score_latency", 0
+        )
 
         tree_score = repo_metrics.get("tree_score")
         if tree_score is None:

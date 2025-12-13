@@ -92,17 +92,17 @@ class TestS3StorageInitialization:
 
     def test_s3storage_init_enabled_no_client(self):
         """Test S3Storage initialization when enabled but no client."""
-        with patch("app.s3_adapter.USE_S3", True), patch("app.s3_adapter.S3_BUCKET", "test-bucket"), patch(
-            "app.s3_adapter.s3_client", None
-        ):
+        with patch("app.s3_adapter.USE_S3", True), patch(
+            "app.s3_adapter.S3_BUCKET", "test-bucket"
+        ), patch("app.s3_adapter.s3_client", None):
             storage = S3Storage()
             assert storage.enabled is False
 
     def test_s3storage_init_fully_enabled(self):
         """Test S3Storage initialization when fully enabled."""
-        with patch("app.s3_adapter.USE_S3", True), patch("app.s3_adapter.S3_BUCKET", "test-bucket"), patch(
-            "app.s3_adapter.s3_client", Mock()
-        ):
+        with patch("app.s3_adapter.USE_S3", True), patch(
+            "app.s3_adapter.S3_BUCKET", "test-bucket"
+        ), patch("app.s3_adapter.s3_client", Mock()):
             storage = S3Storage()
             assert storage.enabled is True
             assert storage.bucket == "test-bucket"
@@ -199,7 +199,10 @@ class TestS3StorageFileOperations:
 
         call_args = mock_client.put_object.call_args[1]
         assert call_args["ServerSideEncryption"] == "aws:kms"
-        assert call_args["SSEKMSKeyId"] == "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+        assert (
+            call_args["SSEKMSKeyId"]
+            == "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+        )
         assert call_args["ACL"] == "bucket-owner-full-control"
 
     @patch("app.s3_adapter.s3_client")
@@ -361,7 +364,9 @@ class TestS3StorageFileOperations:
 
         self.storage.delete_object("test.txt")
 
-        mock_client.delete_object.assert_called_once_with(Bucket="test-bucket", Key="uploads/test.txt")
+        mock_client.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="uploads/test.txt"
+        )
 
     @patch("app.s3_adapter.s3_client")
     @patch("app.s3_adapter.S3_BUCKET", "test-bucket")
