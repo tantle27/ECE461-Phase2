@@ -72,7 +72,12 @@ class S3Storage:
             return f"{self.prefix}/{key}" if key else self.prefix
         return key
 
-    def put_file(self, fileobj: BinaryIO, key_rel: str, content_type: str | None = None,) -> dict[str, Any]:
+    def put_file(
+        self,
+        fileobj: BinaryIO,
+        key_rel: str,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
             logger.error("S3Storage.put_file failed precondition.")
             raise RuntimeError("S3Storage not enabled")
@@ -91,7 +96,9 @@ class S3Storage:
         if content_type:
             # Basic validation for content_type to avoid control characters
             ct = str(content_type).strip()
-            if len(ct) > 255 or not re.match(r"^[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+/[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+$", ct):
+            if len(ct) > 255 or not re.match(
+                r"^[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+/[A-Za-z0-9!#$%&'()*+,\-./:;=+\w]+$", ct
+            ):
                 logger.warning("S3Storage.put_file: rejecting malformed content_type: %s", content_type)
                 raise ValueError("Malformed content_type")
             params["ContentType"] = ct
@@ -157,7 +164,11 @@ class S3Storage:
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": safe_key}
         if version_id:
             params["VersionId"] = version_id
-        return s3_client.generate_presigned_url(ClientMethod="get_object", Params=params, ExpiresIn=expires_in,)
+        return s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params=params,
+            ExpiresIn=expires_in,
+        )
 
     def delete_object(self, key: str, version_id: str | None = None) -> None:
         if not self.enabled or not s3_client or not self.bucket:

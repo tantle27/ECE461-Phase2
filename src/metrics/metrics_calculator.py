@@ -11,12 +11,13 @@ from src.api.git_client import GitClient
 from src.api.hugging_face_client import HuggingFaceClient
 from src.metrics.bus_factor_metric import BusFactorInput, BusFactorMetric
 from src.metrics.code_quality_metric import CodeQualityInput, CodeQualityMetric
+from src.metrics.dataset_code_metric import DatasetCodeInput, DatasetCodeMetric
 from src.metrics.dataset_quality_metric import DatasetQualityInput, DatasetQualityMetric
-from src.metrics.dataset_code_metric import DatasetCodeMetric, DatasetCodeInput
 from src.metrics.license_metric import LicenseInput, LicenseMetric
 from src.metrics.performance_claims_metric import PerformanceClaimsMetric, PerformanceInput
 from src.metrics.ramp_up_time_metric import RampUpTimeInput, RampUpTimeMetric
 from src.metrics.size_metric import SizeInput, SizeMetric
+
 logger = logging.getLogger(__name__)
 
 
@@ -211,7 +212,8 @@ class MetricsCalculator:
             license_task = self._run_cpu_bound(self.license_metric.calculate, LicenseInput(repo_url=repo_path))
             readme_text = self.git_client.read_readme(repo_path) or ""
             ramp_up_task = self._run_cpu_bound(
-                self.ramp_up_time_metric.calculate, RampUpTimeInput(repo_path=repo_path, readme_text=readme_text),
+                self.ramp_up_time_metric.calculate,
+                RampUpTimeInput(repo_path=repo_path, readme_text=readme_text),
             )
             dataset_quality_task = self._run_cpu_bound(
                 self.dataset_quality_metric.calculate,
@@ -223,9 +225,7 @@ class MetricsCalculator:
             size_task = self._run_cpu_bound(self.size_metric.calculate, SizeInput(repo_url=repo_path))
 
             reproducibility_task = self._run_cpu_bound(self.git_client.estimate_reproducibility, repo_path)
-            reviewedness_task = self._run_cpu_bound(
-                self.git_client.estimate_reviewedness, repo_path, url
-            )
+            reviewedness_task = self._run_cpu_bound(self.git_client.estimate_reviewedness, repo_path, url)
             dataset_code_task = self._run_cpu_bound(
                 self.dataset_code_metric.calculate, DatasetCodeInput(repo_url=repo_path)
             )
@@ -283,9 +283,11 @@ class MetricsCalculator:
                     "bus_factor": round(bus_factor_score, 3),
                     "code_quality": round(code_quality_score, 3),
                     "license": round(license_score, 3),
-                    "dataset_quality": round(dataset_quality_score, 3)
-                    if isinstance(dataset_quality_score, (int, float))
-                    else dataset_quality_score,
+                    "dataset_quality": (
+                        round(dataset_quality_score, 3)
+                        if isinstance(dataset_quality_score, (int, float))
+                        else dataset_quality_score
+                    ),
                     "dataset_code_score": dataset_code_score,
                     "reviewedness": reviewedness_score,
                     "reproducibility": reproducibility_score,
@@ -296,7 +298,11 @@ class MetricsCalculator:
             self.git_client.cleanup()
 
     async def analyze_entry(
-        self, code_link: str | None, dataset_link: str | None, model_link: str, encountered_datasets: set,
+        self,
+        code_link: str | None,
+        dataset_link: str | None,
+        model_link: str,
+        encountered_datasets: set,
     ) -> dict[str, Any]:
         """
         Analyzes a complete entry with code, dataset, and model links.

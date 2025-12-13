@@ -173,7 +173,7 @@ class TestValidateAndConfigureLogging:
                     patch("logging.getLogger") as mock_get_logger,
                     patch("logging.info"),
                     patch("logging.debug"),
-                    patch("sys.exit")
+                    patch("sys.exit"),
                 ):
                     mock_logger = Mock()
                     mock_get_logger.return_value = mock_logger
@@ -199,7 +199,7 @@ class TestValidateAndConfigureLogging:
                     patch("logging.getLogger") as mock_get_logger,
                     patch("logging.info") as mock_info,
                     patch("logging.debug") as mock_debug,
-                    patch("sys.exit")
+                    patch("sys.exit"),
                 ):
                     mock_logger = Mock()
                     mock_get_logger.return_value = mock_logger

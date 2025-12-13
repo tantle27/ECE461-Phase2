@@ -1,13 +1,6 @@
 """Simple working tests for core.py functions to improve coverage."""
 
-from app.core import (
-    _is_dangerous_regex,
-    _safe_int,
-    _parse_bearer,
-    reset_storage,
-    _STORE,
-    _AUDIT_LOG
-)
+from app.core import _AUDIT_LOG, _STORE, _is_dangerous_regex, _parse_bearer, _safe_int, reset_storage
 
 
 class TestRegexSafety:
@@ -71,10 +64,10 @@ class TestStorageOperations:
         _STORE["test"] = "data"
         # _AUDIT_LOG is a dict, not a list, so add a key
         _AUDIT_LOG["test_key"] = ["test entry"]
-        
+
         # Reset storage
         reset_storage()
-        
+
         # Verify storage is empty
         assert len(_STORE) == 0
         assert len(_AUDIT_LOG) == 0
@@ -84,12 +77,12 @@ class TestStorageOperations:
         # Just verify we can read the storage variables
         assert isinstance(_STORE, dict)
         assert isinstance(_AUDIT_LOG, dict)
-        
+
         # Test adding and removing data
         _STORE["temp"] = "value"
         assert "temp" in _STORE
         assert _STORE["temp"] == "value"
-        
+
         # Clean up
         del _STORE["temp"]
         assert "temp" not in _STORE

@@ -12,6 +12,7 @@ The script will attempt to install missing tools in the active environment
 using pip. It won't modify files if those tools are not available or
 installation fails; it will still write the flake8 output.
 """
+
 from __future__ import annotations
 
 import os

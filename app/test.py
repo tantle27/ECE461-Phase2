@@ -14,7 +14,7 @@ print(f"[blue]Authenticating at {BASE_URL}/authenticate[/blue]")
 
 auth_payload = {
     "username": "ece30861defaultadminuser",
-    "password": '''correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;''',
+    "password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;""",
     "role": "admin",
 }
 

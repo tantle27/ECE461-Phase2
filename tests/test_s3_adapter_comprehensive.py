@@ -179,7 +179,8 @@ class TestS3StorageFileOperations:
     @patch("app.s3_adapter.S3_BUCKET", "test-bucket")
     @patch("app.s3_adapter.S3_SSE", "aws:kms")
     @patch(
-        "app.s3_adapter.S3_KMS_KEY_ID", "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+        "app.s3_adapter.S3_KMS_KEY_ID",
+        "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
     )
     @patch("app.s3_adapter.S3_ACL", "bucket-owner-full-control")
     def test_put_file_with_encryption_and_acl(self, mock_client):
@@ -360,9 +361,7 @@ class TestS3StorageFileOperations:
 
         self.storage.delete_object("test.txt")
 
-        mock_client.delete_object.assert_called_once_with(
-            Bucket="test-bucket", Key="uploads/test.txt"
-        )
+        mock_client.delete_object.assert_called_once_with(Bucket="test-bucket", Key="uploads/test.txt")
 
     @patch("app.s3_adapter.s3_client")
     @patch("app.s3_adapter.S3_BUCKET", "test-bucket")

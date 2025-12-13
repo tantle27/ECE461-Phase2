@@ -2,6 +2,7 @@
 Comprehensive tests for src/api/gen_ai_client.py to achieve better coverage.
 Tests AI client initialization, prompt processing, API interactions, and error handling.
 """
+
 import asyncio
 import os
 import ssl
@@ -148,7 +149,8 @@ class TestGenAIClientChatMethod:
                     AsyncMock(status=500, text=AsyncMock(return_value="Server error")),
                     AsyncMock(status=500, text=AsyncMock(return_value="Server error")),
                     AsyncMock(
-                        status=200, json=AsyncMock(return_value={"choices": [{"message": {"content": "Success"}}]}),
+                        status=200,
+                        json=AsyncMock(return_value={"choices": [{"message": {"content": "Success"}}]}),
                     ),
                 ]
 

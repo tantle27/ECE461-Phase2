@@ -111,7 +111,10 @@ class TestBedrockClientSyncMethods(unittest.TestCase):
 
         self.assertEqual(result, '{"result": "test response"}')
         mock_client.invoke_model.assert_called_once_with(
-            modelId="test-model", contentType="application/json", accept="application/json", body=b'{"input": "test"}',
+            modelId="test-model",
+            contentType="application/json",
+            accept="application/json",
+            body=b'{"input": "test"}',
         )
 
     @patch("boto3.client")

@@ -2,6 +2,7 @@
 High-impact tests to achieve 80%+ coverage by targeting major uncovered files.
 Focuses on app/core.py, app/adapter.py, and other high-impact areas.
 """
+
 import json
 import logging
 import os
@@ -493,7 +494,7 @@ class TestBasicDataStructures:
         """Test numeric operations."""
         assert 1 + 1 == 2
         assert 10 / 2 == 5.0
-        assert 2 ** 3 == 8
+        assert 2**3 == 8
         assert abs(-5) == 5
         assert max(1, 2, 3) == 3
         assert min(1, 2, 3) == 1

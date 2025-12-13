@@ -383,7 +383,12 @@ class TestAPIEndpoints:
         return {
             "status": "healthy",
             "timestamp": "2025-10-20T12:00:00Z",
-            "services": {"database": "healthy", "s3": "healthy", "auth": "healthy", "metrics": "healthy",},
+            "services": {
+                "database": "healthy",
+                "s3": "healthy",
+                "auth": "healthy",
+                "metrics": "healthy",
+            },
         }
 
     def test_model_search_endpoint(self):

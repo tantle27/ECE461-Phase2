@@ -71,7 +71,11 @@ class GitClient:
             from git import Repo  # type: ignore
 
             Repo.clone_from(
-                clone_url, dst, depth=1, single_branch=True, env={"GIT_TERMINAL_PROMPT": "0"},
+                clone_url,
+                dst,
+                depth=1,
+                single_branch=True,
+                env={"GIT_TERMINAL_PROMPT": "0"},
             )
             return True
         except Exception as e:
@@ -135,9 +139,9 @@ class GitClient:
             if not os.path.exists(repo_path):
                 logging.warning("analyze_commits: repo_path does not exist: %s", repo_path)
                 return CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
-            
+
             repo = Repo(repo_path)
-            
+
             # Try to fetch more commits if this is a shallow clone
             try:
                 is_shallow = repo.git.rev_parse("--is-shallow-repository") == "true"
@@ -151,12 +155,12 @@ class GitClient:
             # First try: commits from last 365 days
             since_date = datetime.now() - timedelta(days=365)
             commits = list(repo.iter_commits(since=since_date, max_count=100))
-            
+
             # If no commits found, try without date filter (shallow repos may not have date info)
             if len(commits) == 0:
                 logging.info("analyze_commits: no commits with date filter, trying without filter")
                 commits = list(repo.iter_commits(max_count=100))
-            
+
             logging.info("analyze_commits: found %d commits in %s", len(commits), repo_path)
 
             contribs: dict[str, int] = {}
@@ -245,7 +249,7 @@ class GitClient:
                     continue
                 if fp.is_file():
                     total += fp.stat().st_size
-            size_gb = total / (1024 ** 3)
+            size_gb = total / (1024**3)
             return {
                 "raspberry_pi": 1.0 if size_gb < 1.0 else 0.0,
                 "jetson_nano": 1.0 if size_gb < 4.0 else 0.0,

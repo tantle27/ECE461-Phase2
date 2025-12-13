@@ -19,10 +19,10 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, BinaryIO, cast
 
-import yaml
-from flask import Blueprint, Response, jsonify, request, send_file, redirect
-from werkzeug.utils import secure_filename
 import requests
+import yaml
+from flask import Blueprint, Response, jsonify, request, send_file
+from werkzeug.utils import secure_filename
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage
@@ -396,7 +396,9 @@ def _ensure_metadata_aliases(meta: ArtifactMetadata) -> dict[str, Any]:
 
 
 def _ensure_data_aliases(
-    artifact_type: str, data: Mapping[str, Any] | None, preferred_url: str | None = None,
+    artifact_type: str,
+    data: Mapping[str, Any] | None,
+    preferred_url: str | None = None,
 ) -> dict[str, Any]:
     """Provide consistent url/download/model_link aliases for stored artifact data."""
     normalized: dict[str, Any] = {}
@@ -429,7 +431,9 @@ def _ensure_data_aliases(
 
 
 def _normalize_artifact_request(
-    artifact_type: str, payload: Mapping[str, Any] | None, enforced_id: str | None = None,
+    artifact_type: str,
+    payload: Mapping[str, Any] | None,
+    enforced_id: str | None = None,
 ) -> tuple[ArtifactMetadata, dict[str, Any]]:
     """Normalize arbitrary artifact payloads into canonical metadata/data."""
     metadata_sections, data_sections = _payload_sections(payload)
@@ -460,7 +464,12 @@ def _normalize_artifact_request(
 
     normalized_data = _ensure_data_aliases(artifact_type, merged_data, url)
 
-    metadata = ArtifactMetadata(id=artifact_id, name=name, type=artifact_type, version=version,)
+    metadata = ArtifactMetadata(
+        id=artifact_id,
+        name=name,
+        type=artifact_type,
+        version=version,
+    )
     return metadata, normalized_data
 
 
@@ -472,7 +481,7 @@ def _normalize_artifact_request(
 def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
     metadata_block = _ensure_metadata_aliases(artifact.metadata)
     data_block = _ensure_data_aliases(artifact.metadata.type, artifact.data)
-    
+
     # Generate S3 pre-signed download URL if artifact is stored in S3
     try:
         if isinstance(data_block, dict):
@@ -480,11 +489,7 @@ def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
             s3_version_id = data_block.get("s3_version_id")
             if s3_key and _S3.enabled:
                 # Generate pre-signed URL valid for 1 hour
-                presigned_url = _S3.generate_presigned_url(
-                    key=s3_key,
-                    expires_in=3600,
-                    version_id=s3_version_id
-                )
+                presigned_url = _S3.generate_presigned_url(key=s3_key, expires_in=3600, version_id=s3_version_id)
                 data_block["download_url"] = presigned_url
                 data_block["downloadUrl"] = presigned_url
                 data_block["DownloadURL"] = presigned_url
@@ -496,7 +501,7 @@ def artifact_to_dict(artifact: Artifact) -> dict[str, Any]:
                 data_block["DownloadURL"] = internal_dl
     except Exception as e:
         logger.warning("Failed to generate download_url for %s: %s", artifact.metadata.id, e)
-    
+
     artifact.data = data_block  # keep in-memory copy normalized for future lookups
     return {
         "id": artifact.metadata.id,
@@ -517,7 +522,9 @@ def save_artifact(artifact: Artifact) -> Artifact:
     artifact_dict = artifact_to_dict(artifact)
     try:
         _ARTIFACT_STORE.save(
-            artifact.metadata.type, artifact.metadata.id, artifact_dict,
+            artifact.metadata.type,
+            artifact.metadata.id,
+            artifact_dict,
         )
     except Exception:
         logger.exception("Failed to persist artifact via adapter; keeping in memory only")
@@ -770,7 +777,9 @@ def _require_auth(admin: bool = False) -> tuple[str, bool]:
     if admin and not is_admin:
         # spec: 401 when you do not have permission to reset
         security_alert(
-            "auth_failed", reason="admin_required", token=(token[:8] + "...") if token else "",
+            "auth_failed",
+            reason="admin_required",
+            token=(token[:8] + "...") if token else "",
         )
         response = jsonify({"message": "You do not have permission to reset the registry."})
         response.status_code = HTTPStatus.UNAUTHORIZED
@@ -862,7 +871,12 @@ def _safe_eval_with_timeout(fn: Callable[[], Any], timeout_ms: int) -> tuple[boo
 
 
 def _safe_name_match(
-    pattern: re.Pattern[str], candidate: str, *, exact_match: bool, raw_pattern: str, context: str,
+    pattern: re.Pattern[str],
+    candidate: str,
+    *,
+    exact_match: bool,
+    raw_pattern: str,
+    context: str,
 ) -> bool:
     """Match helper with timeout + descriptive errors."""
     if not candidate:
@@ -871,13 +885,22 @@ def _safe_name_match(
     ok, matched = _safe_eval_with_timeout(lambda: matcher(candidate) is not None, timeout_ms=500)
     if not ok:
         logger.warning(
-            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s", raw_pattern, candidate[:120], context,
+            "REGEX_TIMEOUT: pattern='%s' candidate='%s' context=%s",
+            raw_pattern,
+            candidate[:120],
+            context,
         )
         raise_error(HTTPStatus.BAD_REQUEST, "Regex pattern too complex and may cause excessive backtracking.")
     return bool(matched)
 
 
-def _safe_text_search(pattern: re.Pattern[str], text: str, *, raw_pattern: str, context: str,) -> bool:
+def _safe_text_search(
+    pattern: re.Pattern[str],
+    text: str,
+    *,
+    raw_pattern: str,
+    context: str,
+) -> bool:
     if not text:
         return False
     segments = _regex_segments(text)
@@ -1043,7 +1066,7 @@ def _classify_url(url: str, context: str) -> str | None:
     """Classify a URL as 'code' or 'dataset' based on URL and context."""
     low = url.lower()
     ctx = context.lower()
-    
+
     # Check for dataset URLs
     if any(hint in low for hint in _DATA_URL_HINTS):
         return "dataset"
@@ -1062,19 +1085,19 @@ def _infer_related_links(artifact: Artifact) -> None:
     """Extract and infer code_link and dataset_link from README-like fields."""
     if not isinstance(artifact.data, dict):
         return
-    
+
     code_link = _coerce_text(artifact.data.get("code_link"))
     dataset_link = _coerce_text(artifact.data.get("dataset_link"))
     if code_link and dataset_link:
         return  # Already have both
-    
+
     # Collect text sources
     texts: list[str] = []
     for key in ("readme", "README", "description", "summary", "card_data"):
         content = _coerce_text(artifact.data.get(key))
         if content:
             texts.append(content)
-    
+
     # Check HuggingFace data
     hf_blob = artifact.data.get("hf_data")
     if isinstance(hf_blob, str):
@@ -1084,7 +1107,7 @@ def _infer_related_links(artifact: Artifact) -> None:
             texts.append(json.dumps(hf_blob))
         except Exception:
             pass
-    
+
     # Also check model_link itself - and infer code/dataset directly for HF URLs
     model_url = _coerce_text(artifact.data.get("model_link") or artifact.data.get("url"))
     if model_url:
@@ -1096,13 +1119,13 @@ def _infer_related_links(artifact: Artifact) -> None:
             elif "/spaces/" not in lower and not code_link:
                 # Treat regular HF model pages as code sources for metrics
                 code_link = model_url
-    
+
     # Extract and classify URLs
     candidates: list[tuple[str, str]] = []
     for text in texts:
         for url in _extract_urls(text):
             candidates.append((url, text))
-    
+
     for url, ctx in candidates:
         classification = _classify_url(url, ctx)
         if not code_link and classification == "code":
@@ -1111,7 +1134,7 @@ def _infer_related_links(artifact: Artifact) -> None:
             dataset_link = url
         if code_link and dataset_link:
             break
-    
+
     # Update artifact if we found links
     updated: list[str] = []
     if code_link and not artifact.data.get("code_link"):
@@ -1120,7 +1143,7 @@ def _infer_related_links(artifact: Artifact) -> None:
     if dataset_link and not artifact.data.get("dataset_link"):
         artifact.data["dataset_link"] = dataset_link
         updated.append("dataset_link")
-    
+
     if updated:
         logger.info("Inferred links for %s: %s", artifact.metadata.id, updated)
         # Optionally defer persistence during high-concurrency rating to reduce contention
@@ -1136,7 +1159,7 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
     """Add reproducibility, reviewedness, and tree_score if missing."""
     scores = rating.scores
     latencies = rating.latencies
-    
+
     # Clamp any known scalar scores into [0.0, 1.0]
     for key in (
         "bus_factor",
@@ -1172,7 +1195,7 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
         else:
             scores["reproducibility"] = 0.0
         latencies.setdefault("reproducibility", 0)
-    
+
     # Reviewedness
     data = artifact.data if isinstance(artifact.data, dict) else {}
     code_link = _coerce_text(data.get("code_link") or data.get("url") or "")
@@ -1190,12 +1213,12 @@ def _ensure_phase_two_metrics(artifact: Artifact, rating: ModelRating) -> ModelR
                 scores["reviewedness"] = 0.5 if (code_link and "github.com" in code_link.lower()) else 0.0
         except Exception:
             pass
-    
+
     # Tree score (simplified - no parent lookup for speed)
     if "tree_score" not in scores:
         scores["tree_score"] = 0.0
         latencies.setdefault("tree_score", 0)
-    
+
     return rating
 
 
@@ -1285,7 +1308,9 @@ def authenticate_route() -> tuple[Response, int] | Response:
     password = str(secret.get("password", "")).strip()
 
     logger.warning(
-        "AUTH: Received authentication request for username=%s, has_password=%s", username, bool(password),
+        "AUTH: Received authentication request for username=%s, has_password=%s",
+        username,
+        bool(password),
     )
 
     # Spec: if system supports auth, validate; else 501.
@@ -1301,7 +1326,10 @@ def authenticate_route() -> tuple[Response, int] | Response:
     tok = _mint_token(username, is_admin)
     _TOKENS[tok] = is_admin
     logger.warning(
-        "AUTH: Created token for user %s, is_admin=%s, token_count=%d", username, is_admin, len(_TOKENS),
+        "AUTH: Created token for user %s, is_admin=%s, token_count=%d",
+        username,
+        is_admin,
+        len(_TOKENS),
     )
 
     try:
@@ -1375,12 +1403,14 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
             resp = requests.get(src_url, timeout=20)
             resp.raise_for_status()
             html_bytes = resp.content
-            meta_json = json.dumps({
-                "source_url": src_url,
-                "ingested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "type": artifact_type,
-                "name": metadata.name,
-            }).encode("utf-8")
+            meta_json = json.dumps(
+                {
+                    "source_url": src_url,
+                    "ingested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "type": artifact_type,
+                    "name": metadata.name,
+                }
+            ).encode("utf-8")
 
             # Build zip bundle in memory
             buf = io.BytesIO()
@@ -1584,7 +1614,10 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
 
     art = Artifact(
         metadata=ArtifactMetadata(
-            id=artifact_id, name=str(md["name"]), type=artifact_type, version=str(md.get("version", "1.0.0")),
+            id=artifact_id,
+            name=str(md["name"]),
+            type=artifact_type,
+            version=str(md.get("version", "1.0.0")),
         ),
         data={"url": dt["url"].strip()} | {k: v for k, v in dt.items() if k != "url"},
     )
@@ -1632,7 +1665,11 @@ def upload_list_route() -> tuple[Response, int] | Response:
     for p in sorted(_UPLOAD_DIR.glob("**/*")):
         if p.is_file():
             files.append(
-                {"name": p.name, "path": str(p.relative_to(_UPLOAD_DIR.parent)), "size": p.stat().st_size,}
+                {
+                    "name": p.name,
+                    "path": str(p.relative_to(_UPLOAD_DIR.parent)),
+                    "size": p.stat().st_size,
+                }
             )
     return jsonify({"uploads": files}), 200
 
@@ -1702,7 +1739,13 @@ def upload_create_route() -> tuple[Response, int] | Response:
             "size": dest.stat().st_size,
         }
     art = Artifact(
-        metadata=ArtifactMetadata(id=artifact_id, name=artifact_name, type=artifact_type, version="1.0.0",), data=data,
+        metadata=ArtifactMetadata(
+            id=artifact_id,
+            name=artifact_name,
+            type=artifact_type,
+            version="1.0.0",
+        ),
+        data=data,
     )
     save_artifact(art)
     _audit_add(artifact_type, artifact_id, "CREATE", artifact_name)
@@ -1716,32 +1759,38 @@ def upload_create_route() -> tuple[Response, int] | Response:
 @_record_timing
 def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     _require_auth()
-    
+
     # Check memory cache first
     if artifact_id in _RATINGS_CACHE:
         rating = _RATINGS_CACHE[artifact_id]
         return jsonify(_to_openapi_model_rating(rating)), 200
-    
+
     artifact = fetch_artifact("model", artifact_id)
     if artifact is None:
         return jsonify({"message": "Artifact does not exist."}), 404
-    
+
     # Check if we have fresh cached metrics in artifact data
     cached_rating = _rating_from_artifact_data(artifact)
     if cached_rating:
         _RATINGS_CACHE[artifact_id] = cached_rating
         return jsonify(_to_openapi_model_rating(cached_rating)), 200
-    
+
     # Only infer links if we need to compute new rating (not cached)
     _infer_related_links(artifact)
-    
+
     try:
         # Ensure a usable model_link exists for scoring
         if isinstance(artifact.data, dict):
             logger.info(
                 "RATE: Checking links for id=%s keys=%s",
                 artifact_id,
-                sorted([k for k in artifact.data.keys() if "link" in k.lower() or "url" in k.lower() or k in ("s3_key", "path")])
+                sorted(
+                    [
+                        k
+                        for k in artifact.data.keys()
+                        if "link" in k.lower() or "url" in k.lower() or k in ("s3_key", "path")
+                    ]
+                ),
             )
             # Prefer existing model_link/model_url; else try other fields
             link_fields = ["model_link", "model_url", "model", "url", "download_url", "s3_key", "path"]
@@ -1753,20 +1802,27 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
                     selected = v.strip()
                     selected_field = fld
                     break
-            
+
             # Normalize into model_link
             if selected:
                 # If s3 or path provided, build URI
                 if artifact.data.get("s3_key") and artifact.data.get("s3_bucket"):
                     selected = f"s3://{artifact.data['s3_bucket']}/{artifact.data['s3_key']}"
                     logger.info("RATE: Using S3 URI for %s: %s", artifact_id, selected)
-                elif artifact.data.get("path") and not (selected.startswith("file://") or selected.startswith("http://") or selected.startswith("https://")):
+                elif artifact.data.get("path") and not (
+                    selected.startswith("file://") or selected.startswith("http://") or selected.startswith("https://")
+                ):
                     abs_path = (_UPLOAD_DIR.parent / artifact.data["path"]).resolve()
                     selected = f"file://{abs_path}"
                     logger.info("RATE: Using file URI for %s: %s", artifact_id, selected)
                 else:
-                    logger.info("RATE: Using existing link for %s from field '%s': %s", artifact_id, selected_field, selected[:100])
-                
+                    logger.info(
+                        "RATE: Using existing link for %s from field '%s': %s",
+                        artifact_id,
+                        selected_field,
+                        selected[:100],
+                    )
+
                 # Always set model_link for consistency
                 artifact.data["model_link"] = selected
                 # Only persist if not under heavy load (optional optimization)
@@ -1782,14 +1838,14 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             artifact_id,
             artifact.metadata.name,
         )
-        
+
         # Score the artifact (MetricsCalculator has its own internal timeouts)
         # Remove signal-based timeout as it's not thread-safe under concurrent requests
         rating = _score_artifact_with_metrics(artifact)
-        
+
         # Ensure phase 2 metrics (reproducibility, reviewedness, tree_score)
         rating = _ensure_phase_two_metrics(artifact, rating)
-        
+
         logger.info(
             "RATE: Completed id=%s net=%.3f",
             artifact_id,
@@ -1862,12 +1918,10 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
                         "path",
                     ]
                     selected: str | None = None
-                    selected_field: str | None = None
                     for fld in link_fields:
                         v = art.data.get(fld)
                         if isinstance(v, str) and v.strip():
                             selected = v.strip()
-                            selected_field = fld
                             break
                     if selected:
                         # Build S3 or file URI when applicable
@@ -1906,7 +1960,7 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
 
         # Persist each rating back to artifact and cache
         openapi_ratings: list[dict[str, Any]] = []
-        
+
         # Handle length mismatch if some ratings failed
         if len(ratings) != len(artifacts):
             logger.warning(
@@ -1914,8 +1968,8 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
                 len(artifacts),
                 len(ratings),
             )
-        
-        for art, rating in zip(artifacts, ratings):
+
+        for art, rating in zip(artifacts, ratings, strict=False):
             # Ensure phase 2 fields
             rating = _ensure_phase_two_metrics(art, rating)
             _RATINGS_CACHE[art.metadata.id] = rating
@@ -1980,7 +2034,11 @@ def _rating_from_artifact_data(artifact: Artifact) -> ModelRating | None:
     }
     generated_at = last_rated_at or datetime.now(timezone.utc)
     return ModelRating(
-        id=artifact.metadata.id, generated_at=generated_at, scores=scores, latencies=cleaned_latencies, summary=summary,
+        id=artifact.metadata.id,
+        generated_at=generated_at,
+        scores=scores,
+        latencies=cleaned_latencies,
+        summary=summary,
     )
 
 
@@ -2067,7 +2125,6 @@ def _to_openapi_model_rating(rating: ModelRating) -> dict[str, Any]:
 # -------------------- Download (kept) & size cost --------------------
 
 
-
 @blueprint.route("/artifacts/<string:artifact_type>/<string:artifact_id>/download", methods=["GET"])
 @_record_timing
 def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Response, int] | Response:
@@ -2109,7 +2166,10 @@ def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respo
                                 zout.writestr(info, zin.read(info))
                     buf.seek(0)
                 resp = send_file(
-                    buf, as_attachment=True, download_name=f"{artifact_id}-{part}.zip", mimetype="application/zip",
+                    buf,
+                    as_attachment=True,
+                    download_name=f"{artifact_id}-{part}.zip",
+                    mimetype="application/zip",
                 )
                 resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
                 _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
@@ -2128,7 +2188,11 @@ def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respo
     size_bytes = zpath.stat().st_size
     if part == "all":
         resp = send_file(
-            str(zpath), as_attachment=True, download_name=zpath.name, etag=True, mimetype="application/zip",
+            str(zpath),
+            as_attachment=True,
+            download_name=zpath.name,
+            etag=True,
+            mimetype="application/zip",
         )
         resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
         _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
@@ -2147,6 +2211,7 @@ def download_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respo
     resp.headers["X-Size-Cost-Bytes"] = str(size_bytes)
     _audit_add(artifact_type, artifact_id, "DOWNLOAD", art.metadata.name)
     return resp
+
 
 @blueprint.route("/artifact/<string:artifact_type>/<string:artifact_id>/cost", methods=["GET"])
 @_record_timing
@@ -2312,7 +2377,11 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
     for p in parents:
         nodes.append({"artifact_id": p, "name": p, "source": "config_json"})
     edges = [
-        {"from_node_artifact_id": p, "to_node_artifact_id": artifact_id, "relationship": "derived_from",}
+        {
+            "from_node_artifact_id": p,
+            "to_node_artifact_id": artifact_id,
+            "relationship": "derived_from",
+        }
         for p in parents
     ]
     return jsonify({"nodes": nodes, "edges": edges}), 200
@@ -2497,7 +2566,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
     scanned = 0
 
     logger.warning(
-        "BY_REGEX: raw='%s' store_size=%d exact_match=%s", raw_pattern, len(_STORE), name_only,
+        "BY_REGEX: raw='%s' store_size=%d exact_match=%s",
+        raw_pattern,
+        len(_STORE),
+        name_only,
     )
 
     for art in _STORE.values():
@@ -2527,7 +2599,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
             if readme:
                 try:
                     readme_match = _safe_text_search(
-                        pattern, readme, raw_pattern=raw_pattern, context="artifact readme",
+                        pattern,
+                        readme,
+                        raw_pattern=raw_pattern,
+                        context="artifact readme",
                     )
                 except HTTPException:
                     raise
@@ -2545,7 +2620,10 @@ def by_regex_route() -> tuple[Response, int] | Response:
         return jsonify({"message": "No artifact found under this regex"}), 404
 
     logger.warning(
-        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs", len(matches), scanned, time.time() - start_time,
+        "BY_REGEX: returning matches=%d scanned=%d elapsed=%.3fs",
+        len(matches),
+        scanned,
+        time.time() - start_time,
     )
     return jsonify(matches), 200
 

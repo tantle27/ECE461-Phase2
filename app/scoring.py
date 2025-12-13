@@ -1,16 +1,16 @@
 import asyncio
-import hashlib
 import logging
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from concurrent.futures import as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, cast
+from typing import Any, cast
+
 logger = logging.getLogger(__name__)
 try:
     from app.secrets_loader import load_registry_secrets
+
     load_registry_secrets()
 except Exception:
     logger.exception("secrets_loader failed - continuing without Secrets Manager")
@@ -24,9 +24,6 @@ class ModelRating:
     scores: dict[str, Any]
     latencies: dict[str, int]
     summary: dict[str, Any]
-
-
-
 
 
 def _run_async(coro):
@@ -56,7 +53,12 @@ def _calculate_net_score(metrics: dict[str, Any]) -> float:
     return min(1.0, max(0.0, net))
 
 
-def _build_model_rating(artifact, model_link: str, metrics: dict[str, Any], total_latency_ms: int,) -> ModelRating:
+def _build_model_rating(
+    artifact,
+    model_link: str,
+    metrics: dict[str, Any],
+    total_latency_ms: int,
+) -> ModelRating:
     net_score = round(_calculate_net_score(metrics), 2)
     metric_keys = [
         "bus_factor",
@@ -121,9 +123,12 @@ def _build_model_rating(artifact, model_link: str, metrics: dict[str, Any], tota
         summary["size_score"] = metrics["size_score"]
 
     return ModelRating(
-        id=artifact.metadata.id, generated_at=datetime.utcnow(), scores=scores, latencies=latencies, summary=summary,
+        id=artifact.metadata.id,
+        generated_at=datetime.utcnow(),
+        scores=scores,
+        latencies=latencies,
+        summary=summary,
     )
-
 
 
 def _score_artifact_with_metrics(artifact) -> ModelRating:
@@ -143,7 +148,7 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         or payload.get("downloadUrl")
         or payload.get("DownloadURL")
     )
-    
+
     # If still no model_link, construct from s3_key or path
     if not model_link:
         s3_key = payload.get("s3_key")
@@ -159,12 +164,8 @@ def _score_artifact_with_metrics(artifact) -> ModelRating:
         raise ValueError("Artifact data must include a model link (e.g., model_link or url)")
 
     model_link_str = str(model_link).strip() if model_link else ""
-    code_link: Optional[str] = (
-        str(code_link_raw).strip() if isinstance(code_link_raw, str) else None
-    )
-    dataset_link: Optional[str] = (
-        str(dataset_link_raw).strip() if isinstance(dataset_link_raw, str) else None
-    )
+    code_link: str | None = str(code_link_raw).strip() if isinstance(code_link_raw, str) else None
+    dataset_link: str | None = str(dataset_link_raw).strip() if isinstance(dataset_link_raw, str) else None
 
     # Coerce blank strings to None
     if code_link == "":

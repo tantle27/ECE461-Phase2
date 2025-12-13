@@ -137,7 +137,8 @@ class TestRampUpTimeMetric:
         ):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Clear README without dependencies or examples", repo_path="/path/to/readme-only/repo",
+                readme_text="Clear README without dependencies or examples",
+                repo_path="/path/to/readme-only/repo",
             )
             metric = RampUpTimeMetric()
 

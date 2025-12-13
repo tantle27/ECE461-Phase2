@@ -6,9 +6,9 @@ for local development.
 """
 
 import json
-import re
 import logging
 import os
+import re
 import time
 from decimal import Decimal
 from typing import Any
@@ -39,6 +39,7 @@ dynamodb_client = None
 if USE_DYNAMODB:
     try:
         import boto3
+
         # Validate table name to avoid injection/invalid names
         if not re.match(r"^[A-Za-z0-9_.-]{3,255}$", TABLE_NAME):
             logger.error("Invalid DYNAMODB_TABLE_NAME, disabling DynamoDB integration: %s", TABLE_NAME)
@@ -208,7 +209,10 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_failed", table=TABLE_NAME, artifact_type=artifact_type, error=str(e),
+                    "dynamodb_list_failed",
+                    table=TABLE_NAME,
+                    artifact_type=artifact_type,
+                    error=str(e),
                 )
                 return self._list_all_memory(artifact_type)
         else:
@@ -241,7 +245,10 @@ class ArtifactStore:
                 response = dynamodb_table.query(
                     IndexName="GSI2",
                     KeyConditionExpression=key_cond,
-                    ExpressionAttributeValues={":status_key": "STATUS", ":status_val": status,},
+                    ExpressionAttributeValues={
+                        ":status_key": "STATUS",
+                        ":status_val": status,
+                    },
                     Limit=limit,
                 )
                 items = response.get("Items", [])
@@ -257,7 +264,10 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list_by_status failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_by_status_failed", table=TABLE_NAME, status=status, error=str(e),
+                    "dynamodb_list_by_status_failed",
+                    table=TABLE_NAME,
+                    status=status,
+                    error=str(e),
                 )
                 return [
                     v
@@ -285,7 +295,9 @@ class ArtifactStore:
                     filter_expr += " AND artifact_type = :type"
                     expr_values[":type"] = artifact_type
                 response = dynamodb_table.scan(
-                    FilterExpression=filter_expr, ExpressionAttributeValues=expr_values, Limit=limit,
+                    FilterExpression=filter_expr,
+                    ExpressionAttributeValues=expr_values,
+                    Limit=limit,
                 )
                 items = response.get("Items", [])
                 # Sort by trust_score descending (convert Decimal to float for sorting)
@@ -303,7 +315,10 @@ class ArtifactStore:
             except Exception as e:
                 logger.error(f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory")
                 security_alert(
-                    "dynamodb_list_by_min_trust_failed", table=TABLE_NAME, min_score=min_score, error=str(e),
+                    "dynamodb_list_by_min_trust_failed",
+                    table=TABLE_NAME,
+                    min_score=min_score,
+                    error=str(e),
                 )
                 results = [
                     v for v in self._memory_store.values() if v.get("data", {}).get("trust_score", 0.0) >= min_score
@@ -391,7 +406,11 @@ class TokenStore:
         if self.use_dynamodb and dynamodb_table:
             try:
                 dynamodb_table.put_item(
-                    Item={"PK": "TOKEN#AUTH", "SK": f"TOKEN#{token}", "token": token,}
+                    Item={
+                        "PK": "TOKEN#AUTH",
+                        "SK": f"TOKEN#{token}",
+                        "token": token,
+                    }
                 )
             except Exception as e:
                 logger.error(f"DynamoDB token add failed: {e}")
@@ -416,7 +435,8 @@ class TokenStore:
         if self.use_dynamodb and dynamodb_table:
             try:
                 response = dynamodb_table.query(
-                    KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": "TOKEN#AUTH"},
+                    KeyConditionExpression="PK = :pk",
+                    ExpressionAttributeValues={":pk": "TOKEN#AUTH"},
                 )
                 with dynamodb_table.batch_writer() as batch:
                     for item in response.get("Items", []):
@@ -472,7 +492,8 @@ class RatingsCache:
         if self.use_dynamodb and dynamodb_table:
             try:
                 response = dynamodb_table.query(
-                    KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": "RATING#CACHE"},
+                    KeyConditionExpression="PK = :pk",
+                    ExpressionAttributeValues={":pk": "RATING#CACHE"},
                 )
                 with dynamodb_table.batch_writer() as batch:
                     for item in response.get("Items", []):
