@@ -119,13 +119,13 @@ class MetricsCalculator:
     handling cases where code or dataset links may be missing.
     """
 
-    def __init__(self, process_pool: ProcessPoolExecutor, GH_TOKEN: str | None = None):
+    def __init__(self, process_pool: ThreadPoolExecutor, GH_TOKEN: str | None = None):
         """
         Initialize the metrics calculator with necessary API clients and
         metric instances.
 
         Args:
-            process_pool: ProcessPoolExecutor for CPU-bound operations
+            process_pool: ThreadPoolExecutor for CPU-bound operations
             GH_TOKEN: Optional[str] = None
         """
         self.git_client = GitClient(GH_TOKEN)

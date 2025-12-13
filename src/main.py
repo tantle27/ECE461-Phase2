@@ -5,7 +5,8 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from typing import cast
 from typing import Any
 
 from src.metrics.metrics_calculator import MetricsCalculator
@@ -183,6 +184,8 @@ def parse_url_file(file_path: str) -> list[tuple[str | None, str | None, str]]:
         return entries
     except FileNotFoundError:
         _fail(f"URL file not found at '{file_path}'. Please check the path.")
+    
+    return []  # Unreachable, but satisfies type checker
 
 
 # ----------------- scoring -----------------
@@ -216,7 +219,7 @@ async def analyze_entry(
         github_token = os.environ.get("GH_TOKEN")
     except KeyError:
         github_token = None
-    calculator = MetricsCalculator(process_pool, github_token)
+    calculator = MetricsCalculator(cast(ThreadPoolExecutor, process_pool), github_token)
     local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
     net_score = calculate_net_score(local)

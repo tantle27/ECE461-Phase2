@@ -22,7 +22,8 @@ from typing import Any, BinaryIO, cast
 import requests
 import yaml
 from flask import Blueprint, Response, jsonify, request, send_file
-from werkzeug.utils import secure_filename, HTTPException
+from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage
@@ -570,13 +571,14 @@ def fetch_artifact(artifact_type: str, artifact_id: str) -> Artifact | None:
     try:
         data = _ARTIFACT_STORE.get(artifact_type, artifact_id)
         if data:
-            art = _artifact_from_raw(data, artifact_type, artifact_id)
-            logger.warning(
-                "FETCH: Found in primary store type=%s id=%s has_url=%s",
-                artifact_type,
-                artifact_id,
-                isinstance(art.data, dict) and bool(art.data.get("url")),
-            )
+            art: Artifact | None = _artifact_from_raw(data, artifact_type, artifact_id)
+            if art is not None:
+                logger.warning(
+                    "FETCH: Found in primary store type=%s id=%s has_url=%s",
+                    artifact_type,
+                    artifact_id,
+                    isinstance(art.data, dict) and bool(art.data.get("url")),
+                )
             return art
     except Exception:
         logger.exception("Primary store fetch failed; falling back to memory")
@@ -601,7 +603,9 @@ def _duplicate_url_exists(artifact_type: str, url: str) -> bool:
     try:
         items = _ARTIFACT_STORE.list_all(artifact_type)
         for d in items or []:
-            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (d.get("data", {}) or {}).get("url") == url:
+            if (d.get("metadata", {}) or {}).get("type") == artifact_type and (d.get("data", {}) or {}).get(
+                "url"
+            ) == url:
                 return True
     except Exception:
         pass
@@ -913,7 +917,9 @@ def _safe_text_search(
     if not segments:
         return False
     for idx, segment in enumerate(segments):
-        ok, matched = _safe_eval_with_timeout(lambda: pattern.search(segment) is not None, timeout_ms=_SAFE_REGEX_TIMEOUT_MS)
+        ok, matched = _safe_eval_with_timeout(
+            lambda: pattern.search(segment) is not None, timeout_ms=_SAFE_REGEX_TIMEOUT_MS
+        )
         if not ok:
             logger.warning(
                 "REGEX_TIMEOUT: pattern='%s' context=%s segment_idx=%d segment_preview='%s'",
@@ -1275,7 +1281,9 @@ def health_components_route() -> tuple[Response, int] | Response:
                 "p95_ms": int(_percentile(_REQUEST_TIMES, 0.95) * 1000),
             },
             "issues": [],
-            "timeline": ([{"bucket": now_iso, "value": len(_REQUEST_TIMES), "unit": "req"}] if include_timeline else []),
+            "timeline": (
+                [{"bucket": now_iso, "value": len(_REQUEST_TIMES), "unit": "req"}] if include_timeline else []
+            ),
             "logs": [],
         }
     ]
@@ -1390,7 +1398,11 @@ def create_artifact(artifact_type: str) -> tuple[Response, int] | Response:
     url_value = _coerce_text(data.get("url"))
     if not url_value:
         return (
-            jsonify({"message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."}),
+            jsonify(
+                {
+                    "message": "There is missing field(s) in the artifact_data or it is formed improperly (must include a single url)."
+                }
+            ),
             400,
         )
     data["url"] = url_value
@@ -1484,7 +1496,9 @@ def enumerate_artifacts_route() -> tuple[Response, int] | Response:
     types_val = qd_raw.get("types")
     if types_val is None:
         types_val = qd_raw.get("Types")
-    artifact_type_val = qd_raw.get("artifact_type") or qd_raw.get("artifactType") or qd_raw.get("type") or qd_raw.get("Type")
+    artifact_type_val = (
+        qd_raw.get("artifact_type") or qd_raw.get("artifactType") or qd_raw.get("type") or qd_raw.get("Type")
+    )
     page_val = qd_raw.get("page") or qd_raw.get("Page")
     page_size_val = qd_raw.get("page_size") or qd_raw.get("PageSize")
 
@@ -1612,7 +1626,8 @@ def update_artifact_route(artifact_type: str, artifact_id: str) -> tuple[Respons
         return jsonify({"message": "metadata.id and metadata.type must match path"}), 400
     if not md.get("name"):
         return jsonify({"message": "metadata.name required"}), 400
-    if "url" not in dt or not isinstance(dt.get("url"), str) or not dt.get("url").strip():
+    url_val = dt.get("url")
+    if "url" not in dt or not isinstance(url_val, str) or url_val is None or not url_val.strip():
         return jsonify({"message": "data.url required"}), 400
 
     art = Artifact(
@@ -1787,7 +1802,13 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
             logger.info(
                 "RATE: Checking links for id=%s keys=%s",
                 artifact_id,
-                sorted([k for k in artifact.data.keys() if "link" in k.lower() or "url" in k.lower() or k in ("s3_key", "path")]),
+                sorted(
+                    [
+                        k
+                        for k in artifact.data.keys()
+                        if "link" in k.lower() or "url" in k.lower() or k in ("s3_key", "path")
+                    ]
+                ),
             )
             # Prefer existing model_link/model_url; else try other fields
             link_fields = [
@@ -1875,7 +1896,9 @@ def rate_model_route(artifact_id: str) -> tuple[Response, int] | Response:
     except Exception:
         logger.exception("RATE: Failed to score artifact %s", artifact_id)
         return (
-            jsonify({"message": "The artifact rating system encountered an error while computing at least one metric."}),
+            jsonify(
+                {"message": "The artifact rating system encountered an error while computing at least one metric."}
+            ),
             500,
         )
     return jsonify(_to_openapi_model_rating(rating)), 200
@@ -1935,7 +1958,9 @@ def rate_models_batch_route() -> tuple[Response, int] | Response:
                         if art.data.get("s3_key") and art.data.get("s3_bucket"):
                             selected = f"s3://{art.data['s3_bucket']}/{art.data['s3_key']}"
                         elif art.data.get("path") and not (
-                            selected.startswith("file://") or selected.startswith("http://") or selected.startswith("https://")
+                            selected.startswith("file://")
+                            or selected.startswith("http://")
+                            or selected.startswith("https://")
                         ):
                             abs_path = (_UPLOAD_DIR.parent / art.data["path"]).resolve()
                             selected = f"file://{abs_path}"
@@ -2356,7 +2381,11 @@ def lineage_route(artifact_id: str) -> tuple[Response, int] | Response:
                 nodes = [{"artifact_id": artifact_id, "name": art.metadata.name, "source": "url_only"}]
                 return jsonify({"nodes": nodes, "edges": []}), 200
             return (
-                jsonify({"message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."}),
+                jsonify(
+                    {
+                        "message": "The lineage graph cannot be computed because the artifact metadata is missing or malformed."
+                    }
+                ),
                 400,
             )
         zpath = (_UPLOAD_DIR.parent / rel).resolve()
@@ -2431,7 +2460,9 @@ def reset_route() -> tuple[Response, int] | Response:
     logger.warning(f"RESET: Current _RATINGS_CACHE has {len(_RATINGS_CACHE)} items")
     logger.warning(f"RESET: Current _AUDIT_LOG has {len(_AUDIT_LOG)} items")
     logger.warning(f"RESET: Current _TOKENS has {len(_TOKENS)} items")
-    logger.warning(f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}")
+    logger.warning(
+        f"RESET: _ARTIFACT_STORE instance id: {id(_ARTIFACT_STORE)}, use_dynamodb={_ARTIFACT_STORE.use_dynamodb}"
+    )
     logger.warning(f"RESET: _ARTIFACT_STORE._memory_store has {len(_ARTIFACT_STORE._memory_store)} items")
 
     # Clear in-memory stores (but keep tokens)
@@ -2544,7 +2575,9 @@ def by_regex_route() -> tuple[Response, int] | Response:
     raw_pattern = str(body.get("regex") or body.get("RegEx") or "").strip()
     if not raw_pattern:
         return (
-            jsonify({"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}),
+            jsonify(
+                {"message": "There is missing field(s) in the artifact_regex or it is formed improperly, or is invalid"}
+            ),
             400,
         )
     if len(raw_pattern) > _REGEX_MAX_PATTERN_LENGTH:
