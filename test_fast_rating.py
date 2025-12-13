@@ -3,6 +3,7 @@
 import os
 import sys
 from unittest.mock import MagicMock
+
 from app.scoring import _score_artifact_with_metrics
 
 # Mock secrets loader BEFORE any other imports

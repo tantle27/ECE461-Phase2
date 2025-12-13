@@ -5,9 +5,8 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-from typing import cast
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, cast
 
 from src.metrics.metrics_calculator import MetricsCalculator
 
@@ -184,7 +183,6 @@ def parse_url_file(file_path: str) -> list[tuple[str | None, str | None, str]]:
         return entries
     except FileNotFoundError:
         _fail(f"URL file not found at '{file_path}'. Please check the path.")
-    
     return []  # Unreachable, but satisfies type checker
 
 

@@ -9,14 +9,7 @@ import tempfile
 from io import StringIO
 from unittest.mock import Mock, patch
 
-from src.main import (
-    _classify_url,
-    _fail,
-    _github_token_is_valid,
-    calculate_net_score,
-    parse_url_file,
-    validate_and_configure_logging,
-)
+from src.main import _classify_url, _fail, _github_token_is_valid, calculate_net_score, parse_url_file, validate_and_configure_logging
 
 
 class TestGitHubTokenValidation:
