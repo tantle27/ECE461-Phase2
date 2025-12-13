@@ -22,7 +22,7 @@ from typing import Any, BinaryIO, cast
 import requests
 import yaml
 from flask import Blueprint, Response, jsonify, request, send_file
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename, HTTPException
 
 from app.db_adapter import ArtifactStore, RatingsCache, TokenStore
 from app.s3_adapter import S3Storage

@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, cast
+from src.metrics.metrics_calculator import MetricsCalculator
 
 logger = logging.getLogger(__name__)
 try:
@@ -14,7 +15,6 @@ try:
     load_registry_secrets()
 except Exception:
     logger.exception("secrets_loader failed - continuing without Secrets Manager")
-from src.metrics.metrics_calculator import MetricsCalculator
 
 
 @dataclass

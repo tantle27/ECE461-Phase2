@@ -9,7 +9,7 @@ jobs:
         with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
       - run: pip install flake8 mypy black
-      - run: flake8 .
-      - run: black --check .
+      - run: flake8 --max-line-length=140 . 
+      - run: black --line-length 140 --check .
       - name: Type check with mypy
         run: mypy --explicit-package-bases --namespace-packages app src

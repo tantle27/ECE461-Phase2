@@ -15,8 +15,6 @@ try:
 
     load_registry_secrets()
 except Exception:
-    import logging
-
     logging.exception("secrets_loader failed - continuing without Secrets Manager")
 # ----------------- helpers -----------------
 

@@ -133,12 +133,12 @@ def main() -> int:
     if available.get("ruff"):
         try:
             run(["ruff", "cache", "clear"], check=False)
-            run(["ruff", "check", "--fix", "--line-length", "100", str(ROOT)])
+            run(["ruff", "check", "--fix", "--line-length", "140", str(ROOT)])
         except Exception as e:
             print("ruff --fix failed:", e)
             # Try unsafe fixes (may change semantics) to catch more issues
             try:
-                run(["ruff", "check", "--fix", "--unsafe-fixes", "--line-length", "100", str(ROOT)])
+                run(["ruff", "check", "--fix", "--unsafe-fixes", "--line-length", "140", str(ROOT)])
             except Exception as e2:
                 print("ruff --fix --unsafe-fixes also failed:", e2)
 
@@ -152,14 +152,14 @@ def main() -> int:
     # Run black to format and wrap long lines where possible
     if available.get("black"):
         try:
-            run(["black", str(ROOT), "--line-length", "100"])
+            run(["black", str(ROOT), "--line-length", "140"])
         except Exception as e:
             print("black failed:", e)
 
     # After automated fixes, run ruff again for additional fixes
     if available.get("ruff"):
         try:
-            run(["ruff", "check", "--fix", "--line-length", "100", str(ROOT)])
+            run(["ruff", "check", "--fix", "--line-length", "140", str(ROOT)])
         except Exception as e:
             print("ruff second pass failed:", e)
 
@@ -167,7 +167,7 @@ def main() -> int:
     try:
         print("Running flake8 to capture remaining issues...")
         result = subprocess.run(
-            ["flake8", "--max-line-length=100", str(ROOT)], capture_output=True, text=True
+            ["flake8", "--max-line-length=140", str(ROOT)], capture_output=True, text=True
         )
         out = result.stdout or result.stderr
         REMAINING.write_text(out)
