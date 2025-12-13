@@ -119,9 +119,7 @@ class TestGitClientOperations:
         for url in valid_urls:
             try:
                 # This should not raise an exception for valid URLs
-                normalized = (
-                    client._normalize_url(url) if hasattr(client, "_normalize_url") else url
-                )
+                normalized = client._normalize_url(url) if hasattr(client, "_normalize_url") else url
                 assert isinstance(normalized, str)
             except Exception:
                 pass

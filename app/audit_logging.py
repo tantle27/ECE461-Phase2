@@ -68,9 +68,7 @@ def init_audit_logging(app) -> None:
             start = getattr(g, "_audit_start", time.time())
             duration_ms = int((time.time() - start) * 1000)
             client_ip = request.remote_addr or request.headers.get("X-Forwarded-For", "")
-            token_hdr = request.headers.get("X-Authorization", "") or request.headers.get(
-                "Authorization", ""
-            )
+            token_hdr = request.headers.get("X-Authorization", "") or request.headers.get("Authorization", "")
             token_present = bool(token_hdr)
             event = {
                 "type": "http_request",
@@ -99,9 +97,7 @@ def audit_event(message: str, **fields: Any) -> None:
 
 def security_alert(message: str, **fields: Any) -> None:
     # Use WARNING level so it's easy to filter; include alert=true
-    logging.getLogger("audit").warning(
-        message, extra={**fields, "alert": True, "alert_type": "security"}
-    )
+    logging.getLogger("audit").warning(message, extra={**fields, "alert": True, "alert_type": "security"})
 
 
 def db_audit(operation: str, **fields: Any) -> None:

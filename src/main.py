@@ -217,9 +217,7 @@ async def analyze_entry(
     except KeyError:
         github_token = None
     calculator = MetricsCalculator(process_pool, github_token)
-    local = await calculator.analyze_entry(
-        code_link, dataset_link, model_link, encountered_datasets
-    )
+    local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
     net_score = calculate_net_score(local)
     total_latency_ms = int((time.time() - start_time) * 1000)

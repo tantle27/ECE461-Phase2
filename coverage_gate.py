@@ -151,9 +151,7 @@ class CoverageGate:
             logger.info("✅ Coverage gate PASSED")
             return True
         else:
-            logger.error(
-                f"❌ Coverage gate FAILED - {current_coverage:.2f}% < {self.min_coverage:.2f}%"
-            )
+            logger.error(f"❌ Coverage gate FAILED - {current_coverage:.2f}% < {self.min_coverage:.2f}%")
             return False
 
     def generate_coverage_report(self, coverage_data: dict, json_data: dict) -> str:
@@ -259,14 +257,10 @@ class CoverageGate:
 
         files = json_data.get("files", {})
         low_coverage_files = [
-            (f, data)
-            for f, data in files.items()
-            if data.get("summary", {}).get("percent_covered", 100) < self.min_coverage
+            (f, data) for f, data in files.items() if data.get("summary", {}).get("percent_covered", 100) < self.min_coverage
         ]
 
-        for file_path, file_data in sorted(
-            low_coverage_files, key=lambda x: x[1].get("summary", {}).get("percent_covered", 0)
-        ):
+        for file_path, file_data in sorted(low_coverage_files, key=lambda x: x[1].get("summary", {}).get("percent_covered", 0)):
             summary = file_data.get("summary", {})
             coverage_pct = summary.get("percent_covered", 0)
             missing_lines = file_data.get("missing_lines", [])
@@ -294,9 +288,7 @@ class CoverageGate:
             html_content += f"<li>Focus on {len(low_coverage_files)} files with low coverage</li>"
 
         if coverage_data.get("branch_coverage", 0) < coverage_data.get("line_coverage", 0):
-            html_content += (
-                "<li>Improve branch coverage by testing edge cases and error conditions</li>"
-            )
+            html_content += "<li>Improve branch coverage by testing edge cases and error conditions</li>"
 
         html_content += """
     </ul>
@@ -352,16 +344,10 @@ class CoverageGate:
 def main():
     """Main entry point for coverage gate enforcement."""
     parser = argparse.ArgumentParser(description="Enforce coverage gate for CI")
-    parser.add_argument(
-        "--min-coverage", type=float, default=60.0, help="Minimum coverage percentage required"
-    )
-    parser.add_argument(
-        "--skip-tests", action="store_true", help="Skip running tests (use existing coverage data)"
-    )
+    parser.add_argument("--min-coverage", type=float, default=60.0, help="Minimum coverage percentage required")
+    parser.add_argument("--skip-tests", action="store_true", help="Skip running tests (use existing coverage data)")
     parser.add_argument("--skip-security", action="store_true", help="Skip security tests")
-    parser.add_argument(
-        "--ci", action="store_true", help="Run in CI mode (fail on coverage below threshold)"
-    )
+    parser.add_argument("--ci", action="store_true", help="Run in CI mode (fail on coverage below threshold)")
 
     args = parser.parse_args()
 

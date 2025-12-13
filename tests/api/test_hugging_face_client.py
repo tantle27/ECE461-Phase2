@@ -53,7 +53,5 @@ class TestHuggingFaceClient:
         mock_download.return_value = "/fake/path/file.txt"
         client = HuggingFaceClient()
         result = client.download_file("repo-id", "file.txt", local_dir="/tmp")
-        mock_download.assert_called_once_with(
-            repo_id="repo-id", filename="file.txt", local_dir="/tmp"
-        )
+        mock_download.assert_called_once_with(repo_id="repo-id", filename="file.txt", local_dir="/tmp")
         assert result == "/fake/path/file.txt"

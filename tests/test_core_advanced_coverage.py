@@ -71,9 +71,7 @@ class TestArtifactCRUDOperations:
 
     def test_save_artifact_basic(self, clean_storage):
         """Test saving a basic artifact."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "test content"})
 
         with patch("app.core._ARTIFACT_STORE") as mock_store:
@@ -87,9 +85,7 @@ class TestArtifactCRUDOperations:
 
     def test_save_artifact_with_storage_error(self, clean_storage):
         """Test saving artifact when storage adapter fails."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "test content"})
 
         with patch("app.core._ARTIFACT_STORE") as mock_store:
@@ -120,9 +116,7 @@ class TestArtifactCRUDOperations:
     def test_fetch_artifact_from_memory(self, clean_storage):
         """Test fetching artifact from memory store."""
         # First save an artifact
-        metadata = ArtifactMetadata(
-            id="memory-id", name="memory-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="memory-id", name="memory-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "memory content"})
 
         with patch("app.core._ARTIFACT_STORE") as mock_store:
@@ -163,9 +157,7 @@ class TestArtifactCRUDOperations:
         """Test listing artifacts with existing data."""
         # Save some test artifacts first
         for i in range(3):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={"readme": f"content {i}"})
             save_artifact(artifact)
 
@@ -179,9 +171,7 @@ class TestArtifactCRUDOperations:
         """Test listing artifacts with pagination."""
         # Save 10 test artifacts
         for i in range(10):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={"readme": f"content {i}"})
             save_artifact(artifact)
 
@@ -246,9 +236,7 @@ class TestFlaskRoutes:
         # Use the actual default credentials with lowercase keys
         auth_data = {
             "user": {"name": "ece30861defaultadminuser"},
-            "secret": {
-                "password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;"""
-            },
+            "secret": {"password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;"""},
         }
         response = client.put("/authenticate", json=auth_data)
 
@@ -290,9 +278,7 @@ class TestFlaskRoutes:
 
         # Add some test artifacts
         for i in range(3):
-            metadata = ArtifactMetadata(
-                id=f"enum-{i}", name=f"enum-artifact-{i}", type="package", version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"enum-{i}", name=f"enum-artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={})
             save_artifact(artifact)
 
@@ -311,9 +297,7 @@ class TestFlaskRoutes:
         reset_storage()
 
         # Create test artifact with required url field
-        metadata = ArtifactMetadata(
-            id="get-test", name="get-test-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="get-test", name="get-test-artifact", type="package", version="1.0.0")
         artifact = Artifact(
             metadata=metadata,
             data={"readme": "test readme", "url": "https://github.com/test/get-test-artifact"},
@@ -403,9 +387,7 @@ class TestUtilityAndHelperFunctions:
 
     def test_calculate_artifact_size_mb_with_content(self):
         """Test _calculate_artifact_size_mb with content data."""
-        metadata = ArtifactMetadata(
-            id="size-test", name="size-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="size-test", name="size-artifact", type="package", version="1.0.0")
         data = {
             "size": 1024 * 1024,  # 1 MB
             "Content": base64.b64encode(b"x" * 1000).decode(),
@@ -419,9 +401,7 @@ class TestUtilityAndHelperFunctions:
 
     def test_calculate_artifact_size_mb_no_content(self):
         """Test _calculate_artifact_size_mb without content."""
-        metadata = ArtifactMetadata(
-            id="no-size-test", name="no-size-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="no-size-test", name="no-size-artifact", type="package", version="1.0.0")
         data = {"readme": "Some readme content", "version": "1.0.0"}
         artifact = Artifact(metadata=metadata, data=data)
 
@@ -455,9 +435,7 @@ class TestErrorHandlingAndEdgeCases:
     def test_reset_storage_function(self):
         """Test reset_storage clears all data."""
         # Add some data first
-        metadata = ArtifactMetadata(
-            id="reset-test", name="reset-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="reset-test", name="reset-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={})
         save_artifact(artifact)
 
@@ -537,9 +515,7 @@ class TestErrorHandlingAndEdgeCases:
         """Test save_artifact when persist_state fails."""
         mock_persist.side_effect = Exception("Persist error")
 
-        metadata = ArtifactMetadata(
-            id="persist-test", name="persist-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="persist-test", name="persist-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={})
 
         # Should not raise exception even if persist fails
@@ -562,9 +538,7 @@ class TestFileOperationsAndContent:
 
         zip_content = base64.b64encode(zip_buffer.getvalue()).decode()
 
-        metadata = ArtifactMetadata(
-            id="zip-test", name="zip-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="zip-test", name="zip-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"Content": zip_content, "JSProgram": "true"})
 
         result = save_artifact(artifact)
@@ -577,9 +551,7 @@ class TestFileOperationsAndContent:
         # Create large content (1MB)
         large_content = base64.b64encode(b"x" * (1024 * 1024)).decode()
 
-        metadata = ArtifactMetadata(
-            id="large-test", name="large-artifact", type="package", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="large-test", name="large-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"Content": large_content})
 
         result = save_artifact(artifact)

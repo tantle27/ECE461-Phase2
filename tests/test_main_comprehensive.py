@@ -290,9 +290,7 @@ class TestParseUrlFile:
         """Test parsing CSV format file."""
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp_file:
             # Write actual CSV lines with proper model URLs
-            tmp_file.write(
-                "https://github.com/user/code,https://huggingface.co/datasets/data,https://huggingface.co/model1\n"
-            )
+            tmp_file.write("https://github.com/user/code,https://huggingface.co/datasets/data,https://huggingface.co/model1\n")
             tmp_file.write(",https://huggingface.co/datasets/data2,https://huggingface.co/model2\n")
             tmp_path = tmp_file.name
 
@@ -453,15 +451,7 @@ class TestCalculateNetScore:
             "code_quality": 0.6,  # 0.05 weight
             "dataset_quality": 0.4,  # 0.05 weight
         }
-        expected = (
-            (1.0 * 0.30)
-            + (0.5 * 0.20)
-            + (0.0 * 0.15)
-            + (1.0 * 0.10)
-            + (0.8 * 0.15)
-            + (0.6 * 0.05)
-            + (0.4 * 0.05)
-        )
+        expected = (1.0 * 0.30) + (0.5 * 0.20) + (0.0 * 0.15) + (1.0 * 0.10) + (0.8 * 0.15) + (0.6 * 0.05) + (0.4 * 0.05)
         score = calculate_net_score(metrics)
         assert abs(score - expected) < 0.001
 

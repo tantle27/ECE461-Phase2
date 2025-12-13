@@ -17,9 +17,7 @@ class RampUpTimeMetric(Metric):
     HAS_EXAMPLES_WEIGHT = 0.25
     HAS_DEPENDENCIES_WEIGHT = 0.15
 
-    def __init__(
-        self, git_client: GitClient | None = None, gen_ai_client: GenAIClient | None = None
-    ):
+    def __init__(self, git_client: GitClient | None = None, gen_ai_client: GenAIClient | None = None):
         self.git_client = git_client or GitClient()
         self.gen_ai_client = gen_ai_client or GenAIClient()
 

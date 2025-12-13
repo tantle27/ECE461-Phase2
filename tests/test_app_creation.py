@@ -174,9 +174,7 @@ class TestSecretsLoaderImport:
         """Test general exception handling in secrets loader import."""
         if not APP_AVAILABLE:
             pytest.skip(f"App creation unavailable: {IMPORT_ERROR}")
-        with mock.patch(
-            "app.secrets_loader.load_registry_secrets", side_effect=Exception("General error")
-        ):
+        with mock.patch("app.secrets_loader.load_registry_secrets", side_effect=Exception("General error")):
             app = create_app()
             assert app is not None
 

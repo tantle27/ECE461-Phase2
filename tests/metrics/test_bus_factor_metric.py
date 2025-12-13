@@ -35,9 +35,7 @@ class TestBusFactorMetric:
     @pytest.mark.asyncio
     async def test_calculate_single_author(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_commits.return_value = CommitStats(
-            total_commits=100, contributors={"author1": 100}, bus_factor=0.0
-        )
+        mock_git_client.analyze_commits.return_value = CommitStats(total_commits=100, contributors={"author1": 100}, bus_factor=0.0)
 
         metric = BusFactorMetric(mock_git_client)
         result = await metric.calculate(BusFactorInput(repo_url="/test/repo"))
@@ -65,9 +63,7 @@ class TestBusFactorMetric:
     @pytest.mark.asyncio
     async def test_calculate_empty_repo(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_commits.return_value = CommitStats(
-            total_commits=0, contributors={}, bus_factor=0.0
-        )
+        mock_git_client.analyze_commits.return_value = CommitStats(total_commits=0, contributors={}, bus_factor=0.0)
 
         metric = BusFactorMetric(mock_git_client)
         result = await metric.calculate(BusFactorInput(repo_url="/test/repo"))

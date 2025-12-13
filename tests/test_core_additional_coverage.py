@@ -286,33 +286,23 @@ class TestRegexAndSearchFunctions:
     def test_safe_name_match_simple(self):
         """Test _safe_name_match with simple patterns."""
         pattern = re.compile(r"test")
-        result1 = _safe_name_match(
-            pattern, "test", exact_match=True, raw_pattern="test", context="testing"
-        )
-        result2 = _safe_name_match(
-            pattern, "other", exact_match=True, raw_pattern="test", context="testing"
-        )
+        result1 = _safe_name_match(pattern, "test", exact_match=True, raw_pattern="test", context="testing")
+        result2 = _safe_name_match(pattern, "other", exact_match=True, raw_pattern="test", context="testing")
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)
 
     def test_safe_name_match_with_pattern(self):
         """Test _safe_name_match with regex pattern."""
         pattern = re.compile(r"test.*")
-        result1 = _safe_name_match(
-            pattern, "test123", exact_match=False, raw_pattern="test.*", context="testing"
-        )
-        result2 = _safe_name_match(
-            pattern, "other", exact_match=False, raw_pattern="test.*", context="testing"
-        )
+        result1 = _safe_name_match(pattern, "test123", exact_match=False, raw_pattern="test.*", context="testing")
+        result2 = _safe_name_match(pattern, "other", exact_match=False, raw_pattern="test.*", context="testing")
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)
 
     def test_safe_text_search_success(self):
         """Test _safe_text_search with successful search."""
         pattern = re.compile(r"test")
-        result1 = _safe_text_search(
-            pattern, "this is a test", raw_pattern="test", context="testing"
-        )
+        result1 = _safe_text_search(pattern, "this is a test", raw_pattern="test", context="testing")
         result2 = _safe_text_search(pattern, "no match here", raw_pattern="test", context="testing")
         assert isinstance(result1, bool)
         assert isinstance(result2, bool)

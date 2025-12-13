@@ -42,9 +42,7 @@ if USE_DYNAMODB:
 
         # Validate table name to avoid injection/invalid names
         if not re.match(r"^[A-Za-z0-9_.-]{3,255}$", TABLE_NAME):
-            logger.error(
-                "Invalid DYNAMODB_TABLE_NAME, disabling DynamoDB integration: %s", TABLE_NAME
-            )
+            logger.error("Invalid DYNAMODB_TABLE_NAME, disabling DynamoDB integration: %s", TABLE_NAME)
             USE_DYNAMODB = False
         else:
             dynamodb_resource = boto3.resource("dynamodb", region_name=REGION)
@@ -102,10 +100,7 @@ class ArtifactStore:
                     "GSI1PK": f"TYPE#{artifact_type}",
                     "GSI1SK": artifact_id,
                     "GSI2PK": "STATUS",
-                    "GSI2SK": (
-                        f"{metadata.get('status') or data.get('status', 'unvetted')}"
-                        f"#{artifact_id}"
-                    ),
+                    "GSI2SK": (f"{metadata.get('status') or data.get('status', 'unvetted')}" f"#{artifact_id}"),
                 }
                 # Optional fields (S3, license, etc.)
                 if data.get("s3_key"):
@@ -126,9 +121,7 @@ class ArtifactStore:
                     trust_score=trust_score,
                     duration_ms=duration_ms,
                 )
-                logger.info(
-                    f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})"
-                )
+                logger.info(f"Saved to DynamoDB: {artifact_type}/{artifact_id} (trust_score={trust_score})")
             except Exception as e:
                 logger.error(f"DynamoDB save failed: {e}, falling back to memory")
                 security_alert(
@@ -279,20 +272,16 @@ class ArtifactStore:
                 return [
                     v
                     for v in self._memory_store.values()
-                    if v.get("metadata", {}).get("status") == status
-                    or v.get("data", {}).get("status") == status
+                    if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
                 ]
         else:
             return [
                 v
                 for v in self._memory_store.values()
-                if v.get("metadata", {}).get("status") == status
-                or v.get("data", {}).get("status") == status
+                if v.get("metadata", {}).get("status") == status or v.get("data", {}).get("status") == status
             ]
 
-    def list_by_min_trust_score(
-        self, min_score: float, artifact_type: str | None = None, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    def list_by_min_trust_score(self, min_score: float, artifact_type: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """List artifacts with trust_score >= min_score."""
         start = time.time()
         if self.use_dynamodb and dynamodb_table:
@@ -322,38 +311,22 @@ class ArtifactStore:
                 )
                 return [json.loads(item["data"]) for item in items]
             except Exception as e:
-                logger.error(
-                    f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory"
-                )
+                logger.error(f"DynamoDB list_by_min_trust_score failed: {e}, falling back to memory")
                 security_alert(
                     "dynamodb_list_by_min_trust_failed",
                     table=TABLE_NAME,
                     min_score=min_score,
                     error=str(e),
                 )
-                results = [
-                    v
-                    for v in self._memory_store.values()
-                    if v.get("data", {}).get("trust_score", 0.0) >= min_score
-                ]
+                results = [v for v in self._memory_store.values() if v.get("data", {}).get("trust_score", 0.0) >= min_score]
                 if artifact_type:
-                    results = [
-                        r for r in results if r.get("metadata", {}).get("type") == artifact_type
-                    ]
-                return sorted(
-                    results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
-                )
+                    results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
+                return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
         else:
-            results = [
-                v
-                for v in self._memory_store.values()
-                if v.get("data", {}).get("trust_score", 0.0) >= min_score
-            ]
+            results = [v for v in self._memory_store.values() if v.get("data", {}).get("trust_score", 0.0) >= min_score]
             if artifact_type:
                 results = [r for r in results if r.get("metadata", {}).get("type") == artifact_type]
-            return sorted(
-                results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True
-            )
+            return sorted(results, key=lambda x: x.get("data", {}).get("trust_score", 0.0), reverse=True)
 
     def delete(self, artifact_type: str, artifact_id: str) -> None:
         """Delete an artifact."""
@@ -482,9 +455,7 @@ class RatingsCache:
         """Get cached rating."""
         if self.use_dynamodb and dynamodb_table:
             try:
-                response = dynamodb_table.get_item(
-                    Key={"PK": "RATING#CACHE", "SK": f"RATING#{artifact_id}"}
-                )
+                response = dynamodb_table.get_item(Key={"PK": "RATING#CACHE", "SK": f"RATING#{artifact_id}"})
                 if "Item" in response:
                     return json.loads(response["Item"]["data"])
                 return None

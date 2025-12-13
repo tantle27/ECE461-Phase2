@@ -327,10 +327,7 @@ class TestArtifactStore:
         # Verify GSI2 query
         call_kwargs = mock_table.query.call_args[1]
         assert call_kwargs["IndexName"] == "GSI2"
-        assert (
-            call_kwargs["KeyConditionExpression"]
-            == "GSI2PK = :status_key AND begins_with(GSI2SK, :status_val)"
-        )
+        assert call_kwargs["KeyConditionExpression"] == "GSI2PK = :status_key AND begins_with(GSI2SK, :status_val)"
         assert call_kwargs["ExpressionAttributeValues"][":status_key"] == "STATUS"
         assert call_kwargs["ExpressionAttributeValues"][":status_val"] == "approved"
         assert call_kwargs["Limit"] == 50

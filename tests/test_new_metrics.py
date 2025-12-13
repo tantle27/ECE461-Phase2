@@ -86,10 +86,7 @@ class TestReproducibilityMetric:
         # Mock AI extraction of code from model card
         self.mock_gen_ai_client.extract_code_from_text.return_value = [
             {
-                "code": (
-                    "from transformers import AutoModel\n"
-                    "model = AutoModel.from_pretrained('model-name')"
-                ),
+                "code": ("from transformers import AutoModel\n" "model = AutoModel.from_pretrained('model-name')"),
                 "language": "python",
             }
         ]
@@ -356,9 +353,7 @@ class TestTreescoreMetric:
         # Return average of parent scores
         return sum(parent_scores) / len(parent_scores)
 
-    async def _calculate_treescore_from_config(
-        self, model_id: str, config: dict[str, Any]
-    ) -> float:
+    async def _calculate_treescore_from_config(self, model_id: str, config: dict[str, Any]) -> float:
         """Calculate treescore from model config.json."""
         # Extract lineage from config
         parent_models = self.mock_lineage_analyzer.extract_lineage_from_config(config)

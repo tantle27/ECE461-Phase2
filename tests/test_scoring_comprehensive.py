@@ -69,9 +69,7 @@ class TestModelRating:
 
     def test_model_rating_fields(self):
         """Test ModelRating has all required fields."""
-        rating = ModelRating(
-            id="test", generated_at=datetime.now(), scores={}, latencies={}, summary={}
-        )
+        rating = ModelRating(id="test", generated_at=datetime.now(), scores={}, latencies={}, summary={})
 
         assert hasattr(rating, "id")
         assert hasattr(rating, "generated_at")
@@ -119,9 +117,7 @@ class TestAsyncEventLoopHandling:
         async def test_coro():
             return "fallback_result"
 
-        with patch("asyncio.new_event_loop") as mock_new_loop, patch(
-            "asyncio.set_event_loop"
-        ) as mock_set_loop:
+        with patch("asyncio.new_event_loop") as mock_new_loop, patch("asyncio.set_event_loop") as mock_set_loop:
 
             mock_loop = Mock()
             mock_loop.run_until_complete.return_value = "fallback_result"
@@ -228,9 +224,7 @@ class TestModelRatingBuilding:
     def setup_method(self):
         """Set up test fixtures."""
         self.artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="test-model", name="Test Model", type="model", version="1.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="test-model", name="Test Model", type="model", version="1.0.0"),
             data={"model_link": "https://example.com/model"},
         )
 
@@ -328,9 +322,7 @@ class TestArtifactScoring:
     def setup_method(self):
         """Set up test fixtures."""
         self.artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="test-model", name="Test Model", type="model", version="1.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="test-model", name="Test Model", type="model", version="1.0.0"),
             data={
                 "model_link": "https://example.com/model",
                 "code_link": "https://github.com/example/repo",
@@ -553,9 +545,7 @@ class TestIntegrationScenarios:
     def test_full_scoring_pipeline(self):
         """Test complete scoring pipeline from artifact to rating."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="integration-test", name="Integration Test Model", type="model", version="2.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="integration-test", name="Integration Test Model", type="model", version="2.0.0"),
             data={
                 "model_link": "https://huggingface.co/test-model",
                 "code_link": "https://github.com/test/repo",
@@ -619,9 +609,7 @@ class TestIntegrationScenarios:
     def test_error_recovery_and_logging(self):
         """Test error scenarios are properly handled and logged."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="error-test", name="test", type="model", version="1.0"
-            ),
+            metadata=MockArtifactMetadata(id="error-test", name="test", type="model", version="1.0"),
             data={"model_link": "https://example.com/broken-model"},
         )
 

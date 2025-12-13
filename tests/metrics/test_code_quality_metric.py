@@ -13,9 +13,7 @@ class TestCodeQualityMetric:
     @pytest.mark.asyncio
     async def test_calculate_perfect_score(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(
-            has_tests=True, lint_errors=0, code_quality_score=1.0
-        )
+        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(has_tests=True, lint_errors=0, code_quality_score=1.0)
 
         metric = CodeQualityMetric(mock_git_client)
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
@@ -27,9 +25,7 @@ class TestCodeQualityMetric:
     @pytest.mark.asyncio
     async def test_calculate_no_tests_no_errors(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(
-            has_tests=False, lint_errors=0, code_quality_score=1.0
-        )
+        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(has_tests=False, lint_errors=0, code_quality_score=1.0)
 
         metric = CodeQualityMetric(mock_git_client)
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
@@ -87,9 +83,7 @@ class TestCodeQualityMetric:
     @pytest.mark.asyncio
     async def test_calculate_worst_case(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(
-            has_tests=False, lint_errors=25, code_quality_score=0.0
-        )
+        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(has_tests=False, lint_errors=25, code_quality_score=0.0)
 
         metric = CodeQualityMetric(mock_git_client)
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))
@@ -124,9 +118,7 @@ class TestCodeQualityMetric:
     @pytest.mark.asyncio
     async def test_calculate_weights_used_correctly(self):
         mock_git_client = Mock()
-        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(
-            has_tests=True, lint_errors=0, code_quality_score=1.0
-        )
+        mock_git_client.analyze_code_quality.return_value = CodeQualityStats(has_tests=True, lint_errors=0, code_quality_score=1.0)
 
         metric = CodeQualityMetric(mock_git_client)
         result = await metric.calculate(CodeQualityInput(repo_url="/test/repo"))

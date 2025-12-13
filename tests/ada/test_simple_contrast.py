@@ -25,9 +25,7 @@ class TestSimpleColorContrast:
         ada_driver.get(f"{test_url}/health")
 
         # Find text elements
-        text_elements = ada_driver.find_elements(
-            "css selector", "p, h1, h2, h3, h4, h5, h6, span, div"
-        )
+        text_elements = ada_driver.find_elements("css selector", "p, h1, h2, h3, h4, h5, h6, span, div")
 
         contrast_failures = []
         tested_elements = 0

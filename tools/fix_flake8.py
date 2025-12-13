@@ -166,9 +166,7 @@ def main() -> int:
     # Finally run flake8 and capture output
     try:
         print("Running flake8 to capture remaining issues...")
-        result = subprocess.run(
-            ["flake8", "--max-line-length=140", str(ROOT)], capture_output=True, text=True
-        )
+        result = subprocess.run(["flake8", "--max-line-length=140", str(ROOT)], capture_output=True, text=True)
         out = result.stdout or result.stderr
         REMAINING.write_text(out)
         if out.strip():

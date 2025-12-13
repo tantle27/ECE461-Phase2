@@ -576,10 +576,7 @@ class TestAPIPerformance:
         # Simulate large result set
         large_results = {
             "total": 10000,
-            "results": [
-                {"id": f"model-{i}", "name": f"model-{i}", "score": 0.8}
-                for i in range(100)  # First page of 100 results
-            ],
+            "results": [{"id": f"model-{i}", "name": f"model-{i}", "score": 0.8} for i in range(100)],  # First page of 100 results
             "page": 1,
             "limit": 100,
             "total_pages": 100,

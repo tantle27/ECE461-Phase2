@@ -15,9 +15,7 @@ def mock_clients():
     """
     with patch("src.metrics.metrics_calculator.GitClient") as MockGitClient, patch(
         "src.metrics.metrics_calculator.GenAIClient"
-    ) as MockGenAIClient, patch(
-        "src.metrics.metrics_calculator.HuggingFaceClient"
-    ) as MockHuggingFaceClient:
+    ) as MockGenAIClient, patch("src.metrics.metrics_calculator.HuggingFaceClient") as MockHuggingFaceClient:
 
         mock_git = MockGitClient.return_value
         mock_genai = MockGenAIClient.return_value
@@ -38,9 +36,7 @@ async def test_analyze_repository_success(mock_clients):
     mock_hf = mock_clients["hf"]
 
     mock_git.clone_repository.return_value = "/tmp/fake/repo"
-    mock_git.analyze_commits.return_value = MagicMock(
-        total_commits=100, contributors={"author1": 50, "author2": 50}, bus_factor=0.5
-    )
+    mock_git.analyze_commits.return_value = MagicMock(total_commits=100, contributors={"author1": 50, "author2": 50}, bus_factor=0.5)
     mock_git.analyze_code_quality.return_value = MagicMock(lint_errors=0, has_tests=True)
     mock_git.read_readme.return_value = """
 # Project Title
@@ -61,9 +57,7 @@ This project is licensed under the MIT License.
     }
 
     # Mock GenAI client responses (async methods)
-    mock_genai.get_performance_claims = AsyncMock(
-        return_value={"has_metrics": 1, "mentions_benchmarks": 1}
-    )
+    mock_genai.get_performance_claims = AsyncMock(return_value={"has_metrics": 1, "mentions_benchmarks": 1})
     mock_genai.get_readme_clarity = AsyncMock(return_value=0.8)
 
     # Mock HuggingFace client responses (async methods)

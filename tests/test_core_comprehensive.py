@@ -41,9 +41,7 @@ class TestDataModels:
 
     def test_artifact_metadata_creation(self):
         """Test ArtifactMetadata dataclass creation."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-package", type="model", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
 
         assert metadata.id == "test-id"
         assert metadata.name == "test-package"
@@ -52,9 +50,7 @@ class TestDataModels:
 
     def test_artifact_creation_default_data(self):
         """Test Artifact creation with default data field."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-package", type="model", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
         artifact = Artifact(metadata=metadata)
 
         assert artifact.metadata == metadata
@@ -62,9 +58,7 @@ class TestDataModels:
 
     def test_artifact_creation_with_data(self):
         """Test Artifact creation with custom data."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-package", type="model", version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.0.0")
         data = {"url": "https://github.com/test/repo", "description": "Test package"}
         artifact = Artifact(metadata=metadata, data=data)
 
@@ -248,9 +242,7 @@ class TestMetadataAndDataAliases:
 
     def test_ensure_metadata_aliases(self):
         """Test _ensure_metadata_aliases creates all expected aliases."""
-        metadata = ArtifactMetadata(
-            id="test-id", name="test-package", type="model", version="1.2.3"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-package", type="model", version="1.2.3")
 
         result = _ensure_metadata_aliases(metadata)
 
@@ -400,9 +392,7 @@ class TestStorageOperations:
 
         # Add test artifacts
         for i in range(3):
-            metadata = ArtifactMetadata(
-                id=f"test-id-{i}", name=f"package-{i}", type="model", version="1.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-id-{i}", name=f"package-{i}", type="model", version="1.0")
             artifact = Artifact(metadata=metadata)
             save_artifact(artifact)
 

@@ -95,10 +95,7 @@ class RealPerformanceAnalyzer:
                 "total_requests": results["success_count"] + results["failure_count"],
                 "successful_requests": results["success_count"],
                 "failed_requests": results["failure_count"],
-                "success_rate": (
-                    results["success_count"] / (results["success_count"] + results["failure_count"])
-                )
-                * 100,
+                "success_rate": (results["success_count"] / (results["success_count"] + results["failure_count"])) * 100,
                 "throughput": results["success_count"] / total_time,
                 # Latency metrics
                 "mean_latency": float(np.mean(times)),
@@ -197,9 +194,7 @@ class RealPerformanceAnalyzer:
             )
 
         # Response time distribution histogram
-        ax2.hist(
-            metrics["raw_response_times"], bins=30, alpha=0.7, color="skyblue", edgecolor="black"
-        )
+        ax2.hist(metrics["raw_response_times"], bins=30, alpha=0.7, color="skyblue", edgecolor="black")
         ax2.axvline(
             metrics["mean_latency"],
             color="red",

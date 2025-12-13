@@ -74,9 +74,7 @@ class TestSimpleAccessibility:
                     has_label = True
 
             if not has_label:
-                unlabeled_inputs.append(
-                    {"id": input_id, "type": input_type, "name": input_elem.get_attribute("name")}
-                )
+                unlabeled_inputs.append({"id": input_id, "type": input_type, "name": input_elem.get_attribute("name")})
 
         assert len(unlabeled_inputs) == 0, f"Unlabeled inputs: {unlabeled_inputs}"
 
@@ -89,9 +87,7 @@ class TestSimpleAccessibility:
         for level in range(1, 7):  # h1 to h6
             heading_elements = ada_driver.find_elements("tag name", f"h{level}")
             for heading in heading_elements:
-                headings.append(
-                    {"level": level, "text": heading.text.strip()[:50], "element": heading}
-                )
+                headings.append({"level": level, "text": heading.text.strip()[:50], "element": heading})
 
         if not headings:
             pytest.skip("No headings found on page")
@@ -107,9 +103,7 @@ class TestSimpleAccessibility:
 
         # Find all buttons
         buttons = ada_driver.find_elements("tag name", "button")
-        button_inputs = ada_driver.find_elements(
-            "css selector", "input[type='button'], input[type='submit']"
-        )
+        button_inputs = ada_driver.find_elements("css selector", "input[type='button'], input[type='submit']")
 
         all_buttons = buttons + button_inputs
         unnamed_buttons = []
