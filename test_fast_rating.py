@@ -3,6 +3,7 @@
 import os
 import sys
 from unittest.mock import MagicMock
+from app.scoring import _score_artifact_with_metrics
 
 # Mock secrets loader BEFORE any other imports
 sys.modules["app.secrets_loader"] = MagicMock()
@@ -10,8 +11,6 @@ sys.modules["app.secrets_loader"] = MagicMock()
 # Set fast rating mode (can be overridden by environment)
 if "FAST_RATING_MODE" not in os.environ:
     os.environ["FAST_RATING_MODE"] = "true"
-
-from app.scoring import _score_artifact_with_metrics
 
 
 # Create a mock artifact

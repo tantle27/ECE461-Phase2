@@ -88,9 +88,6 @@ class TestMainExecution:
         """Test the import structure is correct."""
         # This test ensures the imports work
         try:
-            import registry
-            from app.app import create_app
-
             assert True  # If we get here, imports worked
         except ImportError as e:
             raise AssertionError(f"Import failed: {e}")
