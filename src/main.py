@@ -6,16 +6,15 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, cast
 
 from src.metrics.metrics_calculator import MetricsCalculator
+
 try:
     from app.secrets_loader import load_registry_secrets
 
     load_registry_secrets()
 except Exception:
-    import logging
-
     logging.exception("secrets_loader failed - continuing without Secrets Manager")
 # ----------------- helpers -----------------
 
@@ -96,7 +95,11 @@ def validate_and_configure_logging() -> None:
         level_map = {"1": logging.INFO, "2": logging.DEBUG}
         level = level_map[level_str]
         logging.basicConfig(
-            level=level, format="%(asctime)s [%(levelname)s] %(message)s", filename=log_file, filemode="a", force=True,
+            level=level,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            filename=log_file,
+            filemode="a",
+            force=True,
         )
         logging.getLogger().setLevel(level)
         # seed logs so grader can distinguish 1 vs 2
@@ -180,6 +183,7 @@ def parse_url_file(file_path: str) -> list[tuple[str | None, str | None, str]]:
         return entries
     except FileNotFoundError:
         _fail(f"URL file not found at '{file_path}'. Please check the path.")
+    return []  # Unreachable, but satisfies type checker
 
 
 # ----------------- scoring -----------------
@@ -203,7 +207,9 @@ def calculate_net_score(metrics: dict[str, Any]) -> float:
 
 
 async def analyze_entry(
-    entry: tuple[str | None, str | None, str], process_pool: ThreadPoolExecutor, encountered_datasets: set,
+    entry: tuple[str | None, str | None, str],
+    process_pool: ThreadPoolExecutor,
+    encountered_datasets: set,
 ) -> dict[str, Any]:
     code_link, dataset_link, model_link = entry
     start_time = time.time()
@@ -211,7 +217,7 @@ async def analyze_entry(
         github_token = os.environ.get("GH_TOKEN")
     except KeyError:
         github_token = None
-    calculator = MetricsCalculator(process_pool, github_token)
+    calculator = MetricsCalculator(cast(ThreadPoolExecutor, process_pool), github_token)
     local = await calculator.analyze_entry(code_link, dataset_link, model_link, encountered_datasets)
 
     net_score = calculate_net_score(local)

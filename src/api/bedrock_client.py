@@ -26,7 +26,10 @@ class BedrockClient:
     def _invoke_sync(self, model_id: str, payload_bytes: bytes) -> str:
         # Use InvokeModel API
         resp = self._client.invoke_model(
-            modelId=model_id, contentType="application/json", accept="application/json", body=payload_bytes,
+            modelId=model_id,
+            contentType="application/json",
+            accept="application/json",
+            body=payload_bytes,
         )
         body_stream = resp.get("body")
         if body_stream is None:

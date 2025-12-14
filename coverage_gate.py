@@ -257,14 +257,10 @@ class CoverageGate:
 
         files = json_data.get("files", {})
         low_coverage_files = [
-            (f, data)
-            for f, data in files.items()
-            if data.get("summary", {}).get("percent_covered", 100) < self.min_coverage
+            (f, data) for f, data in files.items() if data.get("summary", {}).get("percent_covered", 100) < self.min_coverage
         ]
 
-        for file_path, file_data in sorted(
-            low_coverage_files, key=lambda x: x[1].get("summary", {}).get("percent_covered", 0)
-        ):
+        for file_path, file_data in sorted(low_coverage_files, key=lambda x: x[1].get("summary", {}).get("percent_covered", 0)):
             summary = file_data.get("summary", {})
             coverage_pct = summary.get("percent_covered", 0)
             missing_lines = file_data.get("missing_lines", [])

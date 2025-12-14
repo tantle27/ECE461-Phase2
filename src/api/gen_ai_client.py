@@ -107,9 +107,7 @@ class GenAIClient:
             extraction_prompt = self._read_prompt("src/api/performance_claims_extraction_prompt.txt") + readme_text
             extraction_response = await self.chat(extraction_prompt)
 
-            conversion_prompt = (
-                self._read_prompt("src/api/performance_claims_conversion_prompt.txt") + "\n" + extraction_response
-            )
+            conversion_prompt = self._read_prompt("src/api/performance_claims_conversion_prompt.txt") + "\n" + extraction_response
             json_response = await self.chat(conversion_prompt)
         except Exception as exc:
             logging.warning("Falling back to default performance claims due to GenAI error: %s", str(exc))

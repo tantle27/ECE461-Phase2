@@ -10,14 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.main import (
-    _fail,
-    _github_token_is_valid,
-    main,
-    parse_url_file,
-    process_entries,
-    validate_and_configure_logging,
-)
+from src.main import _fail, _github_token_is_valid, main, parse_url_file, process_entries, validate_and_configure_logging
 
 
 class TestGitHubTokenValidation:

@@ -239,7 +239,8 @@ class TestFetchRepoTree:
         assert mock_get.call_count == 2
         mock_get.assert_any_call("https://api.github.com/repos/owner/repo/commits/feature-branch")
         mock_get.assert_any_call(
-            "https://api.github.com/repos/owner/repo/git/trees/commit_sha_123", params={"recursive": "1"},
+            "https://api.github.com/repos/owner/repo/git/trees/commit_sha_123",
+            params={"recursive": "1"},
         )
 
     @patch("src.api.github_fetchers._get")
@@ -247,7 +248,11 @@ class TestFetchRepoTree:
         """Test fetching repo tree without ref (uses main branch)."""
         mock_get.side_effect = [
             {"commit": {"sha": "main_sha_456"}},  # Main branch lookup
-            {"tree": [{"type": "blob", "path": "index.js", "size": "2048"},]},  # Tree response
+            {
+                "tree": [
+                    {"type": "blob", "path": "index.js", "size": "2048"},
+                ]
+            },  # Tree response
         ]
 
         from src.api.github_fetchers import fetch_repo_tree
@@ -259,7 +264,8 @@ class TestFetchRepoTree:
 
         mock_get.assert_any_call("https://api.github.com/repos/owner/repo/branches/main")
         mock_get.assert_any_call(
-            "https://api.github.com/repos/owner/repo/git/trees/main_sha_456", params={"recursive": "1"},
+            "https://api.github.com/repos/owner/repo/git/trees/main_sha_456",
+            params={"recursive": "1"},
         )
 
     @patch("src.api.github_fetchers._get")
@@ -319,13 +325,22 @@ class TestFetchCommits:
         result = fetch_commits("owner/repo", "feature-branch")
 
         expected = [
-            {"author_email": "user1@example.com", "author_login": "user1", "date": "2023-01-01T12:00:00Z",},
-            {"author_email": "user2@example.com", "author_login": "user2", "date": "2023-01-02T12:00:00Z",},
+            {
+                "author_email": "user1@example.com",
+                "author_login": "user1",
+                "date": "2023-01-01T12:00:00Z",
+            },
+            {
+                "author_email": "user2@example.com",
+                "author_login": "user2",
+                "date": "2023-01-02T12:00:00Z",
+            },
         ]
         assert result == expected
 
         mock_get.assert_called_once_with(
-            "https://api.github.com/repos/owner/repo/commits", params={"per_page": 100, "sha": "feature-branch"},
+            "https://api.github.com/repos/owner/repo/commits",
+            params={"per_page": 100, "sha": "feature-branch"},
         )
 
     @patch("src.api.github_fetchers._get")

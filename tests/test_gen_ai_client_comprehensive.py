@@ -2,6 +2,7 @@
 Comprehensive tests for src/api/gen_ai_client.py to achieve better coverage.
 Tests AI client initialization, prompt processing, API interactions, and error handling.
 """
+
 import asyncio
 import os
 import ssl
@@ -107,9 +108,7 @@ class TestGenAIClientChatMethod:
             with patch("aiohttp.ClientSession.post") as mock_post:
                 mock_response = AsyncMock()
                 mock_response.status = 200
-                mock_response.json = AsyncMock(
-                    return_value={"choices": [{"message": {"content": "Custom model response"}}]}
-                )
+                mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "Custom model response"}}]})
 
                 mock_post.return_value.__aenter__.return_value = mock_response
 
@@ -148,7 +147,8 @@ class TestGenAIClientChatMethod:
                     AsyncMock(status=500, text=AsyncMock(return_value="Server error")),
                     AsyncMock(status=500, text=AsyncMock(return_value="Server error")),
                     AsyncMock(
-                        status=200, json=AsyncMock(return_value={"choices": [{"message": {"content": "Success"}}]}),
+                        status=200,
+                        json=AsyncMock(return_value={"choices": [{"message": {"content": "Success"}}]}),
                     ),
                 ]
 
@@ -231,9 +231,7 @@ class TestGenAIClientPerformanceClaims:
             client = GenAIClient()
 
             # Mock the chat method to return JSON response
-            json_response = (
-                '{"mentions_benchmarks": 1.0, "has_metrics": 1.0, ' '"claims": ["95% accuracy"], "score": 0.8}'
-            )
+            json_response = '{"mentions_benchmarks": 1.0, "has_metrics": 1.0, ' '"claims": ["95% accuracy"], "score": 0.8}'
             mock_chat_responses = ["Extracted performance claims", json_response]
 
             with patch.object(client, "chat", side_effect=mock_chat_responses):

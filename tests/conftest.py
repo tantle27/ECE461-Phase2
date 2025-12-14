@@ -41,9 +41,7 @@ def sample_url_file(temp_dir: str) -> str:
     """Create a sample URL file for testing."""
     file_path = os.path.join(temp_dir, "test_urls.txt")
     with open(file_path, "w") as f:
-        f.write(
-            "https://github.com/test/repo1," "https://huggingface.co/datasets/test," "https://huggingface.co/model1\n"
-        )
+        f.write("https://github.com/test/repo1," "https://huggingface.co/datasets/test," "https://huggingface.co/model1\n")
         f.write(",,https://huggingface.co/model2\n")
         f.write("https://github.com/test/repo2,," "https://huggingface.co/model3\n")
     return file_path
@@ -132,7 +130,12 @@ def sample_scorecard() -> dict[str, Any]:
         "performance_claims_latency": 300,
         "license": 1.0,
         "license_latency": 50,
-        "size_score": {"raspberry_pi": 0.5, "jetson_nano": 0.7, "desktop_pc": 1.0, "aws_server": 1.0,},
+        "size_score": {
+            "raspberry_pi": 0.5,
+            "jetson_nano": 0.7,
+            "desktop_pc": 1.0,
+            "aws_server": 1.0,
+        },
         "size_score_latency": 75,
         "dataset_and_code_score": 0.85,
         "dataset_and_code_score_latency": 125,
@@ -147,7 +150,11 @@ def sample_scorecard() -> dict[str, Any]:
 def sample_model_entries():
     """Sample model entries for testing."""
     return [
-        ("https://github.com/test/repo1", "https://huggingface.co/datasets/test1", "https://huggingface.co/model1",),
+        (
+            "https://github.com/test/repo1",
+            "https://huggingface.co/datasets/test1",
+            "https://huggingface.co/model1",
+        ),
         (None, None, "https://huggingface.co/model2"),
         ("https://github.com/test/repo2", None, "https://huggingface.co/model3"),
     ]

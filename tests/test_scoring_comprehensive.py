@@ -23,10 +23,10 @@ import pytest
 
 # Import from app.scoring
 from app.scoring import (
-    _get_metrics_calculator,
     ModelRating,
     _build_model_rating,
     _calculate_net_score,
+    _get_metrics_calculator,
     _run_async,
     _score_artifact_with_metrics,
 )
@@ -448,8 +448,10 @@ class TestArtifactScoring:
 
             # Verify analyze_entry was called correctly
             mock_analyze.assert_called_once_with(
-                "https://github.com/example/repo", "https://example.com/dataset",
-                "https://example.com/model", set(),
+                "https://github.com/example/repo",
+                "https://example.com/dataset",
+                "https://example.com/model",
+                set(),
             )
 
     @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
@@ -469,9 +471,7 @@ class TestArtifactScoring:
             _score_artifact_with_metrics(artifact)
 
             # Verify analyze_entry was called with None for missing links
-            mock_analyze.assert_called_once_with(
-                None, None, "https://example.com/model", set()
-            )
+            mock_analyze.assert_called_once_with(None, None, "https://example.com/model", set())
 
     @patch.dict(os.environ, {"GH_TOKEN": "test_token"})  # Ensure real metrics are used
     def test_score_artifact_metrics_exception(self):
@@ -545,9 +545,7 @@ class TestIntegrationScenarios:
     def test_full_scoring_pipeline(self):
         """Test complete scoring pipeline from artifact to rating."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="integration-test", name="Integration Test Model", type="model", version="2.0.0"
-            ),
+            metadata=MockArtifactMetadata(id="integration-test", name="Integration Test Model", type="model", version="2.0.0"),
             data={
                 "model_link": "https://huggingface.co/test-model",
                 "code_link": "https://github.com/test/repo",
@@ -611,9 +609,7 @@ class TestIntegrationScenarios:
     def test_error_recovery_and_logging(self):
         """Test error scenarios are properly handled and logged."""
         artifact = MockArtifact(
-            metadata=MockArtifactMetadata(
-                id="error-test", name="test", type="model", version="1.0"
-            ),
+            metadata=MockArtifactMetadata(id="error-test", name="test", type="model", version="1.0"),
             data={"model_link": "https://example.com/broken-model"},
         )
 

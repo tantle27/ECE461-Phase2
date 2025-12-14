@@ -71,9 +71,7 @@ class TestPerformanceClaimsMetric:
             result = await metric.calculate(metric_input)
 
             # Assert the result with boost formula applied
-            raw_result = (
-                PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.5 + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.0
-            )
+            raw_result = PerformanceClaimsMetric.HAS_BENCHMARKS_WEIGHT * 0.5 + PerformanceClaimsMetric.HAS_METRICS_WEIGHT * 0.0
             expected_result = min(1.0, raw_result * 1.15 + 0.1)
             assert result == expected_result
 

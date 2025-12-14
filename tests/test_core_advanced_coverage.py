@@ -21,25 +21,25 @@ from flask import Flask
 
 # Import the functions and classes we want to test
 from app.core import (
-    ArtifactMetadata,
+    _ARTIFACT_ORDER,
+    _STORE,
     Artifact,
+    ArtifactMetadata,
     ArtifactQuery,
-    save_artifact,
+    _artifact_from_raw,
+    _audit_add,
+    _calculate_artifact_size_mb,
+    _decode_token,
+    _is_dangerous_regex,
+    _json_body,
+    _mint_token,
+    _parse_bearer,
+    _require_auth,
+    blueprint,
     fetch_artifact,
     list_artifacts,
     reset_storage,
-    _json_body,
-    _require_auth,
-    _audit_add,
-    _calculate_artifact_size_mb,
-    _artifact_from_raw,
-    _parse_bearer,
-    _mint_token,
-    _decode_token,
-    _is_dangerous_regex,
-    blueprint,
-    _STORE,
-    _ARTIFACT_ORDER,
+    save_artifact,
 )
 
 
@@ -47,7 +47,7 @@ from app.core import (
 def app():
     """Create a Flask app for testing."""
     app = Flask(__name__)
-    app.config['TESTING'] = True
+    app.config["TESTING"] = True
     app.register_blueprint(blueprint)
     return app
 
@@ -71,15 +71,10 @@ class TestArtifactCRUDOperations:
 
     def test_save_artifact_basic(self, clean_storage):
         """Test saving a basic artifact."""
-        metadata = ArtifactMetadata(
-            id="test-id",
-            name="test-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "test content"})
 
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.save = MagicMock()
 
             result = save_artifact(artifact)
@@ -90,15 +85,10 @@ class TestArtifactCRUDOperations:
 
     def test_save_artifact_with_storage_error(self, clean_storage):
         """Test saving artifact when storage adapter fails."""
-        metadata = ArtifactMetadata(
-            id="test-id",
-            name="test-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="test-id", name="test-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "test content"})
 
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.save.side_effect = Exception("Storage error")
 
             # Should still work, just log the error
@@ -110,10 +100,10 @@ class TestArtifactCRUDOperations:
 
     def test_fetch_artifact_from_adapter(self, clean_storage):
         """Test fetching artifact from storage adapter."""
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.get.return_value = {
                 "metadata": {"id": "test-id", "name": "test", "type": "package", "version": "1.0"},
-                "data": {"readme": "test content"}
+                "data": {"readme": "test content"},
             }
 
             result = fetch_artifact("package", "test-id")
@@ -126,15 +116,10 @@ class TestArtifactCRUDOperations:
     def test_fetch_artifact_from_memory(self, clean_storage):
         """Test fetching artifact from memory store."""
         # First save an artifact
-        metadata = ArtifactMetadata(
-            id="memory-id",
-            name="memory-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="memory-id", name="memory-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={"readme": "memory content"})
 
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.save = MagicMock()
             mock_store.get.return_value = None  # Not in adapter
 
@@ -149,7 +134,7 @@ class TestArtifactCRUDOperations:
 
     def test_fetch_artifact_not_found(self, clean_storage):
         """Test fetching non-existent artifact."""
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.get.return_value = None
 
             result = fetch_artifact("package", "nonexistent")
@@ -160,7 +145,7 @@ class TestArtifactCRUDOperations:
         """Test listing artifacts when none exist."""
         query = ArtifactQuery(artifact_type="package")
 
-        with patch('app.core._ARTIFACT_STORE') as mock_store:
+        with patch("app.core._ARTIFACT_STORE") as mock_store:
             mock_store.list_all.return_value = []
 
             result = list_artifacts(query)
@@ -172,12 +157,7 @@ class TestArtifactCRUDOperations:
         """Test listing artifacts with existing data."""
         # Save some test artifacts first
         for i in range(3):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}",
-                name=f"artifact-{i}",
-                type="package",
-                version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={"readme": f"content {i}"})
             save_artifact(artifact)
 
@@ -191,12 +171,7 @@ class TestArtifactCRUDOperations:
         """Test listing artifacts with pagination."""
         # Save 10 test artifacts
         for i in range(10):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}",
-                name=f"artifact-{i}",
-                type="package",
-                version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=f"artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={"readme": f"content {i}"})
             save_artifact(artifact)
 
@@ -212,12 +187,7 @@ class TestArtifactCRUDOperations:
         # Save test artifacts with different names
         names = ["package-react", "react-utils", "vue-components", "angular-lib"]
         for i, name in enumerate(names):
-            metadata = ArtifactMetadata(
-                id=f"test-{i}",
-                name=name,
-                type="package",
-                version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"test-{i}", name=name, type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={"readme": f"content {i}"})
             save_artifact(artifact)
 
@@ -235,18 +205,18 @@ class TestFlaskRoutes:
 
     def test_health_endpoint(self, client):
         """Test health check endpoint."""
-        response = client.get('/health')
+        response = client.get("/health")
         assert response.status_code == 200
         data = response.get_json()
         assert data["ok"] is True
 
-    @patch('app.core._STORE')
-    @patch('app.core._ARTIFACT_STORE')
+    @patch("app.core._STORE")
+    @patch("app.core._ARTIFACT_STORE")
     def test_health_components_endpoint(self, mock_artifact_store, mock_store, client):
         """Test health components endpoint."""
         mock_artifact_store.health_check.return_value = True
 
-        response = client.get('/health/components')
+        response = client.get("/health/components")
         assert response.status_code == 200
         data = response.get_json()
         assert "components" in data
@@ -254,7 +224,7 @@ class TestFlaskRoutes:
 
     def test_openapi_spec_endpoint(self, client):
         """Test OpenAPI specification endpoint."""
-        response = client.get('/openapi')
+        response = client.get("/openapi")
         assert response.status_code == 200
         # Should return JSON with OpenAPI specification
         data = response.get_json()
@@ -266,11 +236,9 @@ class TestFlaskRoutes:
         # Use the actual default credentials with lowercase keys
         auth_data = {
             "user": {"name": "ece30861defaultadminuser"},
-            "secret": {
-                "password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;"""
-            }
+            "secret": {"password": """correcthorsebatterystaple123(!__+@**(A'"`;DROP TABLE packages;"""},
         }
-        response = client.put('/authenticate', json=auth_data)
+        response = client.put("/authenticate", json=auth_data)
 
         assert response.status_code == 200
         data = response.get_json()
@@ -278,7 +246,7 @@ class TestFlaskRoutes:
 
     def test_authenticate_endpoint_missing_data(self, client):
         """Test authentication endpoint with missing data."""
-        response = client.put('/authenticate', json={})
+        response = client.put("/authenticate", json={})
 
         assert response.status_code == 400
 
@@ -288,77 +256,67 @@ class TestFlaskRoutes:
         artifact_data = {
             "Name": "test-model",
             "Version": "1.0.0",
-            "url": "https://github.com/test/test-model"
+            "url": "https://github.com/test/test-model",
         }
-        
+
         headers = {"X-Authorization": "Bearer valid-token"}
-        
-        with patch('app.core._TOKENS', {'valid-token': True}):
-            with patch('app.core.save_artifact') as mock_save:
-                response = client.post('/artifact/model', json=artifact_data, headers=headers)
+
+        with patch("app.core._TOKENS", {"valid-token": True}):
+            with patch("app.core.save_artifact") as mock_save:
+                response = client.post("/artifact/model", json=artifact_data, headers=headers)
 
                 assert response.status_code == 201
                 mock_save.assert_called_once()
 
-    @patch('app.core._require_auth')
+    @patch("app.core._require_auth")
     def test_enumerate_artifacts_endpoint(self, mock_auth, client):
         """Test enumerating artifacts via API endpoint."""
         mock_auth.return_value = ("testuser", False)
-        
+
         # Reset storage for this test
         reset_storage()
 
         # Add some test artifacts
         for i in range(3):
-            metadata = ArtifactMetadata(
-                id=f"enum-{i}",
-                name=f"enum-artifact-{i}",
-                type="package",
-                version="1.0.0"
-            )
+            metadata = ArtifactMetadata(id=f"enum-{i}", name=f"enum-artifact-{i}", type="package", version="1.0.0")
             artifact = Artifact(metadata=metadata, data={})
             save_artifact(artifact)
 
-        response = client.post('/artifacts', json=[{"Name": "*"}])
+        response = client.post("/artifacts", json=[{"Name": "*"}])
 
         assert response.status_code == 200
         data = response.get_json()
         assert len(data) >= 3
 
-    @patch('app.core._require_auth')
+    @patch("app.core._require_auth")
     def test_get_artifact_endpoint_success(self, mock_auth, client):
         """Test getting specific artifact via API endpoint."""
         mock_auth.return_value = ("testuser", False)
-        
+
         # Reset storage for this test
         reset_storage()
 
         # Create test artifact with required url field
-        metadata = ArtifactMetadata(
-            id="get-test",
-            name="get-test-artifact",
-            type="package",
-            version="1.0.0"
+        metadata = ArtifactMetadata(id="get-test", name="get-test-artifact", type="package", version="1.0.0")
+        artifact = Artifact(
+            metadata=metadata,
+            data={"readme": "test readme", "url": "https://github.com/test/get-test-artifact"},
         )
-        artifact = Artifact(metadata=metadata, data={
-            "readme": "test readme",
-            "url": "https://github.com/test/get-test-artifact"
-        })
         save_artifact(artifact)
 
-        response = client.get('/artifacts/package/get-test')
+        response = client.get("/artifacts/package/get-test")
 
         assert response.status_code == 200
         data = response.get_json()
         assert data["metadata"]["ID"] == "get-test"
         assert data["metadata"]["Name"] == "get-test-artifact"
 
-    @patch('app.core._require_auth')
+    @patch("app.core._require_auth")
     def test_get_artifact_endpoint_not_found(self, mock_auth, client):
         """Test getting non-existent artifact via API endpoint."""
         mock_auth.return_value = ("testuser", False)
 
-        response = client.get('/artifact/package/nonexistent')
+        response = client.get("/artifact/package/nonexistent")
 
         assert response.status_code == 404
 
@@ -370,44 +328,44 @@ class TestUtilityAndHelperFunctions:
         """Test _json_body function with valid JSON."""
         test_data = {"key": "value", "number": 42}
 
-        with app.test_request_context('/test', method='POST', json=test_data):
+        with app.test_request_context("/test", method="POST", json=test_data):
             result = _json_body()
             assert result == test_data
 
     def test_json_body_failure(self, app):
         """Test _json_body function with invalid JSON."""
         # GET request should return empty dict
-        with app.test_request_context('/test', method='GET'):
+        with app.test_request_context("/test", method="GET"):
             result = _json_body()
             assert result == {}
-        
+
         # POST with no JSON should return empty dict
-        with app.test_request_context('/test', method='POST', data='invalid'):
+        with app.test_request_context("/test", method="POST", data="invalid"):
             result = _json_body()
             assert result == {}
 
     def test_require_auth_success(self, app):
         """Test _require_auth with valid authentication."""
-        with app.test_request_context('/', headers={'X-Authorization': 'Bearer valid-token'}):
-            with patch('app.core._TOKENS', {'valid-token': False}):
+        with app.test_request_context("/", headers={"X-Authorization": "Bearer valid-token"}):
+            with patch("app.core._TOKENS", {"valid-token": False}):
                 username, is_admin = _require_auth()
-                
+
                 assert username == "valid-token"
                 assert is_admin is False
 
     def test_require_auth_missing_header(self, app):
         """Test _require_auth with missing authorization header."""
-        with app.test_request_context('/'):
+        with app.test_request_context("/"):
             from werkzeug.exceptions import HTTPException
-            
+
             with pytest.raises(HTTPException):  # Should abort
                 _require_auth()
 
     def test_require_auth_invalid_token(self, app):
         """Test _require_auth with invalid token."""
-        with app.test_request_context('/', headers={'X-Authorization': 'Bearer invalid-token'}):
+        with app.test_request_context("/", headers={"X-Authorization": "Bearer invalid-token"}):
             from werkzeug.exceptions import HTTPException
-            
+
             with pytest.raises(HTTPException):  # Should abort
                 _require_auth()
 
@@ -415,8 +373,9 @@ class TestUtilityAndHelperFunctions:
         """Test _audit_add audit logging function."""
         # Clear audit log first
         from app.core import _AUDIT_LOG
+
         _AUDIT_LOG.clear()
-        
+
         _audit_add("package", "test-id", "CREATE", "test-name")
 
         # Check that entry was added to audit log
@@ -428,16 +387,11 @@ class TestUtilityAndHelperFunctions:
 
     def test_calculate_artifact_size_mb_with_content(self):
         """Test _calculate_artifact_size_mb with content data."""
-        metadata = ArtifactMetadata(
-            id="size-test",
-            name="size-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="size-test", name="size-artifact", type="package", version="1.0.0")
         data = {
             "size": 1024 * 1024,  # 1 MB
             "Content": base64.b64encode(b"x" * 1000).decode(),
-            "readme": "Some readme content"
+            "readme": "Some readme content",
         }
         artifact = Artifact(metadata=metadata, data=data)
 
@@ -447,12 +401,7 @@ class TestUtilityAndHelperFunctions:
 
     def test_calculate_artifact_size_mb_no_content(self):
         """Test _calculate_artifact_size_mb without content."""
-        metadata = ArtifactMetadata(
-            id="no-size-test",
-            name="no-size-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="no-size-test", name="no-size-artifact", type="package", version="1.0.0")
         data = {"readme": "Some readme content", "version": "1.0.0"}
         artifact = Artifact(metadata=metadata, data=data)
 
@@ -471,9 +420,9 @@ class TestUtilityAndHelperFunctions:
         dangerous_patterns = [
             "(a+)+b",  # Nested quantifiers
             "a*a*a*a*a*a*b",  # Multiple quantifiers
-            "(a|a)*b"  # Alternation with overlap
+            "(a|a)*b",  # Alternation with overlap
         ]
-        
+
         for pattern in dangerous_patterns:
             result = _is_dangerous_regex(pattern)
             # Function should detect dangerous patterns
@@ -486,12 +435,7 @@ class TestErrorHandlingAndEdgeCases:
     def test_reset_storage_function(self):
         """Test reset_storage clears all data."""
         # Add some data first
-        metadata = ArtifactMetadata(
-            id="reset-test",
-            name="reset-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="reset-test", name="reset-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={})
         save_artifact(artifact)
 
@@ -508,10 +452,7 @@ class TestErrorHandlingAndEdgeCases:
     def test_artifact_with_missing_metadata_fields(self):
         """Test creating artifact with minimal metadata."""
         # Test with only required fields
-        raw_data = {
-            "metadata": {"id": "minimal"},
-            "data": {"content": "test"}
-        }
+        raw_data = {"metadata": {"id": "minimal"}, "data": {"content": "test"}}
 
         result = _artifact_from_raw(raw_data, "package", "default-id")
 
@@ -569,17 +510,12 @@ class TestErrorHandlingAndEdgeCases:
         # Should return None for invalid tokens
         assert result is None
 
-    @patch('app.core._persist_state')
+    @patch("app.core._persist_state")
     def test_save_artifact_persist_error(self, mock_persist):
         """Test save_artifact when persist_state fails."""
         mock_persist.side_effect = Exception("Persist error")
 
-        metadata = ArtifactMetadata(
-            id="persist-test",
-            name="persist-artifact",
-            type="package",
-            version="1.0.0"
-        )
+        metadata = ArtifactMetadata(id="persist-test", name="persist-artifact", type="package", version="1.0.0")
         artifact = Artifact(metadata=metadata, data={})
 
         # Should not raise exception even if persist fails
@@ -596,22 +532,14 @@ class TestFileOperationsAndContent:
         """Test artifact with ZIP file content."""
         # Create a test ZIP file in memory
         zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-            zip_file.writestr('test.txt', 'Hello, World!')
-            zip_file.writestr('subdir/another.txt', 'Another file')
+        with zipfile.ZipFile(zip_buffer, "w") as zip_file:
+            zip_file.writestr("test.txt", "Hello, World!")
+            zip_file.writestr("subdir/another.txt", "Another file")
 
         zip_content = base64.b64encode(zip_buffer.getvalue()).decode()
 
-        metadata = ArtifactMetadata(
-            id="zip-test",
-            name="zip-artifact",
-            type="package",
-            version="1.0.0"
-        )
-        artifact = Artifact(
-            metadata=metadata,
-            data={"Content": zip_content, "JSProgram": "true"}
-        )
+        metadata = ArtifactMetadata(id="zip-test", name="zip-artifact", type="package", version="1.0.0")
+        artifact = Artifact(metadata=metadata, data={"Content": zip_content, "JSProgram": "true"})
 
         result = save_artifact(artifact)
 
@@ -623,16 +551,8 @@ class TestFileOperationsAndContent:
         # Create large content (1MB)
         large_content = base64.b64encode(b"x" * (1024 * 1024)).decode()
 
-        metadata = ArtifactMetadata(
-            id="large-test",
-            name="large-artifact",
-            type="package",
-            version="1.0.0"
-        )
-        artifact = Artifact(
-            metadata=metadata,
-            data={"Content": large_content}
-        )
+        metadata = ArtifactMetadata(id="large-test", name="large-artifact", type="package", version="1.0.0")
+        artifact = Artifact(metadata=metadata, data={"Content": large_content})
 
         result = save_artifact(artifact)
 

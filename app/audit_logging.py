@@ -15,7 +15,7 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
         # include any structured data passed via extra
-        base = logging.LogRecord("", 0, "", "", None, (), None).__dict__
+        base = logging.LogRecord("", 0, "", 0, None, (), None).__dict__
         extras = {k: v for k, v in record.__dict__.items() if k not in base}
         # common safe extras
         for k in (

@@ -25,9 +25,7 @@ class TestRampUpTimeMetric:
             "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
         ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="Excellent README with clear instructions", repo_path="/path/to/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="Excellent README with clear instructions", repo_path="/path/to/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -97,9 +95,7 @@ class TestRampUpTimeMetric:
             "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
         ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="Good README but could be clearer", repo_path="/path/to/partial/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="Good README but could be clearer", repo_path="/path/to/partial/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -137,7 +133,8 @@ class TestRampUpTimeMetric:
         ):
             # Create test data
             metric_input = RampUpTimeInput(
-                readme_text="Clear README without dependencies or examples", repo_path="/path/to/readme-only/repo",
+                readme_text="Clear README without dependencies or examples",
+                repo_path="/path/to/readme-only/repo",
             )
             metric = RampUpTimeMetric()
 
@@ -204,9 +201,7 @@ class TestRampUpTimeMetric:
             "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
         ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="README with missing repo data", repo_path="/path/to/incomplete/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="README with missing repo data", repo_path="/path/to/incomplete/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -237,9 +232,7 @@ class TestRampUpTimeMetric:
             "src.metrics.ramp_up_time_metric.GitClient", return_value=mock_git_client
         ):
             # Create test data
-            metric_input = RampUpTimeInput(
-                readme_text="README with partial repo data", repo_path="/path/to/partial/repo"
-            )
+            metric_input = RampUpTimeInput(readme_text="README with partial repo data", repo_path="/path/to/partial/repo")
             metric = RampUpTimeMetric()
 
             # Call the calculate method
@@ -281,11 +274,7 @@ class TestRampUpTimeMetric:
     @pytest.mark.asyncio
     async def test_weight_constants_sum_to_one(self):
         """Test that the weight constants sum to 1.0."""
-        total_weight = (
-            RampUpTimeMetric.LLM_README_WEIGHT
-            + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT
-            + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT
-        )
+        total_weight = RampUpTimeMetric.LLM_README_WEIGHT + RampUpTimeMetric.HAS_EXAMPLES_WEIGHT + RampUpTimeMetric.HAS_DEPENDENCIES_WEIGHT
         assert total_weight == pytest.approx(1.0, abs=0.001)
 
     @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """
 Tests for src/core/config.py that focus on basic functionality without pydantic internals.
 """
+
 import os
 from unittest import mock
 

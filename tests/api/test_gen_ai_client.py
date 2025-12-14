@@ -161,9 +161,7 @@ class TestGenAIClient:
         # Mock HTTP response with nested JSON -
         # the regex should extract only the first level
         expected_dict = {"mentions_benchmarks": 1, "has_metrics": 1}
-        response_content = (
-            f"Analysis: {json.dumps(expected_dict)} and some nested object " f'{{"inner": {{"deep": "value"}}}}'
-        )
+        response_content = f"Analysis: {json.dumps(expected_dict)} and some nested object " f'{{"inner": {{"deep": "value"}}}}'
         mock_response = AsyncMock()
         mock_response.status = 200
         mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": response_content}}]})
@@ -323,9 +321,7 @@ class TestGenAIClient:
         # Mock HTTP response with text containing float pattern
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "The clarity score is 0.73."}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "The clarity score is 0.73."}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -457,9 +453,7 @@ class TestGenAIClient:
         # Mock HTTP response with no extractable numbers
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "The documentation quality is very poor"}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "The documentation quality is very poor"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -484,9 +478,7 @@ class TestGenAIClient:
         # for extracting the first valid number
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": "Score: 0.42 (based on analysis)"}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": "Score: 0.42 (based on analysis)"}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()
@@ -511,9 +503,7 @@ class TestGenAIClient:
         # should take the first valid one
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"choices": [{"message": {"content": ("First score: 0.8, second score: 0.6")}}]}
-        )
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": ("First score: 0.8, second score: 0.6")}}]})
         mock_post.return_value.__aenter__.return_value = mock_response
 
         client = GenAIClient()

@@ -390,7 +390,10 @@ class TestArtifactStore:
 
         # Mock query response
         mock_table.query.return_value = {
-            "Items": [{"PK": "ART#model#test", "SK": "META#1.0.0"}, {"PK": "ART#model#test", "SK": "META#1.0.1"},]
+            "Items": [
+                {"PK": "ART#model#test", "SK": "META#1.0.0"},
+                {"PK": "ART#model#test", "SK": "META#1.0.1"},
+            ]
         }
         mock_table.delete_item = Mock()
 
@@ -422,7 +425,10 @@ class TestArtifactStore:
         self.store.use_dynamodb = True
 
         mock_table.scan.return_value = {
-            "Items": [{"PK": "ART#model#test1", "SK": "META#1.0.0"}, {"PK": "ART#model#test2", "SK": "META#1.0.0"},]
+            "Items": [
+                {"PK": "ART#model#test1", "SK": "META#1.0.0"},
+                {"PK": "ART#model#test2", "SK": "META#1.0.0"},
+            ]
         }
 
         # Mock batch writer
@@ -547,7 +553,10 @@ class TestTokenStore:
         self.store.use_dynamodb = True
 
         mock_table.query.return_value = {
-            "Items": [{"PK": "TOKEN#AUTH", "SK": "TOKEN#token1"}, {"PK": "TOKEN#AUTH", "SK": "TOKEN#token2"},]
+            "Items": [
+                {"PK": "TOKEN#AUTH", "SK": "TOKEN#token1"},
+                {"PK": "TOKEN#AUTH", "SK": "TOKEN#token2"},
+            ]
         }
 
         # Mock batch writer

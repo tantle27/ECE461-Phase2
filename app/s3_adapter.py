@@ -72,7 +72,12 @@ class S3Storage:
             return f"{self.prefix}/{key}" if key else self.prefix
         return key
 
-    def put_file(self, fileobj: BinaryIO, key_rel: str, content_type: str | None = None,) -> dict[str, Any]:
+    def put_file(
+        self,
+        fileobj: BinaryIO,
+        key_rel: str,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
         if not self.enabled or not s3_client or not self.bucket:
             logger.error("S3Storage.put_file failed precondition.")
             raise RuntimeError("S3Storage not enabled")
@@ -157,7 +162,11 @@ class S3Storage:
         params: dict[str, Any] = {"Bucket": self.bucket, "Key": safe_key}
         if version_id:
             params["VersionId"] = version_id
-        return s3_client.generate_presigned_url(ClientMethod="get_object", Params=params, ExpiresIn=expires_in,)
+        return s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params=params,
+            ExpiresIn=expires_in,
+        )
 
     def delete_object(self, key: str, version_id: str | None = None) -> None:
         if not self.enabled or not s3_client or not self.bucket:

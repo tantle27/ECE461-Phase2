@@ -84,7 +84,7 @@ class TestDatasetCodeMetric:
             metric = DatasetCodeMetric(mock_git_client)
             result = await metric.calculate(DatasetCodeInput(repo_url=temp_dir))
 
-            # Only training code (1): raw_score = (0 + 1) / 2 = 0.5  
+            # Only training code (1): raw_score = (0 + 1) / 2 = 0.5
             # Boost: min(1.0, 0.5 * 1.2 + 0.15) = min(1.0, 0.6 + 0.15) = 0.75
             assert result == 0.75
 
